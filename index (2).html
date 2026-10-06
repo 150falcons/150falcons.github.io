@@ -1,0 +1,1409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Movement board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E4E8EC; --paper:#FFFFFF; --ink:#16202B; --muted:#5B6875; --line:#C9D0D7;
+  --in:#2F6FB5; --out:#C98E00; --late:#C42B2B; --accent:#33393F; --accent-ink:#FFFFFF;
+  --field:#F5F7F9;
+  --cond:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#151B22; --paper:#1E2630; --ink:#E7ECF1; --muted:#95A3B1; --line:#33404D;
+  --in:#5C9BE0; --out:#F0B429; --late:#F06262; --accent:#D9DEE3; --accent-ink:#1A1F24; --field:#18202A;
+}}
+:root[data-theme="dark"]{
+  --bg:#151B22; --paper:#1E2630; --ink:#E7ECF1; --muted:#95A3B1; --line:#33404D;
+  --in:#5C9BE0; --out:#F0B429; --late:#F06262; --accent:#D9DEE3; --accent-ink:#1A1F24; --field:#18202A;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:calc(env(safe-area-inset-top,0px) + 100px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--body);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+a{color:var(--in)}
+.wrap{max-width:1040px;margin:0 auto;padding:16px 16px 48px}
+
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;margin-bottom:18px}
+h1{font:700 2.4rem/1 var(--cond);margin:0;letter-spacing:.01em}
+.sub{color:var(--muted);margin-top:4px}
+.clock{font:600 1.5rem/1 var(--cond);font-variant-numeric:tabular-nums;text-align:right}
+.clock small{display:block;font:400 .8rem/1.4 var(--body);color:var(--muted)}
+
+.tally{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--paper);margin-bottom:16px}
+.tally div{padding:10px 14px;border-left:1px solid var(--line);display:flex;align-items:baseline;gap:10px}
+.tally div:first-child{border-left:0}
+.tally b{font:700 2.2rem/1 var(--cond);font-variant-numeric:tabular-nums}
+.tally .t-in b{color:var(--in)} .tally .t-out b{color:var(--out)} .tally .t-late b{color:var(--late)}
+.tally span{color:var(--muted)}
+
+nav.tabs{display:flex;gap:4px;border-bottom:2px solid var(--line);margin-bottom:14px;overflow-x:auto}
+nav.tabs button{background:none;border:0;padding:8px 14px;font:600 1.1rem var(--cond);color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px}
+nav.tabs button[aria-selected="true"]{color:var(--ink);border-color:var(--accent)}
+
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.toolbar input,.toolbar select{flex:1 1 200px;min-width:0}
+input,select,textarea{background:var(--field);border:1px solid var(--line);border-radius:4px;padding:8px 10px;width:100%}
+textarea{min-height:110px;resize:vertical}
+.btn{border:1px solid var(--line);background:var(--paper);border-radius:4px;padding:8px 14px;cursor:pointer;font-weight:500;white-space:nowrap}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.small{padding:5px 10px;font-size:.88rem}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* Flight-strip style rows */
+.strips{display:flex;flex-direction:column;gap:6px}
+.strip{display:grid;grid-template-columns:12px minmax(140px,1.1fr) 2fr auto;align-items:stretch;background:var(--paper);border:1px solid var(--line);border-radius:3px;min-height:58px}
+.strip .band{background:var(--in);border-radius:2px 0 0 2px}
+.strip.s-out .band{background:var(--out)}
+.strip.s-late .band{background:var(--late)}
+.strip.s-late{border-color:var(--late)}
+.strip.s-pend .band{background:var(--muted)}
+.strip.s-leave .band{background:#8a63d2}
+.s-leave .state{color:#8a63d2}
+.tally .t-leave b{color:#8a63d2}
+.crew .swap{font:500 .78rem var(--body);text-transform:none;letter-spacing:0;margin-left:6px;color:var(--accent)}
+.retrow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.retrow select{width:auto;margin:0}
+.recard{border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-bottom:10px;background:var(--field)}
+.recard h3{font:700 1.05rem var(--cond);margin:0 0 4px}
+.rerow{display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center;padding:4px 0}
+.rerow select{width:auto;margin:0;padding:4px 6px;font-size:.85rem}
+.reerr{color:var(--late);font-size:.88rem;margin:4px 0}
+#dlgRe{width:min(640px,calc(100vw - 24px))}
+.s-pend .state{color:var(--muted)}
+.when{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.when button{border:1px solid var(--line);background:var(--field);border-radius:4px;padding:8px 10px;text-align:left;cursor:pointer;line-height:1.3}
+.when button b{display:block;font:600 1.05rem var(--cond)}
+.when button span{font-size:.8rem;color:var(--muted)}
+.when.tr{grid-template-columns:1fr 1.6fr 1fr}
+.when.tr button{text-align:center;padding:8px 4px}
+.when button[aria-pressed="true"]{border:2px solid var(--accent);background:var(--paper)}
+.tag.nd{background:color-mix(in srgb,var(--muted) 18%,transparent);color:var(--muted)}
+.strip>div{padding:8px 12px;display:flex;flex-direction:column;justify-content:center;min-width:0}
+.strip>.band{padding:0;min-width:0}
+.strip .who{border-right:1px dashed var(--line)}
+.strip .who h3{margin:0;font:700 1.35rem/1.1 var(--cond);text-transform:uppercase;letter-spacing:.02em;overflow-wrap:anywhere}
+.strip .who span{color:var(--muted);font-size:.85rem}
+.strip .where strong{font-weight:600}
+.strip .where .meta{color:var(--muted);font-size:.88rem}
+.strip .where .due-late{color:var(--late);font-weight:600}
+.strip .act{flex-direction:row;align-items:center;gap:6px}
+.state{font:600 1rem var(--cond);color:var(--in)}
+.s-out .state{color:var(--out)} .s-late .state{color:var(--late)}
+
+.tablewrap{overflow-x:auto;background:var(--paper);border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;min-width:720px;font-size:.9rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:600 .95rem var(--cond);color:var(--muted);background:var(--field)}
+tr:last-child td{border-bottom:0}
+.tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:.8rem;font-weight:600}
+.tag.late{background:color-mix(in srgb,var(--late) 15%,transparent);color:var(--late)}
+.tag.open{background:color-mix(in srgb,var(--out) 18%,transparent);color:var(--ink)}
+
+.roster{display:grid;grid-template-columns:1fr;gap:16px}
+@media (min-width:760px){.roster{grid-template-columns:1.3fr 1fr}}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:14px}
+.card h2{font:700 1.3rem var(--cond);margin:0 0 8px}
+.rlist{list-style:none;margin:0;padding:0}
+.rlist li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.rlist li:last-child{border-bottom:0}
+.hint{color:var(--muted);font-size:.88rem}
+
+.empty{background:var(--paper);border:1px dashed var(--line);border-radius:6px;padding:28px;text-align:center;color:var(--muted)}
+.empty strong{display:block;color:var(--ink);font:700 1.3rem var(--cond);margin-bottom:4px}
+
+dialog{border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);padding:0;width:min(520px,calc(100vw - 24px));max-height:calc(100% - 24px)}
+dialog::backdrop{background:rgba(10,16,24,.5)}
+.dlg{padding:18px}
+.dlg h2{font:700 1.6rem/1.1 var(--cond);margin:0 0 12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:480px){.grid2{grid-template-columns:1fr}}
+label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:10px}
+label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
+.dlg .row{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+.pax{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 10px;max-height:160px;overflow:auto;border:1px solid var(--line);border-radius:4px;padding:8px;margin-bottom:10px;background:var(--field)}
+.pax label{display:flex;gap:6px;align-items:center;margin:0;color:var(--ink)}
+.pax input{width:auto;margin:0}
+.crew{font:700 1.2rem/1.2 var(--cond);text-transform:uppercase;letter-spacing:.02em}
+.crew em{font:500 .8rem var(--body);font-style:normal;color:var(--muted);text-transform:none;letter-spacing:0;margin-right:4px}
+.viewas{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:8px 12px;margin-bottom:12px}
+.viewas label{display:flex;align-items:center;gap:8px;margin:0;color:var(--ink);font-weight:500}
+.viewas select{width:auto;margin:0}
+.viewas.on{border:2px solid var(--out)}
+.viewas.on span{font-size:.88rem}
+.idcard{margin-bottom:14px;border-left:4px solid var(--accent)}
+.idline{margin:0 0 10px}
+.idline a,.rlist a{color:var(--accent)}
+.sec{font:600 1.05rem var(--cond);color:var(--muted);margin:16px 0 6px}
+.err{color:var(--late);font-size:.88rem;min-height:1.2em}
+
+.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:4px;max-width:calc(100vw - 32px);box-shadow:0 4px 18px rgba(0,0,0,.25);z-index:10}
+
+/* Slim top bar with the tabs, same palette as the page */
+.topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--paper);color:var(--ink);border-bottom:1px solid var(--line)}
+.topbar-in{max-width:1040px;margin:0 auto;padding:0 16px;display:flex;align-items:stretch;gap:24px;min-height:48px}
+.brand{font:700 1.15rem/1 var(--cond);white-space:nowrap;display:flex;align-items:center}
+.topbar nav.tabs{border:0;margin:0;gap:0;flex:1;overflow-x:auto}
+.topbar nav.tabs button{color:var(--muted);border-bottom:2px solid transparent;margin:0;padding:0 12px;font:600 1rem var(--cond);min-height:48px}
+.topbar nav.tabs button:hover{color:var(--ink)}
+.topbar nav.tabs button[aria-selected="true"]{color:var(--ink);border-color:var(--ink)}
+.topbar .clock{display:flex;align-items:center;gap:8px;font:600 1rem/1 var(--cond);white-space:nowrap}
+.topbar .clock small{display:inline;font:400 .8rem var(--body);color:var(--muted)}
+.topbar .clock .cdate{display:none}
+@media (max-width:640px){
+  .topbar-in{flex-wrap:wrap;gap:0 12px;min-height:0}
+  .brand{min-height:40px;flex:1}
+  .topbar .clock{min-height:40px}
+  .topbar nav.tabs{flex-basis:100%;order:3}
+  .topbar nav.tabs button{min-height:40px}
+}
+[hidden]{display:none!important}
+
+@media (max-width:640px){
+  .strip{grid-template-columns:10px 1fr auto;grid-template-areas:"b w a" "b x x"}
+  .strip.s-out,.strip.s-late,.strip.s-pend,.strip.s-leave{grid-template-columns:10px 1fr;grid-template-areas:"b w" "b x" "b a"}
+  .strip.s-out .act,.strip.s-late .act,.strip.s-pend .act,.strip.s-leave .act{border-top:1px dashed var(--line);justify-content:flex-end}
+  .crew{white-space:nowrap}
+  .strip.s-in{grid-template-areas:"b w a"}
+  .strip.s-in .where{display:none}
+  .strip .band{grid-area:b}.strip .who{grid-area:w;border-right:0}.strip .act{grid-area:a}
+  .strip .where{grid-area:x;border-top:1px dashed var(--line)}
+  .tally b{font-size:1.8rem}.tally div{flex-direction:column;gap:0}
+  h1{font-size:2rem}
+}
+@media (prefers-reduced-motion:no-preference){.strip{transition:border-color .2s}}
+
+.authcard{max-width:420px;margin:32px auto}
+.authcard h2{font:700 1.6rem var(--cond);margin:0 0 6px}
+.topbar .signout{background:none;border:1px solid var(--line);border-radius:4px;padding:4px 10px;font:500 .85rem var(--body);color:var(--muted);cursor:pointer;margin-left:6px}
+.topbar .signout:hover{color:var(--ink)}
+.rlist .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.stack>*+*{margin-top:16px}
+.csec{display:flex;align-items:baseline;gap:8px;font:700 1rem var(--cond);color:var(--ink);margin:12px 0 6px;letter-spacing:.02em;text-transform:uppercase}
+.csec span{font:400 .82rem var(--body);color:var(--muted);text-transform:none;letter-spacing:0}
+.rlist li.chead{display:block;border-bottom:1px solid var(--line);padding:12px 0 4px;font:700 1rem var(--cond);text-transform:uppercase;letter-spacing:.02em}
+.rlist li.chead:first-child{padding-top:0}
+.rlist li.chead span{font:400 .82rem var(--body);color:var(--muted);text-transform:none;letter-spacing:0;margin-left:6px}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="brand">Movement board</div>
+    <nav class="tabs" role="tablist" id="tabs" hidden>
+      <button role="tab" data-tab="board" aria-selected="true">Board</button>
+      <button role="tab" data-tab="log" aria-selected="false">Log</button>
+      <button role="tab" data-tab="vehicles" aria-selected="false">Vehicles</button>
+      <button role="tab" data-tab="roster" aria-selected="false">Roster</button>
+    </nav>
+    <div class="clock"><span id="clock"></span><button class="signout" id="btnSignOut" hidden>Sign out</button></div>
+  </div>
+</header>
+<div class="wrap">
+  <section class="tally" id="tally" aria-label="Current status" hidden></section>
+  <main id="view"></main>
+</div>
+
+<dialog id="dlgOut"><div class="dlg">
+  <h2 id="outTitle">Book out</h2>
+  <p class="hint" id="forLine" style="margin:-8px 0 10px" hidden></p>
+  <div class="when" role="group" aria-label="During or after office hours">
+    <button type="button" data-when="during" aria-pressed="false"><b>During office hours</b><span>Needs OC approval</span></button>
+    <button type="button" data-when="after" aria-pressed="false"><b>After office hours</b><span>For info, updates the board</span></button>
+  </div>
+  <p class="hint" id="ocLine" style="margin-top:-4px" hidden></p>
+  <div class="when tr" role="group" aria-label="Transport">
+    <button type="button" data-tr="car" aria-pressed="true"><b>Car</b></button>
+    <button type="button" data-tr="public" aria-pressed="false"><b>Public transport</b><span>Bus / train</span></button>
+    <button type="button" data-tr="other" aria-pressed="false"><b>Other</b><span>Taxi, Uber, lift, walk</span></button>
+  </div>
+  <p class="hint car-only" style="margin-top:-6px">Buddy system: driver and vehicle commander. Trips to Cazaux don't need a VCOM.</p>
+  <p class="hint pt-only" style="margin-top:-6px" hidden>Going in pairs is recommended, but you can go alone.</p>
+  <label>Destination<input id="fDest" list="places" placeholder="e.g. Bordeaux, La Teste" maxlength="80"></label>
+  <datalist id="places">
+    <option>Bordeaux</option><option>La Teste-de-Buch</option><option>Arcachon</option><option>Biganos</option>
+    <option>Le Teich</option><option>Gujan-Mestras</option><option>Cazaux</option><option>Pyla / Dune du Pilat</option>
+    <option>Andernos-les-Bains</option><option>Mérignac</option><option>Lacanau</option>
+  </datalist>
+  <div class="pt-only" hidden>
+    <label style="margin-bottom:4px">Who's going</label>
+    <div id="fPeople" class="pax"></div>
+    <p class="hint" id="aloneHint" style="margin:-4px 0 10px;color:var(--out)" hidden>Going alone. Not recommended, but allowed.</p>
+    <div id="modeWrap" class="pub-only">
+      <label style="margin-bottom:4px">Mode (tick both if you're taking both)</label>
+      <div class="pax" style="grid-template-columns:1fr 1fr">
+        <label><input type="checkbox" id="mBus">Bus</label>
+        <label><input type="checkbox" id="mTrain">Train</label>
+      </div>
+    </div>
+    <label>Details (optional)<input id="fDetails" maxlength="40" placeholder="e.g. TER 1412"></label>
+  </div>
+  <div class="grid2 car-only">
+    <label>Driver<select id="fDriver"></select></label>
+    <label>Vehicle commander (VCOM)<select id="fVcom"></select></label>
+  </div>
+  <details id="paxBox" class="car-only"><summary class="hint" style="cursor:pointer;margin-bottom:8px">Other trainees in the car (<span id="seatHint">max 5 in a car</span>)</summary>
+    <div id="fPax" class="pax"></div></details>
+  <div class="grid2">
+    <label id="etdWrap" hidden>ETD<input id="fEtd" type="datetime-local"></label>
+    <label>Expected back in base (ETA)<input id="fEta" type="datetime-local"></label>
+  </div>
+  <div class="grid2 car-only">
+    <label>Vehicle<select id="fVehSel"></select></label>
+    <label id="vehOtherWrap" hidden>Describe the car<input id="fVehicle" maxlength="40" placeholder="e.g. rental, white Clio, AB-123-CD"></label>
+  </div>
+  <div class="grid2">
+    <label>Reason<select id="fReasonSel">
+      <option value="">Select reason…</option>
+      <option>Meal / dinner</option><option>Groceries / shopping</option><option>Weekend out</option>
+      <option>Leave</option><option>Medical / dental</option><option>Official duty</option>
+      <option>Gym / sports</option><option>Sightseeing</option><option>Airport / train station run</option>
+      <option value="__other">Other, type in</option>
+    </select></label>
+    <label id="reasonOtherWrap" hidden>Your reason<input id="fReason" maxlength="140" placeholder="Type the reason"></label>
+  </div>
+  <p class="hint" style="margin:0 0 6px">Your phone's location is recorded once when you book out and once when you report back in. It is not tracked in between.</p>
+  <div class="err" id="outErr"></div>
+  <div class="row"><button class="btn" data-close>Cancel</button><button class="btn primary" id="btnOut">Book out</button></div>
+</div></dialog>
+
+<dialog id="dlgEta"><div class="dlg">
+  <h2>Change return time</h2>
+  <p class="hint" id="etaWho"></p>
+  <label>New expected back<input id="fEta2" type="datetime-local"></label>
+  <label>Reason (optional)<input id="fEtaWhy" maxlength="120" placeholder="e.g. train delayed"></label>
+  <div class="err" id="etaErr"></div>
+  <div class="row"><button class="btn" data-close>Cancel</button><button class="btn primary" id="btnEta">Save return time</button></div>
+</div></dialog>
+
+<dialog id="dlgEdit"><div class="dlg">
+  <h2 id="editTitle">Edit</h2>
+  <label>Name / callsign<input id="eName" maxlength="60"></label>
+  <label id="eCourseWrap">Course<input id="eCourse" maxlength="40"></label>
+  <label id="ePhoneWrap">Handphone<input id="ePhone" type="tel" maxlength="30" placeholder="+33 / +65"></label>
+  <label id="eDriveWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eDrive" type="checkbox" style="width:auto;margin:0">Can drive</label>
+  <div id="eApptWrap">
+    <label>Appointment<select id="eAppt"><option value="">None</option><option>CO</option><option>DYCO</option><option>OC A</option><option>OC B</option><option>CC</option><option>QFI</option></select></label>
+  </div>
+  <label id="eUserWrap">Username<input id="eUser" maxlength="30" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
+  <p class="hint" id="eHint" style="margin:-4px 0 10px"></p>
+  <div class="err" id="editErr"></div>
+  <div class="row"><button class="btn" data-close>Cancel</button><button class="btn primary" id="btnEdit">Save</button></div>
+</div></dialog>
+
+<dialog id="dlgVeh"><div class="dlg">
+  <h2>Edit car</h2>
+  <label>Car<input id="xDesc" maxlength="40"></label>
+  <label>Number plate<input id="xPlate" maxlength="15" style="text-transform:uppercase"></label>
+  <label>Seats (including driver)<select id="xSeats"><option value="2">2 seats</option><option value="3">3 seats</option><option value="4">4 seats</option><option value="5" selected>5 seats</option><option value="6">6 seats</option><option value="7">7 seats</option><option value="8">8 seats</option><option value="9">9 seats</option></select></label>
+  <label>Belongs to<select id="xType"><option value="course">The course</option><option value="personal">A trainee (personal)</option></select></label>
+  <label id="xCourseWrap">Course<select id="xCourse"></select></label>
+  <label id="xOwnerWrap" hidden>Owner<select id="xOwner"></select></label>
+  <p class="hint" id="xHint"></p>
+  <div class="err" id="vehErr"></div>
+  <div class="row"><button class="btn" data-close>Cancel</button><button class="btn primary" id="btnVehSave">Save</button></div>
+</div></dialog>
+
+<dialog id="dlgIn"><div class="dlg">
+  <h2>Back in base</h2>
+  <p class="hint" id="inWhere" style="margin-top:-6px"></p>
+  <div id="inRows" style="margin-bottom:12px"></div>
+  <label id="leaveWrap" hidden>On leave until (date back in base)<input id="fLeaveUntil" type="date"></label>
+  <p class="hint">Anyone left as "Still out" stays on the board under this trip.</p>
+  <div class="err" id="inErr"></div>
+  <div class="row"><button class="btn" data-close>Cancel</button><button class="btn primary" id="btnIn">Confirm</button></div>
+</div></dialog>
+
+<dialog id="dlgSwap"><div class="dlg">
+  <h2>Swap</h2>
+  <p class="hint" id="swapWho" style="margin-top:-6px"></p>
+  <label>Coming back with<select id="swapTo"></select></label>
+  <label id="swapDrvWrap" hidden>Who drives <span id="swapCar"></span> back?<select id="swapDrv"></select></label>
+  <label id="swapVcomWrap" hidden>Who is VCOM for <span id="swapCar2"></span> now?<select id="swapVcom"></select></label>
+  <p class="hint" id="swapNote"></p>
+  <div class="err" id="swapErr"></div>
+  <div class="row"><button class="btn" data-close>Cancel</button><button class="btn primary" id="btnSwap">Swap</button></div>
+</div></dialog>
+
+<dialog id="dlgRe"><div class="dlg">
+  <h2>Rearrange for the return</h2>
+  <p class="hint" style="margin-top:-6px">Move people between trips and set roles. Nothing is saved until you press Confirm.</p>
+  <div id="reCards"></div>
+  <div id="reErrs"></div>
+  <div class="err" id="reErr"></div>
+  <div class="row"><button class="btn" data-close>Cancel</button><button class="btn primary" id="btnRe">Confirm</button></div>
+</div></dialog>
+
+<dialog id="dlgAsk"><div class="dlg">
+  <h2 id="askTitle"></h2><p id="askBody" style="margin:0 0 14px"></p>
+  <input id="askInput" maxlength="80" style="margin-bottom:14px" hidden>
+  <div class="row"><button class="btn" id="askCancel">Cancel</button><button class="btn primary" id="askOk">Confirm</button></div>
+</div></dialog>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* =====================================================================
+   SETUP: paste your Supabase Project URL and anon (public) key here.
+   Supabase > Project Settings > API. The anon key is safe to publish;
+   NEVER paste the service_role key here.
+   ===================================================================== */
+const SUPABASE_URL = "https://ighnqntkupzqisstzmpy.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlnaG5xbnRrdXB6cWlzc3R6bXB5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMjcxMTcsImV4cCI6MjEwNjgwMzExN30.K9rQENntu1S__EVchIe4MiwlqJUMMRVCDzen4QczV-M";
+// Random temporary password for new logins and resets (never a fixed value in the page's code).
+function tempPw() {
+  const a = "abcdefghjkmnpqrstuvwxyz23456789", r = crypto.getRandomValues(new Uint32Array(8));
+  return "Falcon-" + [...r].map(x => a[x % a.length]).join("");
+}
+// Usernames are stored as <username>@<LOGIN_DOMAIN> behind the scenes. No emails are ever sent.
+const LOGIN_DOMAIN = "150sqn.local";
+
+// Approximate centre of BA 120 Cazaux; within BASE_KM counts as "at base".
+const BASE = { lat: 44.533, lng: -1.125 }, BASE_KM = 3;
+
+const S = {
+  sb: null, session: null, me: null, ready: false, chan: null,
+  roster: [], profiles: [], vehicles: [], open: [], log: [],
+  tab: "board", q: "", logFilter: "", etaTarget: null
+};
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const ms = x => x ? new Date(x).getTime() : null;
+const fmt = x => x ? new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(x)) : "";
+const toLocalInput = t => { const d = new Date(t); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+const dur = m => { m = Math.round(m / 60000); if (m < 60) return m + " min"; const h = Math.floor(m / 60), r = m % 60; return h + " h" + (r ? " " + r + " min" : ""); };
+const ROLE = { driver: "Driver", vcom: "VCOM", pax: "Pax", person: "" };
+
+const isAdmin = () => !!S.me && S.me.role === "admin";
+const myTid = () => S.me ? S.me.trainee_id : null;
+const active = () => S.roster.filter(t => t.active);
+const me = () => active().find(t => t.id === myTid()) || null;
+const members = m => m.members || [];
+const allMembers = m => m.orig_members || m.members || [];
+const leaveOf = tid => (S.leaves || []).find(l => l.trainee_id === tid);
+const todayStr = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+const fmtDay = d => d ? new Date(d + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) : "";
+const crewText = m => members(m).map(p => `${ROLE[p.role] || ""} ${p.name}`.trim()).join(", ");
+const isLate = (m, now) => m.status === "out" && ms(m.expected_back) < now;
+const canAct = m => isAdmin() || (m.member_ids || []).includes(myTid());
+const profOf = id => S.profiles.find(p => p.id === id);
+const toLogin = u => { u = String(u || "").trim().toLowerCase(); return u.includes("@") ? u : `${u}@${LOGIN_DOMAIN}`; };
+const showLogin = e => { e = e || ""; return e.endsWith("@" + LOGIN_DOMAIN) ? e.slice(0, -LOGIN_DOMAIN.length - 1) : e; };
+const validUser = u => /^[a-z0-9._-]{3,30}$/.test(u) || u.includes("@");
+function suggestUser(name) {
+  const base = String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 24) || "trainee";
+  const taken = new Set(S.profiles.map(p => showLogin(p.email)));
+  let u = base, n = 2; while (taken.has(u)) u = base + n++;
+  return u;
+}
+const who = id => { const p = profOf(id); return p ? (p.display_name || showLogin(p.email) || "") : ""; };
+const acctOf = tid => S.profiles.find(p => p.trainee_id === tid);
+const phoneOf = tid => (S.roster.find(t => t.id === tid) || {}).phone || "";
+const telLink = ph => ph ? `<a href="tel:${esc(ph.replace(/[^+\d]/g, ""))}">${esc(ph)}</a>` : "";
+function openByTrainee() { const map = {}; for (const o of S.open) for (const id of (o.member_ids || [])) map[id] = o; return map; }
+const isPend = m => m && m.status === "pending";
+function byCourse(list) {
+  const g = new Map();
+  for (const t of list) { const k = t.course || "No course"; if (!g.has(k)) g.set(k, []); g.get(k).push(t); }
+  // FWC courses together, then WSO, then others (e.g. PGF); numbers ascending within each.
+  const key = c => { const m = /^(\d+)\s*(.*)$/.exec(c); return m ? [0, m[2].toUpperCase(), +m[1]] : [1, c.toUpperCase(), 0]; };
+  return [...g.entries()].sort((a, b) => {
+    if (a[0] === "No course") return 1; if (b[0] === "No course") return -1;
+    const [ra, sa, na] = key(a[0]), [rb, sb, nb] = key(b[0]);
+    return ra - rb || sa.localeCompare(sb) || na - nb;
+  });
+}
+const isLocal = d => /cazaux/i.test(d || "");
+const APPROVER = p => p.role === "admin" && ["CO", "DYCO", "OC A", "OC B"].includes(p.appointment);
+const canApprove = () => isAdmin() && (APPROVER(S.me) || !S.profiles.some(APPROVER));
+const bare = n => String(n || "").replace(/\s*\([^)]*\)\s*$/, "");
+const ocName = () => {
+  const ocs = ["OC A", "OC B"].map(a => S.profiles.find(p => p.appointment === a)).filter(Boolean).map(p => `${p.appointment} (${bare(p.display_name)})`);
+  return ocs.join(", "); };
+const fmtL = x => { if (!x) return ""; const d = new Date(x), t = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }).replace(":", "") + "L";
+  return d.toDateString() === new Date().toDateString() ? t : t + " " + d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }); };
+
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 5000); }
+const errMsg = e => (e && (e.message || e.error_description)) || "Something went wrong. Check your connection and try again.";
+
+// In-page dialogs (no browser confirm/prompt).
+function ask(title, body, okLabel, input) {
+  return new Promise(res => {
+    const d = $("#dlgAsk"), inp = $("#askInput");
+    $("#askTitle").textContent = title; $("#askBody").textContent = body; $("#askOk").textContent = okLabel || "Confirm";
+    inp.hidden = !input;
+    if (input) { inp.type = input.type || "text"; inp.value = input.value || ""; inp.placeholder = input.placeholder || ""; }
+    const done = v => { d.close(); res(v); };
+    $("#askOk").onclick = () => done(input ? inp.value.trim() : true);
+    $("#askCancel").onclick = () => done(input ? null : false);
+    d.oncancel = e => { e.preventDefault(); done(input ? null : false); };
+    d.showModal(); (input ? inp : $("#askOk")).focus();
+  });
+}
+
+/* ---------- location ---------- */
+function kmFrom(a, b) {
+  const r = x => x * Math.PI / 180, R = 6371, dLa = r(b.lat - a.lat), dLo = r(b.lng - a.lng);
+  const h = Math.sin(dLa / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLo / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function getLoc() {
+  return new Promise(res => {
+    if (!navigator.geolocation) return res({ error: "unsupported" });
+    let finished = false; const fin = v => { if (!finished) { finished = true; res(v); } };
+    setTimeout(() => fin({ error: "timeout" }), 12000);
+    try {
+      navigator.geolocation.getCurrentPosition(
+        p => fin({ lat: +p.coords.latitude.toFixed(5), lng: +p.coords.longitude.toFixed(5), acc: Math.round(p.coords.accuracy), at: Date.now() }),
+        e => fin({ error: e.code === 1 ? "denied" : e.code === 3 ? "timeout" : "unavailable" }),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+    } catch (_) { fin({ error: "unavailable" }); }
+  });
+}
+function locText(l) {
+  if (!l) return "";
+  if (l.error) return l.error === "denied" ? "Location not shared" : "Location unavailable";
+  const km = kmFrom(BASE, l);
+  return km <= BASE_KM ? "At base" : `${km < 10 ? km.toFixed(1) : Math.round(km)} km from base`;
+}
+function locHtml(l) {
+  if (!l) return "";
+  if (l.error) return `<span class="hint">${esc(locText(l))}</span>`;
+  const far = kmFrom(BASE, l) > BASE_KM;
+  return `<a class="hint" style="${far ? "color:var(--late)" : ""}" target="_blank" rel="noopener" href="https://www.openstreetmap.org/?mlat=${l.lat}&mlon=${l.lng}#map=15/${l.lat}/${l.lng}">📍 ${esc(locText(l))}</a>`;
+}
+
+/* ---------- data ---------- */
+async function fetchAll() {
+  const sb = S.sb;
+  const res = await Promise.all([
+    sb.from("trainees").select("*").order("course").order("name"),
+    sb.from("profiles").select("id,email,display_name,role,trainee_id,must_change_password,appointment"),
+    sb.from("vehicles").select("*").order("description"),
+    sb.from("movements").select("*").in("status", ["out", "pending"]),
+    sb.from("movements").select("*").order("out_at", { ascending: false }).limit(300),
+    sb.from("leaves").select("*").is("ended_at", null),
+  ]);
+  const bad = res.find(r => r.error);
+  if (bad) { toast("Couldn't load the board: " + errMsg(bad.error)); return; }
+  [S.roster, S.profiles, S.vehicles, S.open, S.log, S.leaves] = res.map(r => r.data || []);
+  S.me = S.profiles.find(p => p.id === S.session.user.id) || S.me;
+  S.ready = true;
+  render();
+}
+let refetchTimer;
+const refetchSoon = () => { clearTimeout(refetchTimer); refetchTimer = setTimeout(fetchAll, 300); };
+function subscribe() {
+  if (S.chan) return;
+  S.chan = S.sb.channel("board");
+  for (const t of ["trainees", "profiles", "vehicles", "movements", "leaves"])
+    S.chan.on("postgres_changes", { event: "*", schema: "public", table: t }, refetchSoon);
+  S.chan.subscribe();
+}
+async function adminApi(body) {
+  const { data, error } = await S.sb.functions.invoke("admin-users", { body });
+  if (error) {
+    let msg = error.message;
+    try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch (_) {}
+    throw new Error(msg);
+  }
+  if (data && data.error) throw new Error(data.error);
+  return data;
+}
+
+/* ---------- auth ---------- */
+async function startSession(session) {
+  S.session = session;
+  const { data, error } = await S.sb.from("profiles").select("*").eq("id", session.user.id).single();
+  if (error || !data) { toast("Your account isn't set up yet. Ask an instructor."); await S.sb.auth.signOut(); return; }
+  S.me = data;
+  if (S.me.must_change_password) { render(); return; }
+  await fetchAll(); subscribe();
+}
+async function signOut() {
+  if (S.chan) { await S.sb.removeChannel(S.chan); S.chan = null; }
+  await S.sb.auth.signOut();
+  Object.assign(S, { session: null, me: null, ready: false, roster: [], profiles: [], vehicles: [], open: [], log: [], tab: "board" });
+  render();
+}
+
+/* ---------- top-level render ---------- */
+function renderClock() {
+  const n = new Date();
+  const loc = n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const z = n.toISOString().slice(11, 16).replace(":", "") + "Z";
+  $("#clock").innerHTML = `${esc(loc)} local <small>${esc(z)}</small>`;
+}
+function renderTally() {
+  const now = Date.now(), ob = openByTrainee(); let i = 0, o = 0, l = 0, lv = 0;
+  for (const t of active()) { const m = ob[t.id]; if (leaveOf(t.id)) lv++; else if (!m || isPend(m)) i++; else if (isLate(m, now)) l++; else o++; }
+  $("#tally").innerHTML = `<div class="t-in"><b>${i}</b><span>in base</span></div><div class="t-out"><b>${o + l}</b><span>out</span></div><div class="t-leave"><b>${lv}</b><span>on leave</span></div><div class="t-late"><b>${l}</b><span>overdue</span></div>`;
+}
+function render() {
+  const v = $("#view");
+  const signedIn = !!S.session && !!S.me && !S.me.must_change_password;
+  $("#tabs").hidden = !signedIn || !S.ready;
+  $("#tally").hidden = !signedIn || !S.ready;
+  $("#btnSignOut").hidden = !S.session;
+  if (SUPABASE_URL.startsWith("PASTE")) {
+    v.innerHTML = `<div class="empty"><strong>Almost there</strong>Paste your Supabase Project URL and anon key at the top of the script in index.html.</div>`; return;
+  }
+  if (!S.session) return renderLogin(v);
+  if (!S.me) { v.innerHTML = `<div class="empty">Loading…</div>`; return; }
+  if (S.me.must_change_password) return renderChangePw(v);
+  if (!S.ready) { v.innerHTML = `<div class="empty">Loading the board…</div>`; return; }
+  document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === S.tab));
+  document.querySelector('#tabs [data-tab="roster"]').textContent = isAdmin() ? "Admin" : "Roster";
+  renderTally();
+  if (S.tab === "board") renderBoard(v);
+  else if (S.tab === "log") renderLog(v);
+  else if (S.tab === "vehicles") renderVehicles(v);
+  else if (isAdmin()) renderAdmin(v); else renderRoster(v);
+}
+
+function renderLogin(v) {
+  v.innerHTML = `<div class="card authcard"><h2>Sign in</h2>
+    <p class="hint">Use the username and password your instructor gave you.</p>
+    <label>Username<input id="lEmail" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="e.g. limj"></label>
+    <label>Password<input id="lPw" type="password" autocomplete="current-password"></label>
+    <div class="err" id="lErr"></div>
+    <button class="btn primary" id="btnLogin" style="width:100%">Sign in</button>
+    <p class="hint">Forgot your password? Ask an instructor to reset it.</p></div>`;
+  const go = async () => {
+    const email = toLogin($("#lEmail").value), password = $("#lPw").value;
+    if (!$("#lEmail").value.trim() || !password) return $("#lErr").textContent = "Enter your username and password.";
+    $("#btnLogin").disabled = true; $("#lErr").textContent = "";
+    const { data, error } = await S.sb.auth.signInWithPassword({ email, password });
+    $("#btnLogin").disabled = false;
+    if (error) return $("#lErr").textContent = /banned/i.test(error.message) ? "This account has been disabled. Ask an instructor." : "Wrong username or password.";
+    await startSession(data.session);
+  };
+  $("#btnLogin").onclick = go;
+  $("#lPw").onkeydown = e => { if (e.key === "Enter") go(); };
+  $("#lEmail").focus();
+}
+
+function renderChangePw(v) {
+  v.innerHTML = `<div class="card authcard"><h2>Set your own password</h2>
+    <p class="hint">You signed in with a temporary password. Choose your own to continue.</p>
+    <label>New password<input id="pw1" type="password" autocomplete="new-password" minlength="8"></label>
+    <label>Type it again<input id="pw2" type="password" autocomplete="new-password"></label>
+    <div class="err" id="pwErr"></div>
+    <button class="btn primary" id="btnPw" style="width:100%">Save password</button></div>`;
+  $("#btnPw").onclick = async () => {
+    const a = $("#pw1").value, b = $("#pw2").value, err = $("#pwErr");
+    if (a.length < 8) return err.textContent = "Use at least 8 characters.";
+    if (/^falcon-/i.test(a)) return err.textContent = "Choose something other than the temporary password.";
+    if (a !== b) return err.textContent = "The two passwords don't match.";
+    $("#btnPw").disabled = true;
+    const { error } = await S.sb.auth.updateUser({ password: a });
+    if (error) { $("#btnPw").disabled = false; return err.textContent = errMsg(error); }
+    const r = await S.sb.rpc("clear_must_change");
+    if (r.error) { $("#btnPw").disabled = false; return err.textContent = errMsg(r.error); }
+    S.me.must_change_password = false; toast("Password saved.");
+    await fetchAll(); subscribe();
+  };
+  $("#pw1").focus();
+}
+
+/* ---------- board ---------- */
+function renderBoard(v) {
+  const now = Date.now(), ob = openByTrainee(), q = S.q.trim().toLowerCase();
+  const match = txt => !q || txt.toLowerCase().includes(q);
+  const mine = me();
+  if (!active().length) {
+    v.innerHTML = `<div class="empty"><strong>No trainees on the roster yet</strong>${isAdmin() ? `Post in your course on the <a href="#" data-tab="roster">Admin</a> tab.` : "Ask an instructor to add the course."}</div>`;
+    return;
+  }
+  let idCard = "";
+  if (mine) idCard = `<p class="hint idline">Signed in as <strong>${esc(mine.name)}</strong>${mine.can_drive === false ? " (non-driver)" : ""}.</p>`;
+  else if (!isAdmin()) idCard = `<div class="card idcard"><h2>Account not linked</h2><p class="hint">Your login isn't linked to a name on the roster yet. Ask an instructor to fix it.</p></div>`;
+
+  const pend = S.open.filter(m => isPend(m) && match(crewText(m) + " " + m.destination)).sort((a, b) => ms(a.etd) - ms(b.etd));
+  const pendHtml = pend.map(m => {
+    const crew = members(m).map(p => `<div class="crew"><em>${esc(ROLE[p.role])}</em>${esc(p.name)}</div>`).join("");
+    const btns = (canApprove() ? `<button class="btn small" data-act="reject" data-id="${esc(m.id)}">Reject</button><button class="btn small primary" data-act="approve" data-id="${esc(m.id)}">Approve</button>` : "")
+      + (!canApprove() && canAct(m) ? `<button class="btn small" data-act="withdraw" data-id="${esc(m.id)}">Withdraw</button>` : "");
+    return `<article class="strip s-pend"><div class="band"></div>
+      <div class="who">${crew}</div>
+      <div class="where"><span class="state">Awaiting approval: <strong>${esc(m.destination)}</strong></span>
+        <span class="meta">ETD ${esc(fmtL(m.etd))}, ETA ${esc(fmtL(m.expected_back))}</span>
+        <span class="meta">${esc(m.vehicle_label)}. ${esc(m.reason)}. Requested by ${esc(who(m.out_by))}</span></div>
+      <div class="act">${btns}</div></article>`;
+  }).join("");
+  const groups = S.open.filter(m => !isPend(m) && match(crewText(m) + " " + m.destination))
+    .sort((a, b) => (isLate(b, now) - isLate(a, now)) || ms(a.expected_back) - ms(b.expected_back));
+  const outHtml = groups.map(m => {
+    const late = isLate(m, now);
+    const crew = members(m).map(p => `<div class="crew"><em>${esc(ROLE[p.role])}</em>${esc(p.name)}</div>`).join("");
+    const tels = members(m).filter(p => p.role !== "pax" && phoneOf(p.id)).map(p => `${esc(ROLE[p.role] || p.name)} ${telLink(phoneOf(p.id))}`).join(", ");
+    return `<article class="strip s-${late ? "late" : "out"}"><div class="band"></div>
+      <div class="who">${crew}</div>
+      <div class="where"><span class="state">${late ? "Overdue" : "Out"}: <strong>${esc(m.destination)}</strong></span>
+        <span class="meta ${late ? "due-late" : ""}">Back in base by ${esc(fmt(m.expected_back))}${late ? ` (${dur(now - ms(m.expected_back))} late)` : ""}</span>
+        ${tels ? `<span class="meta">Tel: ${tels}</span>` : ""}
+        <span class="meta">Out since ${esc(fmt(m.office_hours && m.etd ? m.etd : m.out_at))}. ${esc(m.vehicle_label)}. ${esc(m.reason)}${m.decided_as ? `. Approved by ${esc(m.decided_as)}` : ""}</span></div>
+      <div class="act">${canAct(m) ? `<button class="btn small" data-act="eta" data-id="${esc(m.id)}">Change time</button><button class="btn small primary" data-act="in" data-id="${esc(m.id)}">Back in base</button>` : ""}</div></article>`;
+  }).join("");
+  const inT = active().filter(t => !leaveOf(t.id) && (!ob[t.id] || isPend(ob[t.id])) && match(t.name + " " + (t.course || "")));
+  const today = todayStr();
+  const lvT = active().filter(t => leaveOf(t.id) && match(t.name + " " + (t.course || ""))).sort((a, b) => leaveOf(a.id).until.localeCompare(leaveOf(b.id).until));
+  const leaveHtml = lvT.map(t => { const l = leaveOf(t.id), late = l.until < today;
+    return `<article class="strip s-leave"><div class="band"></div>
+      <div class="who"><h3>${esc(t.name)}</h3><span>${esc(t.course || "")}</span></div>
+      <div class="where"><span class="state">On leave</span><span class="meta ${late ? "due-late" : ""}">Back by ${esc(fmtDay(l.until))}${late ? " (overdue)" : ""}</span></div>
+      <div class="act">${isAdmin() || t.id === myTid() ? `<button class="btn small primary" data-act="endleave" data-id="${esc(t.id)}">Back from leave</button>` : ""}</div></article>`; }).join("");
+  const strip = t => `<article class="strip s-in"><div class="band"></div>
+      <div class="who"><h3>${esc(t.name)}</h3>${t.can_drive === false ? `<span>Non-driver</span>` : ""}</div>
+      <div class="where"><span class="state">In base</span></div>
+      <div class="act">${ob[t.id] ? `<span class="hint">Request pending</span>` : isAdmin() || t.id === myTid() ? `<button class="btn small" data-act="out" data-id="${esc(t.id)}">Book out</button>` : ""}</div></article>`;
+  const courseSize = c => active().filter(t => (t.course || "No course") === c).length;
+  const inHtml = byCourse(inT).map(([c, ts]) => `<div class="csec">${esc(c)} <span>${ts.length} of ${courseSize(c)} in base</span></div>
+      <div class="strips">${ts.map(strip).join("")}</div>`).join("");
+  const canBook = isAdmin() || (mine && !ob[mine.id]);
+
+  v.innerHTML = `${idCard}<div class="toolbar"><input id="q" type="search" placeholder="Find a trainee or destination" value="${esc(S.q)}">
+    ${canBook ? `<button class="btn primary" data-act="out">Book out</button>` : ""}</div>
+    ${pend.length ? `<div class="sec">Awaiting approval (${pend.length})</div><div class="strips">${pendHtml}</div>` : ""}
+    ${groups.length ? `<div class="sec" style="display:flex;justify-content:space-between;align-items:center">Out of base (${groups.length} ${groups.length === 1 ? "trip" : "trips"})${outTrips().length > 1 && (isAdmin() || outTrips().some(canAct)) ? `<button class="btn small" data-act="rearrange">Rearrange for return</button>` : ""}</div><div class="strips">${outHtml}</div>` : ""}
+    ${lvT.length ? `<div class="sec">On leave (${lvT.length})</div><div class="strips">${leaveHtml}</div>` : ""}
+    <div class="sec">In base (${inT.length})</div>
+    ${inHtml || `<div class="empty">${q ? `No one in base matches “${esc(S.q)}”.` : "Everyone is out."}</div>`}`;
+  $("#q").oninput = e => { S.q = e.target.value; const pos = e.target.selectionStart; renderBoard(v); const n = $("#q"); n.focus(); n.setSelectionRange(pos, pos); };
+}
+
+/* ---------- book out ---------- */
+function availTrainees() { const ob = openByTrainee(); return active().filter(t => !ob[t.id] && !leaveOf(t.id)); }
+function syncCrew() {
+  const avail = availTrainees(), d = $("#fDriver").value, c = $("#fVcom").value;
+  const opt = (list, sel, skip, first) => first + list.filter(t => t.id !== skip)
+    .map(t => `<option value="${esc(t.id)}" ${t.id === sel ? "selected" : ""}>${esc(t.name)}${t.course ? " (" + esc(t.course) + ")" : ""}</option>`).join("");
+  $("#fDriver").innerHTML = opt(avail.filter(t => t.can_drive !== false), d, c, `<option value="">Select driver…</option>`);
+  $("#fVcom").innerHTML = opt(avail, c, d, `<option value="">${isLocal($("#fDest").value) ? "None (Cazaux)" : "Select…"}</option>`);
+}
+let outTr = "car", outFor = null;
+const nameOf = id => (S.roster.find(t => t.id === id) || {}).name || "";
+function fillPeople() {
+  const checked = new Set([...document.querySelectorAll("#fPeople input:checked")].map(i => i.value));
+  const list = availTrainees();
+  $("#fPeople").innerHTML = list.length ? list.map(t => t.id === outFor
+      ? `<label><input type="checkbox" value="${esc(t.id)}" checked disabled>${esc(t.name)}</label>`
+      : `<label><input type="checkbox" value="${esc(t.id)}" ${checked.has(t.id) ? "checked" : ""}>${esc(t.name)}</label>`).join("") : `<span class="hint">No one in base.</span>`;
+  syncAlone();
+}
+function syncAlone() { $("#aloneHint").hidden = document.querySelectorAll("#fPeople input:checked").length !== 1; }
+$("#fPeople").onchange = syncAlone;
+function setTr(tr) {
+  outTr = tr;
+  document.querySelectorAll("[data-tr]").forEach(b => b.setAttribute("aria-pressed", b.dataset.tr === tr));
+  document.querySelectorAll("#dlgOut .car-only").forEach(e => e.hidden = tr !== "car");
+  document.querySelectorAll("#dlgOut .pt-only").forEach(e => e.hidden = tr === "car");
+  $("#modeWrap").hidden = tr !== "public";
+  $("#fDetails").placeholder = tr === "public" ? "e.g. bus 601, TER 1412" : "e.g. Uber, lift from host family, walking";
+  if (tr === "car") $("#vehOtherWrap").hidden = $("#fVehSel").value !== "__other";
+}
+document.querySelectorAll("[data-tr]").forEach(b => b.onclick = () => setTr(b.dataset.tr));
+let outWhen = "";
+function setWhen(w) {
+  outWhen = w;
+  document.querySelectorAll("[data-when]").forEach(b => b.setAttribute("aria-pressed", b.dataset.when === w));
+  const during = w === "during";
+  $("#etdWrap").hidden = !during; $("#ocLine").hidden = !during || !ocName(); $("#ocLine").textContent = ocName() ? `To be approved by ${ocName()}.` : "";
+  $("#outTitle").textContent = during ? "Travel request" : "Book out";
+  $("#btnOut").textContent = during ? "Send request" : "Book out";
+}
+document.querySelectorAll("[data-when]").forEach(b => b.onclick = () => setWhen(b.dataset.when));
+$("#fDest").oninput = () => syncCrew();
+function fillPax() {
+  const d = $("#fDriver").value, c = $("#fVcom").value;
+  const checked = new Set([...document.querySelectorAll("#fPax input:checked")].map(i => i.value));
+  const list = availTrainees().filter(t => t.id !== d && t.id !== c);
+  $("#fPax").innerHTML = list.length ? list.map(t => `<label><input type="checkbox" value="${esc(t.id)}" ${checked.has(t.id) ? "checked" : ""}>${esc(t.name)}</label>`).join("") : `<span class="hint">No one else in base.</span>`;
+  limitPax();
+}
+const CAR_MAX = 5;
+const carSeats = vid => (S.vehicles.find(v => v.id === vid) || {}).seats || CAR_MAX;
+// Driver + VCOM + passengers can't exceed 5: grey out the rest once the car is full.
+function limitPax() {
+  const max = carSeats($("#fVehSel").value); $("#seatHint").textContent = `max ${max} in this car`;
+  const seats = max - [$("#fDriver").value, $("#fVcom").value].filter(Boolean).length;
+  const boxes = [...document.querySelectorAll("#fPax input")], n = boxes.filter(b => b.checked).length;
+  boxes.forEach(b => { b.disabled = !b.checked && n >= seats; });
+}
+$("#fPax").onchange = limitPax;
+const vLabel = v => [v.description, v.plate].filter(Boolean).join(", ");
+const vOwner = v => v.owner_type === "course" ? `${v.course || "Course"} car` : `${(S.roster.find(t => t.id === v.owner_trainee) || {}).name || "Personal"}'s car`;
+function vehInUse() { const m = {}; for (const o of S.open) if (o.vehicle_id) m[o.vehicle_id] = o; return m; }
+function fillVehicles(pref) {
+  const use = vehInUse(), driverId = $("#fDriver").value, drv = S.roster.find(t => t.id === driverId);
+  const sc = v => v.owner_type === "personal" && v.owner_trainee === driverId ? 0 : v.owner_type === "course" && drv && v.course === drv.course ? 1 : 2;
+  const sorted = [...S.vehicles].sort((a, b) => sc(a) - sc(b) || vLabel(a).localeCompare(vLabel(b)));
+  $("#fVehSel").innerHTML = `<option value="">Select car…</option>` + sorted.map(v =>
+    `<option value="${esc(v.id)}" ${use[v.id] ? "disabled" : ""}>${esc(vLabel(v))} (${esc(vOwner(v))}, ${v.seats || 5} seats)${use[v.id] ? ", in use" : ""}</option>`).join("") +
+    `<option value="__other">Other, not listed</option>`;
+  let pick = pref;
+  if (!pick) { const own = sorted.filter(v => !use[v.id] && v.owner_type === "personal" && v.owner_trainee === driverId); if (own.length === 1) pick = own[0].id; }
+  $("#fVehSel").value = pick || "";
+  $("#vehOtherWrap").hidden = $("#fVehSel").value !== "__other";
+  limitPax();
+}
+function openOut(id) {
+  if (!availTrainees().length) return toast("No one is in base to book out.");
+  // The trainee being booked out: the strip clicked, or yourself if you're a trainee.
+  outFor = (id && availTrainees().some(t => t.id === id)) ? id : (!isAdmin() && myTid()) || null;
+  $("#forLine").hidden = !outFor; $("#forLine").textContent = outFor ? `Booking out ${nameOf(outFor)}. They must be on this trip.` : "";
+  $("#fDriver").innerHTML = `<option value=""></option>`; $("#fVcom").innerHTML = `<option value=""></option>`;
+  syncCrew();
+  const ft = S.roster.find(t => t.id === outFor);
+  if (ft) { (ft.can_drive !== false ? $("#fDriver") : $("#fVcom")).value = ft.id; syncCrew(); }
+  $("#fPax").innerHTML = ""; $("#paxBox").open = false; fillPax();
+  ["#fDest", "#fVehicle", "#fReason", "#fReasonSel"].forEach(s => $(s).value = "");
+  $("#reasonOtherWrap").hidden = true;
+  fillVehicles();
+  const d = new Date(); d.setHours(d.getHours() + 4, 0, 0, 0); $("#fEta").value = toLocalInput(d.getTime());
+  const e = new Date(); e.setSeconds(0, 0); e.setMinutes(Math.ceil(e.getMinutes() / 5) * 5); $("#fEtd").value = toLocalInput(e.getTime());
+  setWhen("");
+  $("#fPeople").innerHTML = ""; $("#fDetails").value = ""; $("#mBus").checked = $("#mTrain").checked = false; fillPeople();
+
+  setTr("car");
+  $("#outErr").textContent = ""; $("#dlgOut").showModal();
+}
+$("#fDriver").onchange = () => { syncCrew(); fillPax(); const cur = $("#fVehSel").value; fillVehicles(cur); };
+$("#fVcom").onchange = () => { syncCrew(); fillPax(); };
+$("#fVehSel").onchange = () => { const o = $("#fVehSel").value === "__other"; $("#vehOtherWrap").hidden = !o; limitPax(); if (o) $("#fVehicle").focus(); };
+$("#fReasonSel").onchange = () => { const o = $("#fReasonSel").value === "__other"; $("#reasonOtherWrap").hidden = !o; if (o) $("#fReason").focus(); };
+
+async function submitOut() {
+  const err = $("#outErr"), byId = id => S.roster.find(x => x.id === id);
+  const driver = byId($("#fDriver").value), vcom = byId($("#fVcom").value);
+  const pax = [...document.querySelectorAll("#fPax input:checked")].map(i => i.value);
+  const dest = $("#fDest").value.trim(), during = outWhen === "during";
+  const eta = new Date($("#fEta").value).getTime(), etd = during ? new Date($("#fEtd").value).getTime() : Date.now();
+  const vSel = $("#fVehSel").value, vOther = $("#fVehicle").value.trim();
+  const rSel = $("#fReasonSel").value, reason = rSel === "__other" ? $("#fReason").value.trim() : rSel;
+  const car = outTr === "car", people = [...document.querySelectorAll("#fPeople input:checked")].map(i => i.value);
+  if (!outWhen) return err.textContent = "Choose during or after office hours.";
+  if (!dest) return err.textContent = "Enter where you're going.";
+  if (car) {
+    if (outFor && ![driver && driver.id, vcom && vcom.id, ...pax].includes(outFor)) return err.textContent = `${nameOf(outFor)} must be in the car as driver, VCOM or passenger.`;
+    if (!driver) return err.textContent = "Select the driver.";
+    if (!vcom && !isLocal(dest)) return err.textContent = "Select the vehicle commander. Only trips to Cazaux can go without a VCOM.";
+    if (!isAdmin() && driver.id !== myTid() && (!vcom || vcom.id !== myTid())) return err.textContent = "You can only book out a car where you're the driver or VCOM.";
+    if (!vSel || (vSel === "__other" && !vOther)) return err.textContent = vSel === "__other" ? "Describe the car you're taking." : "Select the car you're taking.";
+    if ([driver, vcom].filter(Boolean).length + pax.length > carSeats(vSel)) return err.textContent = `That car only has ${carSeats(vSel)} seats.`;
+  } else {
+    if (!people.length) return err.textContent = "Tick who's going.";
+    if (outFor && !people.includes(outFor)) return err.textContent = `${nameOf(outFor)} must be on this trip.`;
+    if (outTr === "public" && !$("#mBus").checked && !$("#mTrain").checked) return err.textContent = "Tick bus, train or both.";
+    if (!isAdmin() && !people.includes(myTid())) return err.textContent = "You can only book out a trip you're going on.";
+  }
+  if (!reason) return err.textContent = rSel === "__other" ? "Type the reason." : "Select a reason.";
+  if (!eta || isNaN(eta) || eta <= Date.now()) return err.textContent = "Expected time back must be in the future.";
+  if (during && (!etd || isNaN(etd))) return err.textContent = "Enter the ETD.";
+  if (during && etd >= eta) return err.textContent = "ETD must be before the ETA.";
+  const b = $("#btnOut"), label = b.textContent; b.disabled = true; b.textContent = "Getting location…"; err.textContent = "";
+  const loc = await getLoc(); b.textContent = during ? "Sending…" : "Booking out…";
+  const { error } = await S.sb.rpc("book_movement", {
+    p_transport: outTr !== "public" ? outTr : $("#mBus").checked && $("#mTrain").checked ? "public" : $("#mBus").checked ? "bus" : "train",
+    p_driver: car ? driver.id : null, p_vcom: car && vcom ? vcom.id : null, p_pax: car ? pax : [], p_people: car ? [] : people,
+    p_destination: dest,
+    p_vehicle_id: car && vSel !== "__other" ? vSel : null, p_vehicle_other: car && vSel === "__other" ? vOther : null,
+    p_details: car ? "" : $("#fDetails").value.trim(),
+    p_reason: reason, p_expected_back: new Date(eta).toISOString(), p_loc: loc,
+    p_office: during, p_etd: new Date(etd).toISOString()
+  });
+  b.disabled = false; b.textContent = label;
+  if (error) return err.textContent = errMsg(error);
+  const crewN = car ? [driver.name, vcom && vcom.name].filter(Boolean).join(" and ") + (pax.length ? ` +${pax.length}` : "")
+    : people.map(id => (S.roster.find(t => t.id === id) || {}).name).join(", ");
+  $("#dlgOut").close(); toast(during ? `Request sent for ${crewN} to ${dest}. Wait for approval before leaving.` : `Booked out: ${crewN} to ${dest}.`);
+  fetchAll();
+}
+$("#btnOut").onclick = submitOut;
+
+/* ---------- back in / change time ---------- */
+let retTrip = null;
+function openReturn(id) {
+  const m = S.open.find(x => x.id === id); if (!m || !canAct(m)) return; retTrip = m;
+  $("#inWhere").textContent = `${m.destination}. ${m.vehicle_label}.`;
+  $("#inRows").innerHTML = members(m).map(p => `<div class="retrow"><span><strong>${esc(p.name)}</strong> <span class="hint">${esc(ROLE[p.role] || "")}</span></span>
+    <select data-pid="${esc(p.id)}"><option value="in">Back in base</option><option value="leave">On leave</option><option value="out">Still out</option></select></div>`).join("");
+  $("#leaveWrap").hidden = true; $("#fLeaveUntil").value = ""; $("#fLeaveUntil").min = todayStr();
+  $("#inRows").onchange = () => { $("#leaveWrap").hidden = ![...document.querySelectorAll("#inRows select")].some(x => x.value === "leave"); };
+  $("#inErr").textContent = ""; $("#dlgIn").showModal();
+}
+$("#btnIn").onclick = async () => {
+  const m = retTrip, err = $("#inErr"); if (!m) return;
+  const sel = [...document.querySelectorAll("#inRows select")];
+  const back = sel.filter(x => x.value === "in").map(x => x.dataset.pid), lv = sel.filter(x => x.value === "leave").map(x => x.dataset.pid);
+  if (!back.length && !lv.length) return err.textContent = "Mark at least one person back in base or on leave.";
+  const left = sel.filter(x => x.value === "out");
+  if ((m.transport || "car") === "car" && left.length === 1 && !isLocal(m.destination))
+    return err.textContent = `${members(m).find(p => p.id === left[0].dataset.pid).name} would be left alone in ${m.vehicle_label}. Only Cazaux trips can drive alone: mark them back too, or use Rearrange to put them in another car.`;
+  const until = $("#fLeaveUntil").value;
+  if (lv.length && (!until || until < todayStr())) return err.textContent = "Enter the date they're back from leave.";
+  const b = $("#btnIn"); b.disabled = true; b.textContent = "Getting location…"; err.textContent = "";
+  const loc = back.length ? await getLoc() : null;
+  const { error } = await S.sb.rpc("return_people", { p_id: m.id, p_in: back, p_leave: lv, p_until: lv.length ? until : null, p_loc: loc });
+  b.disabled = false; b.textContent = "Confirm";
+  if (error) return err.textContent = errMsg(error);
+  $("#dlgIn").close();
+  toast([back.length && `${back.length} back in base`, lv.length && `${lv.length} on leave`].filter(Boolean).join(", ") + "."
+    + (loc && !loc.error && kmFrom(BASE, loc) > BASE_KM ? ` Note: this phone is ${locText(loc)}.` : ""));
+  fetchAll();
+};
+const outTrips = () => S.open.filter(x => x.status === "out");
+let rePlan = null;
+function openRearrange() {
+  rePlan = {};
+  for (const m of outTrips()) for (const p of members(m)) rePlan[p.id] = { trip: m.id, role: p.role, name: p.name };
+  renderRe(); $("#reErr").textContent = ""; $("#dlgRe").showModal();
+}
+const isCarTrip = m => (m.transport || "car") === "car";
+function reErrors() {
+  const errs = [];
+  for (const m of outTrips()) {
+    const ps = Object.entries(rePlan).filter(([, v]) => v.trip === m.id);
+    if (!isCarTrip(m) || !ps.length) continue;
+    const d = ps.filter(([, v]) => v.role === "driver"), c = ps.filter(([, v]) => v.role === "vcom");
+    if (ps.length > carSeats(m.vehicle_id)) errs.push(`${m.vehicle_label}: ${ps.length} people, only ${carSeats(m.vehicle_id)} seats.`);
+    if (d.length !== 1) errs.push(`${m.vehicle_label}: needs exactly one driver.`);
+    else if ((S.roster.find(t => t.id === d[0][0]) || {}).can_drive === false) errs.push(`${m.vehicle_label}: ${d[0][1].name} is a non-driver.`);
+    if (c.length > 1) errs.push(`${m.vehicle_label}: only one VCOM.`);
+    if (!c.length && (ps.length > 1 || !isLocal(m.destination))) errs.push(`${m.vehicle_label}: needs a VCOM. Only Cazaux trips can drive alone.`);
+  }
+  return errs;
+}
+function renderRe() {
+  const trips = outTrips();
+  const tripOpts = sel => trips.map(t => `<option value="${esc(t.id)}" ${t.id === sel ? "selected" : ""}>${esc(t.vehicle_label)}</option>`).join("");
+  $("#reCards").innerHTML = trips.map(m => {
+    const ps = Object.entries(rePlan).filter(([, v]) => v.trip === m.id);
+    return `<div class="recard"><h3>${esc(m.vehicle_label)} <span class="hint" style="font:400 .82rem var(--body)">${esc(m.destination)}</span></h3>
+      ${ps.length ? ps.map(([id, v]) => `<div class="rerow"><span>${esc(v.name)}</span>
+        ${isCarTrip(m) ? `<select data-role="${esc(id)}">${["driver", "vcom", "pax"].map(r => `<option value="${r}" ${v.role === r ? "selected" : ""}>${ROLE[r]}</option>`).join("")}</select>` : `<span></span>`}
+        <select data-trip="${esc(id)}">${tripOpts(m.id)}</select></div>`).join("") : `<p class="hint" style="margin:0">Empty. This trip will be closed.</p>`}</div>`;
+  }).join("");
+  const errs = reErrors();
+  $("#reErrs").innerHTML = errs.map(e => `<div class="reerr">${esc(e)}</div>`).join("");
+  $("#btnRe").disabled = !!errs.length;
+}
+$("#reCards").onchange = e => {
+  const t = e.target, id = t.dataset.role || t.dataset.trip; if (!id || !rePlan[id]) return;
+  if (t.dataset.role) rePlan[id].role = t.value;
+  else {
+    const to = outTrips().find(x => x.id === t.value), v = rePlan[id]; v.trip = t.value;
+    if (!isCarTrip(to)) v.role = "person";
+    else {
+      const there = Object.entries(rePlan).filter(([pid, x]) => x.trip === to.id && pid !== id);
+      v.role = !there.some(([, x]) => x.role === "driver") && (S.roster.find(r => r.id === id) || {}).can_drive !== false ? "driver"
+        : !there.some(([, x]) => x.role === "vcom") ? "vcom" : "pax";
+    }
+  }
+  renderRe();
+};
+$("#btnRe").onclick = async () => {
+  if (reErrors().length) return;
+  const plan = outTrips().map(m => ({ trip: m.id, members: Object.entries(rePlan).filter(([, v]) => v.trip === m.id).map(([id, v]) => ({ id, role: isCarTrip(m) ? v.role : "person" })) }));
+  const b = $("#btnRe"); b.disabled = true;
+  const { error } = await S.sb.rpc("rearrange_trips", { p_plan: plan });
+  b.disabled = false;
+  if (error) return $("#reErr").textContent = errMsg(error);
+  $("#dlgRe").close(); toast("Trips rearranged."); fetchAll();
+};
+let swapCtx = null;
+function openSwap(key) {
+  const [mid, pid] = String(key).split("|");
+  const m = S.open.find(x => x.id === mid); if (!m) return;
+  const p = members(m).find(x => x.id === pid); if (!p) return; swapCtx = { m, p };
+  const targets = S.open.filter(x => x.id !== m.id && x.status === "out");
+  $("#swapWho").textContent = `${p.name} is currently in ${m.vehicle_label}.`;
+  $("#swapTo").innerHTML = targets.map(x => `<option value="${esc(x.id)}">${esc(x.vehicle_label)} (${esc(x.destination)}): ${esc(members(x).map(y => y.name).join(", "))}</option>`).join("");
+  const rest = members(m).filter(x => x.id !== pid), isCar = (m.transport || "car") === "car";
+  const needDrv = p.role === "driver" && isCar && rest.length > 0;
+  $("#swapDrvWrap").hidden = !needDrv; $("#swapCar").textContent = $("#swapCar2").textContent = m.vehicle_label;
+  $("#swapDrv").innerHTML = `<option value="">Select…</option>` + rest.filter(x => (S.roster.find(t => t.id === x.id) || {}).can_drive !== false).map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");
+  // After the swap (and any new driver), does the car still have a VCOM?
+  const syncVcom = () => {
+    const drv = needDrv ? $("#swapDrv").value : (rest.find(x => x.role === "driver") || {}).id;
+    const hasVcom = rest.some(x => x.role === "vcom" && x.id !== drv);
+    const others = rest.filter(x => x.id !== drv);
+    const need = isCar && !hasVcom && others.length > 0;
+    const cur = $("#swapVcom").value;
+    $("#swapVcomWrap").hidden = !need;
+    $("#swapVcom").innerHTML = `<option value="">Select…</option>` + others.map(x => `<option value="${esc(x.id)}" ${x.id === cur ? "selected" : ""}>${esc(x.name)}</option>`).join("");
+    const tgt = S.open.find(x => x.id === $("#swapTo").value);
+    const tgtNoVcom = tgt && (tgt.transport || "car") === "car" && !members(tgt).some(x => x.role === "vcom");
+    $("#swapNote").textContent = [isCar && rest.length && others.length === 0 && drv ? `${m.vehicle_label} will come back with the driver only.` : "",
+      tgtNoVcom ? `${p.name} will be VCOM in ${tgt.vehicle_label}.` : ""].filter(Boolean).join(" ");
+  };
+  $("#swapDrv").onchange = syncVcom; $("#swapTo").onchange = syncVcom; $("#swapVcom").value = ""; syncVcom();
+  $("#swapErr").textContent = ""; $("#dlgSwap").showModal();
+}
+$("#btnSwap").onclick = async () => {
+  const { m, p } = swapCtx || {}, err = $("#swapErr"); if (!m) return;
+  const to = $("#swapTo").value, drv = $("#swapDrv").value || null;
+  if (!to) return err.textContent = "Pick who they're coming back with.";
+  if (!$("#swapDrvWrap").hidden && !drv) return err.textContent = `Pick who drives ${m.vehicle_label} back.`;
+  const vc = $("#swapVcomWrap").hidden ? null : $("#swapVcom").value || null;
+  if (!$("#swapVcomWrap").hidden && !vc) return err.textContent = `Pick who is VCOM for ${m.vehicle_label}.`;
+  const { error } = await S.sb.rpc("swap_person", { p_person: p.id, p_from: m.id, p_to: to, p_new_driver: drv, p_new_vcom: vc });
+  if (error) return err.textContent = errMsg(error);
+  $("#dlgSwap").close(); toast(`${p.name} swapped.`); fetchAll();
+};
+async function endLeave(tid) {
+  const t = S.roster.find(x => x.id === tid); if (!t) return;
+  if (!await ask("Back from leave?", `Confirm ${t.name} is back in base.`, "Back in base")) return;
+  const { error } = await S.sb.rpc("end_leave", { p_trainee: tid });
+  if (error) return toast(errMsg(error));
+  toast(`${t.name} is back in base.`); fetchAll();
+}
+async function bookIn(id) {
+  const m = S.open.find(x => x.id === id); if (!m || !canAct(m)) return;
+  if (!await ask("Back in base?", `Confirm everyone in this car is back in base: ${crewText(m)}.`, "Back in base")) return;
+  toast("Getting location…");
+  const loc = await getLoc();
+  const { error } = await S.sb.rpc("back_in", { p_id: id, p_loc: loc });
+  if (error) return toast(errMsg(error));
+  toast(loc.error ? "Reported back in base. Location wasn't available."
+    : kmFrom(BASE, loc) > BASE_KM ? `Reported back in base, but this phone is ${locText(loc)}.` : "Reported back in base.");
+  fetchAll();
+}
+async function approveReq(id) {
+  const m = S.open.find(x => x.id === id); if (!m) return;
+  if (!await ask("Approve this request?", `${crewText(m)} to ${m.destination}, ETD ${fmtL(m.etd)}, ETA ${fmtL(m.expected_back)}.`, "Approve")) return;
+  const { error } = await S.sb.rpc("decide_request", { p_id: id, p_approve: true, p_note: "" });
+  if (error) return toast(errMsg(error));
+  toast("Approved. They're now shown as out."); fetchAll();
+}
+async function rejectReq(id) {
+  const m = S.open.find(x => x.id === id); if (!m) return;
+  const note = await ask("Reject this request?", `${crewText(m)} to ${m.destination}. Add a reason (optional).`, "Reject", { placeholder: "e.g. flying programme" });
+  if (note === null) return;
+  const { error } = await S.sb.rpc("decide_request", { p_id: id, p_approve: false, p_note: note });
+  if (error) return toast(errMsg(error));
+  toast("Request rejected."); fetchAll();
+}
+async function withdrawReq(id) {
+  const m = S.open.find(x => x.id === id); if (!m) return;
+  if (!await ask("Withdraw this request?", `${crewText(m)} to ${m.destination}.`, "Withdraw")) return;
+  const { error } = await S.sb.rpc("withdraw_request", { p_id: id });
+  if (error) return toast(errMsg(error));
+  toast("Request withdrawn."); fetchAll();
+}
+function openEta(id) {
+  const m = S.open.find(x => x.id === id); if (!m) return; S.etaTarget = m;
+  $("#etaWho").textContent = `${crewText(m)}. Currently due back ${fmt(m.expected_back)}.`;
+  $("#fEta2").value = toLocalInput(Math.max(ms(m.expected_back), Date.now() + 3600000)); $("#fEtaWhy").value = ""; $("#etaErr").textContent = "";
+  $("#dlgEta").showModal();
+}
+$("#btnEta").onclick = async () => {
+  const m = S.etaTarget, eta = new Date($("#fEta2").value).getTime();
+  if (!eta || isNaN(eta) || eta <= Date.now()) return $("#etaErr").textContent = "Pick a time in the future.";
+  const { error } = await S.sb.rpc("change_time", { p_id: m.id, p_new: new Date(eta).toISOString(), p_reason: $("#fEtaWhy").value.trim() });
+  if (error) return $("#etaErr").textContent = errMsg(error);
+  $("#dlgEta").close(); toast("Return time saved."); fetchAll();
+};
+
+/* ---------- log ---------- */
+function renderLog(v) {
+  const opts = `<option value="">All trainees</option>` + S.roster.map(t => `<option value="${esc(t.id)}" ${S.logFilter === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("");
+  const rows = S.log.filter(m => !S.logFilter || (m.member_ids || []).includes(S.logFilter));
+  const now = Date.now();
+  const body = rows.map(m => {
+    const lateBy = m.in_at ? ms(m.in_at) - ms(m.expected_back) : (m.status === "out" && ms(m.expected_back) < now ? now - ms(m.expected_back) : 0);
+    const tag = m.status === "pending" ? `<span class="tag nd">Awaiting approval</span>`
+      : m.status === "rejected" ? `<span class="tag late">Not approved</span>`
+      : m.status === "withdrawn" ? `<span class="tag nd">Withdrawn</span>`
+      : m.status === "out" ? `<span class="tag open">${lateBy > 0 ? "Overdue" : "Out"}</span>` : lateBy > 60000 ? `<span class="tag late">${dur(lateBy)} late</span>` : "On time";
+    const appr = m.office_hours ? `<br><span class="hint">${m.decided_as ? (m.status === "withdrawn" ? "Withdrawn by " : m.status === "rejected" ? "Rejected by " : "Approved by ") + esc(m.decided_as) : "During office hours"}${m.decision_note ? ": " + esc(m.decision_note) : ""}</span>` : "";
+    const crew = allMembers(m).map(p => `<strong>${esc(p.name)}</strong> <span class="hint">${esc(ROLE[p.role] || "")}</span>`).join("<br>");
+    const evs = (m.events || []).map(e => e.type === "in" ? `${esc(e.name)} back ${esc(fmtL(e.at))}` : e.type === "leave" ? `${esc(e.name)} on leave until ${esc(fmtDay(e.until))}` : e.type === "moved" ? `${esc(e.name)} swapped to ${esc(e.to)}` : `${esc(e.name)} joined from ${esc(e.from)}`);
+    return `<tr><td>${crew}</td>
+      <td>${esc(fmt(m.out_at))}<br><span class="hint">${esc(who(m.out_by))}</span>${m.out_loc ? "<br>" + locHtml(m.out_loc) : ""}</td>
+      <td>${esc(m.destination)}<br><span class="hint">${esc(m.vehicle_label)}. ${esc(m.reason)}</span></td>
+      <td>${esc(fmt(m.expected_back))}${m.return_time_note ? `<br><span class="hint">${esc(m.return_time_note)}</span>` : ""}</td>
+      <td>${evs.length ? evs.join("<br>") + (m.in_loc ? "<br>" + locHtml(m.in_loc) : "") : m.in_at ? esc(fmt(m.in_at)) + `<br><span class="hint">${esc(who(m.in_by))}</span>` + (m.in_loc ? "<br>" + locHtml(m.in_loc) : "") : "—"}</td>
+      <td>${tag}${appr}</td>${isAdmin() ? `<td><button class="btn small" data-act="dellog" data-id="${esc(m.id)}">Delete</button></td>` : ""}</tr>`;
+  }).join("");
+  v.innerHTML = `<div class="toolbar"><select id="lf">${opts}</select><button class="btn" data-act="csv">Export CSV</button>
+    ${isAdmin() && S.log.length ? `<button class="btn" data-act="clearlog" style="color:var(--late)">Clear all</button>` : ""}</div>
+    ${rows.length ? `<div class="tablewrap"><table><thead><tr><th>Crew</th><th>Booked out</th><th>Destination</th><th>Due back</th><th>Back in base</th><th>Status</th>${isAdmin() ? "<th></th>" : ""}</tr></thead><tbody>${body}</tbody></table></div>
+    <p class="hint">Showing the latest ${rows.length} movements.</p>`
+      : `<div class="empty"><strong>No movements yet</strong>Bookings appear here once a car books out.</div>`}`;
+  $("#lf").onchange = e => { S.logFilter = e.target.value; renderLog(v); };
+}
+function exportCsv() {
+  const rows = S.log.filter(m => !S.logFilter || (m.member_ids || []).includes(S.logFilter));
+  const cell = x => `"${String(x ?? "").replace(/"/g, '""')}"`;
+  const dt = x => x ? new Date(x).toLocaleString("en-GB") : "";
+  const role = (m, r) => allMembers(m).filter(p => p.role === r || (r === "pax" && p.role === "person")).map(p => p.name).join("; ");
+  const ll = l => l && !l.error ? `${l.lat},${l.lng}` : "";
+  const head = ["Driver", "VCOM", "Other pax", "Destination", "Booked out", "Booked out by", "Office hours", "ETD", "Status", "Decided by", "Vehicle", "Reason", "Due back", "Return-time change", "Back in base", "Reported by", "Minutes late", "Out location", "Out lat,lng", "In location", "In lat,lng"];
+  const data = rows.map(m => [role(m, "driver"), role(m, "vcom"), role(m, "pax"), m.destination, dt(m.out_at), who(m.out_by), m.office_hours ? "During" : "After", dt(m.etd), m.status, m.decided_as || "", m.vehicle_label, m.reason, dt(m.expected_back), m.return_time_note, dt(m.in_at), who(m.in_by),
+    m.in_at && ms(m.in_at) > ms(m.expected_back) ? Math.round((ms(m.in_at) - ms(m.expected_back)) / 60000) : "", locText(m.out_loc), ll(m.out_loc), locText(m.in_loc), ll(m.in_loc)]);
+  const csv = [head, ...data].map(r => r.map(cell).join(",")).join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" }));
+  a.download = `movement-log-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+async function deleteLog(id) {
+  const m = S.log.find(x => x.id === id) || S.open.find(x => x.id === id); if (!m) return;
+  const extra = m.status === "out" ? " This car is still out, so it will also disappear from the board." : "";
+  if (!await ask("Delete this entry?", `${crewText(m)} to ${m.destination}, booked out ${fmt(m.out_at)}.${extra} This can't be undone.`, "Delete")) return;
+  const { error } = await S.sb.from("movements").delete().eq("id", id);
+  if (error) return toast(errMsg(error));
+  toast("Entry deleted."); fetchAll();
+}
+async function clearLog() {
+  const { count, error } = await S.sb.from("movements").select("id", { count: "exact", head: true });
+  if (error) return toast(errMsg(error));
+  if (!count) return toast("The log is already empty.");
+  const open = S.open.length;
+  if (!await ask("Clear the whole log?", `This deletes all ${count} movement${count > 1 ? "s" : ""}${open ? `, including ${open} car${open > 1 ? "s" : ""} still out (they'll disappear from the board)` : ""}. This can't be undone. Export a CSV first if you need a record.`, "Clear all")) return;
+  const r = await S.sb.from("movements").delete().not("id", "is", null);
+  if (r.error) return toast(errMsg(r.error));
+  toast(`Cleared ${count} entr${count > 1 ? "ies" : "y"}.`); fetchAll();
+}
+
+/* ---------- vehicles ---------- */
+function renderVehicles(v) {
+  const use = vehInUse(), mine = me(), canAdd = isAdmin() || !!mine;
+  const row = x => {
+    const u = use[x.id], canDel = (isAdmin() || x.added_by === S.me.id) && !u;
+    return `<li><span><strong>${esc(vLabel(x))}</strong> <span class="hint">${esc(vOwner(x))}, ${x.seats || 5} seats</span><br>
+      <span class="hint" style="${u ? "color:var(--out)" : ""}">${u ? `In use: ${esc(u.destination)}, back by ${esc(fmt(u.expected_back))}` : "Available"}</span></span>
+      <span class="acts">${isAdmin() ? `<button class="btn small" data-act="editveh" data-id="${esc(x.id)}">Edit</button>` : ""}${canDel ? `<button class="btn small" data-act="delveh" data-id="${esc(x.id)}">Remove</button>` : ""}</span></li>`;
+  };
+  const cc = S.vehicles.filter(x => x.owner_type === "course"), pc = S.vehicles.filter(x => x.owner_type !== "course");
+  const ownerOpts = isAdmin() ? active().map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("")
+    : mine ? `<option value="${esc(mine.id)}">${esc(mine.name)} (me)</option>` : "";
+  const courses = [...new Set(active().map(t => t.course).filter(Boolean))].sort();
+  const courseOpts = courses.map(c => `<option ${mine && mine.course === c ? "selected" : ""}>${esc(c)}</option>`).join("");
+  v.innerHTML = `<div class="roster">
+    <div class="stack">
+      <div class="card"><h2>Course cars (${cc.length})</h2>${cc.length ? `<ul class="rlist">${cc.map(row).join("")}</ul>` : `<p class="hint">No course cars yet.</p>`}</div>
+      <div class="card"><h2>Personal cars (${pc.length})</h2>${pc.length ? `<ul class="rlist">${pc.map(row).join("")}</ul>` : `<p class="hint">No personal cars yet.</p>`}</div>
+    </div>
+    <div class="card"><h2>Add a car</h2>
+      ${canAdd ? `<p class="hint">Bought or got a car for your course or yourself? Add it once and it shows up in the book-out list.</p>
+      <label>Car<input id="vDesc" maxlength="40" placeholder="e.g. white Renault Clio"></label>
+      <label>Number plate<input id="vPlate" maxlength="15" placeholder="e.g. AB-123-CD" style="text-transform:uppercase"></label>
+      <label>Seats (including driver)<select id="vSeats"><option value="2">2 seats</option><option value="3">3 seats</option><option value="4">4 seats</option><option value="5" selected>5 seats</option><option value="6">6 seats</option><option value="7">7 seats</option><option value="8">8 seats</option><option value="9">9 seats</option></select></label>
+      <label>Belongs to<select id="vType"><option value="course">The course</option><option value="personal">A trainee (personal)</option></select></label>
+      <label id="vCourseWrap">Course<select id="vCourse">${courseOpts || `<option value="">No courses on the roster</option>`}</select></label>
+      <label id="vOwnerWrap" hidden>Owner<select id="vOwnerSel">${ownerOpts}</select></label>
+      <div style="display:flex;justify-content:flex-end"><button class="btn primary" id="btnAddVeh">Add car</button></div>
+      <p class="hint">Cars already booked out show as in use, so the same car can't be booked twice.</p>`
+      : `<p class="hint">Your login isn't linked to a trainee yet, so you can't add cars. Ask an instructor.</p>`}
+    </div></div>`;
+  if (canAdd) {
+    $("#vType").onchange = e => { const c = e.target.value === "course"; $("#vCourseWrap").hidden = !c; $("#vOwnerWrap").hidden = c; };
+    $("#btnAddVeh").onclick = addVehicle;
+  }
+}
+async function addVehicle() {
+  const description = $("#vDesc").value.trim(), plate = $("#vPlate").value.trim().toUpperCase(), owner_type = $("#vType").value;
+  if (!description) return toast("Describe the car, e.g. white Renault Clio.");
+  if (!plate) return toast("Enter the number plate.");
+  const key = p => (p || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  if (S.vehicles.some(x => key(x.plate) === key(plate))) return toast("A car with that plate is already listed.");
+  const row = { description, plate, owner_type, added_by: S.me.id, seats: +$("#vSeats").value || 5 };
+  if (owner_type === "course") { row.course = $("#vCourse").value; if (!row.course) return toast("Pick the course."); }
+  else { row.owner_trainee = $("#vOwnerSel").value; if (!row.owner_trainee) return toast("Pick the owner."); }
+  $("#btnAddVeh").disabled = true;
+  const { error } = await S.sb.from("vehicles").insert(row);
+  if (error) { $("#btnAddVeh").disabled = false; return toast(/duplicate/i.test(error.message) ? "A car with that plate is already listed." : errMsg(error)); }
+  toast(`${description} added.`); fetchAll();
+}
+let vehEdit = null;
+function editVehicle(id) {
+  const x = S.vehicles.find(v => v.id === id); if (!x) return; vehEdit = x;
+  const courses = [...new Set([...active().map(t => t.course), x.course].filter(Boolean))].sort();
+  $("#xDesc").value = x.description || ""; $("#xPlate").value = x.plate || ""; $("#xSeats").value = String(x.seats || 5);
+  $("#xType").value = x.owner_type === "course" ? "course" : "personal";
+  $("#xCourse").innerHTML = courses.map(c => `<option ${c === x.course ? "selected" : ""}>${esc(c)}</option>`).join("") || `<option value="">No courses on the roster</option>`;
+  const owners = S.roster.filter(t => t.active || t.id === x.owner_trainee);
+  $("#xOwner").innerHTML = `<option value="">Select…</option>` + owners.map(t => `<option value="${esc(t.id)}" ${t.id === x.owner_trainee ? "selected" : ""}>${esc(t.name)}</option>`).join("");
+  const sync = () => { const c = $("#xType").value === "course"; $("#xCourseWrap").hidden = !c; $("#xOwnerWrap").hidden = c; };
+  $("#xType").onchange = sync; sync();
+  const u = vehInUse()[id];
+  $("#xHint").textContent = u ? `This car is ${u.status === "pending" ? "on a pending request" : "out"} now. The change shows on new bookings; the current one keeps the old details.` : "";
+  $("#vehErr").textContent = ""; $("#dlgVeh").showModal(); $("#xDesc").focus();
+}
+$("#btnVehSave").onclick = async () => {
+  const x = vehEdit, err = $("#vehErr"); if (!x) return;
+  const description = $("#xDesc").value.trim(), plate = $("#xPlate").value.trim().toUpperCase(), owner_type = $("#xType").value;
+  if (!description) return err.textContent = "Describe the car, e.g. white Renault Clio.";
+  if (!plate) return err.textContent = "Enter the number plate.";
+  const key = p => (p || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  if (S.vehicles.some(v => v.id !== x.id && key(v.plate) === key(plate))) return err.textContent = "Another car already has that plate.";
+  const row = { description, plate, owner_type, course: null, owner_trainee: null, seats: +$("#xSeats").value || 5 };
+  if (owner_type === "course") { row.course = $("#xCourse").value; if (!row.course) return err.textContent = "Pick the course."; }
+  else { row.owner_trainee = $("#xOwner").value; if (!row.owner_trainee) return err.textContent = "Pick the owner."; }
+  const b = $("#btnVehSave"); b.disabled = true;
+  const { error } = await S.sb.from("vehicles").update(row).eq("id", x.id);
+  b.disabled = false;
+  if (error) return err.textContent = /duplicate/i.test(error.message) ? "Another car already has that plate." : errMsg(error);
+  $("#dlgVeh").close(); toast(`${description} updated.`); fetchAll();
+};
+async function deleteVehicle(id) {
+  const x = S.vehicles.find(v => v.id === id); if (!x) return;
+  if (vehInUse()[id]) return toast("That car is out. Report it back in base first.");
+  if (!await ask(`Remove ${vLabel(x)}?`, "It disappears from the book-out list. Past movements keep the car's name.", "Remove")) return;
+  const { error } = await S.sb.from("vehicles").delete().eq("id", id);
+  if (error) return toast(errMsg(error));
+  fetchAll();
+}
+
+/* ---------- phone numbers ---------- */
+async function editPhone(tid) {
+  const t = S.roster.find(x => x.id === tid); if (!t) return;
+  const val = await ask(t.id === myTid() ? "Your handphone number" : `${t.name}'s number`, "Used to fill in the contact number when booking out.", "Save number", { type: "tel", value: t.phone, placeholder: "+33 / +65" });
+  if (val === null) return;
+  const { error } = (t.id === myTid() && !isAdmin())
+    ? await S.sb.rpc("set_my_phone", { p_phone: val })
+    : await S.sb.from("trainees").update({ phone: val }).eq("id", tid);
+  if (error) return toast(errMsg(error));
+  toast("Number saved."); fetchAll();
+}
+
+/* ---------- roster (trainees) ---------- */
+function renderRoster(v) {
+  const list = byCourse(active()).map(([c, ts]) => `<li class="chead">${esc(c)}<span>${ts.length}</span></li>` + ts.map(t => `<li><span><strong>${esc(t.name)}</strong>${t.can_drive === false ? ` <span class="tag nd">Non-driver</span>` : ""}${t.phone ? `<br><span class="hint">Tel ${telLink(t.phone)}</span>` : ""}</span></li>`).join("")).join("");
+  v.innerHTML = `<div class="card"><h2>On the roster (${active().length})</h2>${list ? `<ul class="rlist">${list}</ul>` : `<p class="hint">No trainees yet.</p>`}</div>`;
+}
+
+/* ---------- admin ---------- */
+function renderAdmin(v) {
+  const ob = openByTrainee();
+  const cur = active(), gone = S.roster.filter(t => !t.active);
+  const acctLine = t => {
+    const a = acctOf(t.id);
+    return a ? `<span class="hint">Login: <strong>${esc(showLogin(a.email))}</strong>${a.must_change_password ? " (temporary password)" : ""}</span> <a href="#" data-act="resetpw" data-id="${esc(a.id)}">Reset password</a>`
+      : `<span class="hint">No login</span> <a href="#" data-act="mkacct" data-id="${esc(t.id)}">Create login</a>`;
+  };
+  const list = byCourse(cur).map(([c, ts]) => `<li class="chead">${esc(c)}<span>${ts.length}</span></li>` + ts.map(t => `<li><span><strong>${esc(t.name)}</strong> <span class="hint">${leaveOf(t.id) ? `on leave until ${esc(fmtDay(leaveOf(t.id).until))}` : ob[t.id] && !isPend(ob[t.id]) ? "out of base" : ""}</span>${t.can_drive === false ? ` <span class="tag nd">Non-driver</span>` : ""}<br>${t.phone ? `<span class="hint">Tel ${telLink(t.phone)}</span><br>` : ""}${acctLine(t)}</span>
+      <span class="acts"><button class="btn small" data-act="edit" data-id="t:${esc(t.id)}">Edit</button><button class="btn small" data-act="postout" data-id="${esc(t.id)}">Post out</button></span></li>`).join("")).join("");
+  const glist = gone.map(t => `<li><span><strong>${esc(t.name)}</strong> <span class="hint">${esc(t.course || "")}${t.posted_out_at ? ", posted out " + esc(fmt(t.posted_out_at)) : ""}</span></span>
+      <span class="acts"><button class="btn small" data-act="restore" data-id="${esc(t.id)}">Restore</button><button class="btn small" data-act="deltrainee" data-id="${esc(t.id)}">Delete</button></span></li>`).join("");
+  const admins = S.profiles.filter(p => p.role === "admin")
+    .sort((a, b) => (APPT_ORDER[a.appointment] ?? 9) - (APPT_ORDER[b.appointment] ?? 9) || (a.display_name || "").localeCompare(b.display_name || ""));
+  const alist = admins.map(p => `<li><span><strong>${esc(p.display_name || p.email)}</strong>${apptText(p) ? ` <span class="tag open">${esc(apptText(p))}</span>` : ""}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.id === S.me.id ? " (you)" : ""}</span></span>
+      <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button>${p.id === S.me.id ? "" : `<button class="btn small" data-act="resetpw" data-id="${esc(p.id)}">Reset password</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button>`}</span></li>`).join("");
+
+  v.innerHTML = `<div class="roster">
+    <div class="card"><h2>Current trainees (${cur.length})</h2>${list ? `<ul class="rlist">${list}</ul>` : `<p class="hint">No trainees yet. Post in your course on the right.</p>`}</div>
+    <div class="stack">
+      <div class="card"><h2>Post in trainees</h2>
+        <p class="hint">One per line: name, course, handphone, username. Handphone and username are optional, e.g. <em>TAN WEI MING, Course 24, +33 612345678, tanwm</em>. Leave it out and one is made from the name. Add <em>non-driver</em> to the line for trainees who can't drive.</p>
+        <textarea id="addList" placeholder="LIM J, Course 24, limj&#10;ONG K, Course 24, non-driver"></textarea>
+        <label style="margin-top:8px">Temporary password for new logins<input id="tmpPw" value="${esc(tempPw())}"></label>
+        <div style="display:flex;justify-content:flex-end"><button class="btn primary" id="btnAdd">Post in</button></div>
+        <p class="hint">Every trainee gets a login straight away. They sign in with their username and the temporary password, then must set their own password.</p></div>
+      <div class="card"><h2>Instructors (${admins.length})</h2><ul class="rlist">${alist}</ul>
+        <p class="hint" style="margin-top:10px">Add an instructor login:</p>
+        <label>Name / callsign<input id="iName" maxlength="60" placeholder="e.g. CPT TAN"></label>
+        <label>Username<input id="iEmail" autocapitalize="none" placeholder="e.g. tanjh"></label>
+        <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddAdmin">Add instructor</button></div></div>
+      <div class="card"><h2>Telegram</h2><p class="hint">Sends tonight's movement check to the group now, so you can confirm the bot works.</p>
+        <div style="display:flex;justify-content:flex-end"><button class="btn" data-act="tgtest">Send test message now</button></div></div>
+      <div class="card"><h2>Posted out (${gone.length})</h2>
+        ${glist ? `<ul class="rlist">${glist}</ul><p class="hint">Their past movements stay in the log.</p>` : `<p class="hint">Trainees you post out appear here. Their login is disabled and their history is kept.</p>`}</div>
+    </div></div>`;
+  $("#btnAdd").onclick = postIn;
+  $("#btnAddAdmin").onclick = addInstructor;
+}
+async function postIn() {
+  const lines = $("#addList").value.split("\n").map(l => l.trim()).filter(Boolean);
+  const tmp = $("#tmpPw").value.trim();
+  if (!lines.length) return toast("Enter at least one name.");
+  if (tmp.length < 6) return toast("Temporary password must be at least 6 characters.");
+  const b = $("#btnAdd"); b.disabled = true; b.textContent = "Posting in…";
+  let n = 0, logins = 0; const fails = [], made = [];
+  for (const l of lines) {
+    let parts = l.split(",").map(x => x.trim()).filter(Boolean);
+    const nd = parts.some(x => /^non[- ]?driver$/i.test(x));
+    const isPh = x => /^\+?[\d][\d\s().-]{5,}$/.test(x), phone = parts.find(isPh) || "";
+    parts = parts.filter(x => !/^non[- ]?driver$/i.test(x) && !isPh(x));
+    const [name = "", course = "", userIn = ""] = parts;
+    if (!name) continue;
+    const { data, error } = await S.sb.from("trainees").insert({ name: name.slice(0, 60), course: course.slice(0, 40), can_drive: !nd, phone: phone.slice(0, 30) }).select().single();
+    if (error) { fails.push(`${name}: ${errMsg(error)}`); continue; }
+    n++;
+    const user = (userIn || suggestUser(name)).toLowerCase();
+    if (!validUser(user)) { fails.push(`${name}: username "${user}" can only use letters, numbers, dots, dashes (3-30 characters)`); continue; }
+    try {
+      await adminApi({ action: "create", email: toLogin(user), password: tmp, display_name: name, role: "user", trainee_id: data.id });
+      S.profiles.push({ email: toLogin(user) }); logins++; made.push(`${name}: ${user}`);
+    } catch (e) { fails.push(`${name} (login ${user}): ${e.message}`); }
+  }
+  b.disabled = false; b.textContent = "Post in";
+  if (n) $("#addList").value = "";
+  await fetchAll();
+  const madeTxt = made.length ? ` Usernames: ${made.join("; ")}. Temporary password: ${tmp}.` : "";
+  await ask(fails.length ? "Some lines need attention" : "Posted in", `Posted in ${n}, created ${logins} login${logins === 1 ? "" : "s"}.${madeTxt}${fails.length ? " Problems: " + fails.join("; ") : ""}`, "OK");
+}
+async function makeLogin(tid) {
+  const t = S.roster.find(x => x.id === tid); if (!t) return;
+  const pw = tempPw();
+  const user = await ask(`Create login for ${t.name}`, `They'll sign in with this username and the temporary password "${pw}", then set their own.`, "Create login", { type: "text", value: suggestUser(t.name), placeholder: "username" });
+  if (!user) return;
+  if (!validUser(user.toLowerCase())) return toast("Usernames can only use letters, numbers, dots and dashes (3-30 characters).");
+  const email = toLogin(user);
+  try { await adminApi({ action: "create", email, password: pw, display_name: t.name, role: "user", trainee_id: t.id }); fetchAll(); await ask("Login created", `${t.name}: username ${showLogin(email)}, temporary password ${pw}. Pass these on; they must set their own password at first sign-in.`, "OK"); }
+  catch (e) { toast(e.message); }
+}
+async function resetPw(uid) {
+  const p = profOf(uid); if (!p) return;
+  const pw = await ask(`Reset password for ${p.display_name || p.email}`, "Give them this temporary password. They must set their own the next time they sign in.", "Reset password", { value: tempPw() });
+  if (!pw) return;
+  try { await adminApi({ action: "reset_password", user_id: uid, password: pw }); toast("Password reset."); fetchAll(); }
+  catch (e) { toast(e.message); }
+}
+async function addInstructor() {
+  const name = $("#iName").value.trim(), user = $("#iEmail").value.trim().toLowerCase();
+  if (!name || !user) return toast("Enter the instructor's name and a username.");
+  if (!validUser(user)) return toast("Usernames can only use letters, numbers, dots and dashes (3-30 characters).");
+  const email = toLogin(user);
+  const pw = tempPw();
+  try { await adminApi({ action: "create", email, password: pw, display_name: name, role: "admin" }); fetchAll(); await ask("Instructor added", `${name}: username ${user}, temporary password ${pw}. They must set their own password at first sign-in.`, "OK"); }
+  catch (e) { toast(e.message); }
+}
+async function removeInstructor(uid) {
+  const p = profOf(uid); if (!p) return;
+  if (!await ask(`Remove ${p.display_name || p.email}?`, "Their login is deleted. Their name stays on past log entries as \"Someone\".", "Remove")) return;
+  try { await adminApi({ action: "delete", user_id: uid }); toast("Instructor removed."); fetchAll(); }
+  catch (e) { toast(e.message); }
+}
+async function postOut(tid) {
+  const t = S.roster.find(x => x.id === tid); if (!t) return;
+  if (openByTrainee()[tid]) return toast(`${t.name} is out of base. Report them back in first.`);
+  if (!await ask(`Post out ${t.name}?`, "They drop off the board and their login is disabled. Their history stays in the log.", "Post out")) return;
+  const { error } = await S.sb.from("trainees").update({ active: false, posted_out_at: new Date().toISOString() }).eq("id", tid);
+  if (error) return toast(errMsg(error));
+  const a = acctOf(tid);
+  if (a) { try { await adminApi({ action: "ban", user_id: a.id }); } catch (e) { toast(`Posted out, but the login couldn't be disabled: ${e.message}`); } }
+  toast(`${t.name} posted out.`); fetchAll();
+}
+async function restoreTrainee(tid) {
+  const { error } = await S.sb.from("trainees").update({ active: true, posted_out_at: null }).eq("id", tid);
+  if (error) return toast(errMsg(error));
+  const a = acctOf(tid);
+  if (a) { try { await adminApi({ action: "unban", user_id: a.id }); } catch (e) { toast(e.message); } }
+  fetchAll();
+}
+async function deleteTrainee(tid) {
+  const t = S.roster.find(x => x.id === tid); if (!t) return;
+  if (!await ask(`Delete ${t.name}?`, "This removes their name and login for good. Their past movements stay in the log.", "Delete")) return;
+  const a = acctOf(tid);
+  if (a) { try { await adminApi({ action: "delete", user_id: a.id }); } catch (e) { return toast(e.message); } }
+  const { error } = await S.sb.from("trainees").delete().eq("id", tid);
+  if (error) return toast(errMsg(error));
+  fetchAll();
+}
+/* ---------- edit name / login ---------- */
+const APPT_ORDER = { CO: 0, DYCO: 1, "OC A": 2, "OC B": 3, CC: 4, QFI: 5 };
+const SINGLE = ["CO", "DYCO", "OC A", "OC B", "CC"];
+const apptText = p => p.appointment || "";
+let editCtx = null;
+function openEdit(key) {
+  const [kind, id] = String(key || "").split(":");
+  let t = null, acct = null;
+  if (kind === "t") { t = S.roster.find(x => x.id === id); if (!t) return; acct = acctOf(t.id) || null; }
+  else { acct = profOf(id); if (!acct) return; }
+  editCtx = { t, acct };
+  $("#editTitle").textContent = t ? `Edit ${t.name}` : `Edit ${acct.display_name || showLogin(acct.email)}`;
+  $("#eName").value = t ? t.name : (acct.display_name || "");
+  $("#eCourseWrap").hidden = !t; $("#eCourse").value = t ? (t.course || "") : "";
+  $("#eDriveWrap").hidden = !t; $("#eDrive").checked = !t || t.can_drive !== false;
+  $("#ePhoneWrap").hidden = !t; $("#ePhone").value = t ? (t.phone || "") : "";
+  $("#eUserWrap").hidden = !acct; $("#eUser").value = acct ? showLogin(acct.email) : "";
+  const inst = !!acct && acct.role === "admin";
+  $("#eApptWrap").hidden = !inst;
+  $("#eAppt").value = inst ? (acct.appointment || "") : "";
+  $("#eHint").textContent = acct ? "Changing the username doesn't change the password. Tell them their new username." : "No login yet. Use Create login on the Admin tab to give them one.";
+  $("#editErr").textContent = ""; $("#dlgEdit").showModal(); $("#eName").focus();
+}
+$("#btnEdit").onclick = async () => {
+  const { t, acct } = editCtx || {}, err = $("#editErr");
+  const name = $("#eName").value.trim(), course = $("#eCourse").value.trim();
+  const user = $("#eUser").value.trim().toLowerCase();
+  if (!name) return err.textContent = "Enter a name or callsign.";
+  if (acct && !validUser(user)) return err.textContent = "Usernames can only use letters, numbers, dots and dashes (3-30 characters).";
+  const b = $("#btnEdit"); b.disabled = true; err.textContent = "";
+  try {
+    if (acct) {
+      const body = { action: "update", user_id: acct.id };
+      if (name !== (acct.display_name || "") || (t && name !== t.name)) body.display_name = name;
+      if (toLogin(user) !== acct.email) body.email = toLogin(user);
+      if (body.display_name || body.email) await adminApi(body);
+      if (acct.role === "admin") {
+        const appt = $("#eAppt").value || null;
+        if (appt !== (acct.appointment || null)) {
+          const holder = SINGLE.includes(appt) && S.profiles.find(p => p.appointment === appt && p.id !== acct.id);
+          if (holder && !await ask(`Make ${name} the ${appt}?`, `${holder.display_name || showLogin(holder.email)} is currently ${appt}. They'll lose the appointment.`, `Make ${appt}`)) { b.disabled = false; return; }
+          const { error } = await S.sb.rpc("set_role", { p_user: acct.id, p_appointment: appt, p_acting: null });
+          if (error) throw error;
+        }
+      }
+    }
+    const drive = $("#eDrive").checked, phone = $("#ePhone").value.trim().slice(0, 30);
+    if (t && (name !== t.name || course !== (t.course || "") || drive !== (t.can_drive !== false) || phone !== (t.phone || ""))) {
+      const { error } = await S.sb.from("trainees").update({ name: name.slice(0, 60), course: course.slice(0, 40), can_drive: drive, phone }).eq("id", t.id);
+      if (error) throw error;
+    }
+    $("#dlgEdit").close(); toast("Saved."); fetchAll();
+  } catch (e) { err.textContent = errMsg(e); }
+  finally { b.disabled = false; }
+};
+
+async function telegramTest() {
+  const { error } = await S.sb.rpc("nightly_check", { p_force: true });
+  if (error) return toast(errMsg(error));
+  toast("Test message sent. Check the Telegram group in a few seconds.");
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click", e => {
+  const el = e.target.closest("[data-tab],[data-act],[data-close]"); if (!el) return;
+  if (el.tagName === "A") e.preventDefault();
+  if (el.hasAttribute("data-close")) return el.closest("dialog").close();
+  if (el.dataset.tab) { S.tab = el.dataset.tab; return render(); }
+  const id = el.dataset.id;
+  ({
+    out: openOut, in: openReturn, eta: openEta, phone: editPhone, swap: openSwap, endleave: endLeave, rearrange: openRearrange,
+    dellog: deleteLog, clearlog: clearLog, csv: exportCsv, delveh: deleteVehicle, editveh: editVehicle,
+    mkacct: makeLogin, resetpw: resetPw, rmadmin: removeInstructor,
+    postout: postOut, edit: openEdit, approve: approveReq, reject: rejectReq, withdraw: withdrawReq, restore: restoreTrainee, deltrainee: deleteTrainee, tgtest: telegramTest
+  }[el.dataset.act] || (() => {}))(id);
+});
+$("#btnSignOut").onclick = signOut;
+
+/* ---------- start ---------- */
+renderClock();
+setInterval(() => { renderClock(); if (S.ready && S.tab === "board" && document.activeElement?.id !== "q" && !document.querySelector("dialog[open]")) render(); else if (S.ready) renderTally(); }, 30000);
+(async () => {
+  if (SUPABASE_URL.startsWith("PASTE") || !window.supabase) return render();
+  S.sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  S.sb.auth.onAuthStateChange((event) => { if (event === "SIGNED_OUT" && S.session) { S.session = null; S.me = null; S.ready = false; render(); } });
+  const { data: { session } } = await S.sb.auth.getSession();
+  if (session) await startSession(session); else render();
+})();
+
+</script>
+</body>
+</html>
