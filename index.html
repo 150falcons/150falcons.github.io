@@ -203,6 +203,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
     <div class="brand">Movement board</div>
     <nav class="tabs" role="tablist" id="tabs" hidden>
       <button role="tab" data-tab="board" aria-selected="true">Board</button>
+      <button role="tab" data-tab="ops" aria-selected="false">Ops</button>
       <button role="tab" data-tab="log" aria-selected="false">Log</button>
       <button role="tab" data-tab="vehicles" aria-selected="false">Vehicles</button>
       <button role="tab" data-tab="roster" aria-selected="false">Roster</button>
@@ -296,6 +297,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
   <div id="eApptWrap">
     <label>Appointment<select id="eAppt"><option value="">None</option><option>CO</option><option>DYCO</option><option>OC A</option><option>OC B</option><option>CC</option><option>QFI</option></select></label>
   </div>
+  <label id="eOpsWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eOps" type="checkbox" style="width:auto;margin:0">Can edit the ops board</label>
   <label id="eUserWrap">Username<input id="eUser" maxlength="30" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
   <p class="hint" id="eHint" style="margin:-4px 0 10px"></p>
   <div class="err" id="editErr"></div>
@@ -353,6 +355,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 
 <div class="toast" id="toast" hidden></div>
 
+<script src="ops.js?v=1"></script>
 <script>
 /* =====================================================================
    SETUP: paste your Supabase Project URL and anon (public) key here.
@@ -491,7 +494,7 @@ async function fetchAll() {
   const sb = S.sb;
   const res = await Promise.all([
     sb.from("trainees").select("*").order("course").order("name"),
-    sb.from("profiles").select("id,email,display_name,role,trainee_id,must_change_password,appointment"),
+    sb.from("profiles").select("id,email,display_name,role,trainee_id,must_change_password,appointment,ops_editor"),
     sb.from("vehicles").select("*").order("description"),
     sb.from("movements").select("*").in("status", ["out", "pending"]),
     sb.from("movements").select("*").order("out_at", { ascending: false }).limit(300),
@@ -511,6 +514,7 @@ function subscribe() {
   S.chan = S.sb.channel("board");
   for (const t of ["trainees", "profiles", "vehicles", "movements", "leaves"])
     S.chan.on("postgres_changes", { event: "*", schema: "public", table: t }, refetchSoon);
+  S.chan.on("postgres_changes", { event: "*", schema: "public", table: "ops_sections" }, p => opsRealtime(p));
   S.chan.subscribe();
 }
 async function adminApi(body) {
@@ -532,6 +536,7 @@ async function startSession(session) {
   const { data, error } = await S.sb.from("profiles").select("*").eq("id", session.user.id).single();
   if (error || !data) { toast("Your account isn't set up yet. Ask an instructor."); await S.sb.auth.signOut(); return; }
   S.me = data;
+  if (isOpsAssistant(S.me)) S.tab = "ops";
   if (S.me.must_change_password) { render(); return; }
   await fetchAll(); subscribe();
 }
@@ -539,6 +544,7 @@ async function signOut() {
   if (S.chan) { await S.sb.removeChannel(S.chan); S.chan = null; }
   await S.sb.auth.signOut();
   Object.assign(S, { session: null, me: null, ready: false, roster: [], profiles: [], vehicles: [], open: [], log: [], tab: "board" });
+  Object.assign(OPS, { day: null, rowsDay: null, rows: {}, edit: null });
   render();
 }
 
@@ -558,7 +564,7 @@ function render() {
   const v = $("#view");
   const signedIn = !!S.session && !!S.me && !S.me.must_change_password;
   $("#tabs").hidden = !signedIn || !S.ready;
-  $("#tally").hidden = !signedIn || !S.ready;
+  $("#tally").hidden = !signedIn || !S.ready || S.tab === "ops";
   $("#btnSignOut").hidden = !S.session;
   if (SUPABASE_URL.startsWith("PASTE")) {
     v.innerHTML = `<div class="empty"><strong>Almost there</strong>Paste your Supabase Project URL and anon key at the top of the script in index.html.</div>`; return;
@@ -573,6 +579,7 @@ function render() {
   if (S.tab === "board") renderBoard(v);
   else if (S.tab === "log") renderLog(v);
   else if (S.tab === "vehicles") renderVehicles(v);
+  else if (S.tab === "ops") renderOps(v);
   else if (isAdmin()) renderAdmin(v); else renderRoster(v);
 }
 
@@ -631,7 +638,7 @@ function renderBoard(v) {
   }
   let idCard = "";
   if (mine) idCard = `<p class="hint idline">Signed in as <strong>${esc(mine.name)}</strong>${mine.can_drive === false ? " (non-driver)" : ""}.</p>`;
-  else if (!isAdmin()) idCard = `<div class="card idcard"><h2>Account not linked</h2><p class="hint">Your login isn't linked to a name on the roster yet. Ask an instructor to fix it.</p></div>`;
+  else if (!isAdmin() && !S.me.ops_editor) idCard = `<div class="card idcard"><h2>Account not linked</h2><p class="hint">Your login isn't linked to a name on the roster yet. Ask an instructor to fix it.</p></div>`;
 
   const pend = S.open.filter(isPend).sort((a, b) => ms(a.etd) - ms(b.etd));
   const pendHtml = pend.map(m => {
@@ -1202,9 +1209,10 @@ function renderAdmin(v) {
       <span class="acts"><button class="btn small" data-act="restore" data-id="${esc(t.id)}">Restore</button><button class="btn small" data-act="deltrainee" data-id="${esc(t.id)}">Delete</button></span></li>`).join("");
   const admins = S.profiles.filter(p => p.role === "admin")
     .sort((a, b) => (APPT_ORDER[a.appointment] ?? 9) - (APPT_ORDER[b.appointment] ?? 9) || (a.display_name || "").localeCompare(b.display_name || ""));
-  const alist = admins.map(p => `<li><span><strong>${esc(p.display_name || p.email)}</strong>${apptText(p) ? ` <span class="tag open">${esc(apptText(p))}</span>` : ""}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.id === S.me.id ? " (you)" : ""}</span></span>
+  const alist = admins.map(p => `<li><span><strong>${esc(p.display_name || p.email)}</strong>${apptText(p) ? ` <span class="tag open">${esc(apptText(p))}</span>` : ""}${p.ops_editor && !APPROVER(p) ? ` <span class="tag nd">Ops</span>` : ""}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.id === S.me.id ? " (you)" : ""}</span></span>
       <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button>${p.id === S.me.id ? "" : `<button class="btn small" data-act="resetpw" data-id="${esc(p.id)}">Reset password</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button>`}</span></li>`).join("");
 
+  const opsAsst = S.profiles.filter(isOpsAssistant);
   v.innerHTML = `<div class="roster">
     <div class="card"><h2>Current trainees (${cur.length})</h2>${list ? `<ul class="rlist">${list}</ul>` : `<p class="hint">No trainees yet. Post in your course on the right.</p>`}</div>
     <div class="stack">
@@ -1219,6 +1227,13 @@ function renderAdmin(v) {
         <label>Name / callsign<input id="iName" maxlength="60" placeholder="e.g. CPT TAN"></label>
         <label>Username<input id="iEmail" autocapitalize="none" placeholder="e.g. tanjh"></label>
         <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddAdmin">Add instructor</button></div></div>
+      <div class="card"><h2>Ops assistants (${opsAsst.length})</h2>
+        ${opsAsst.length ? `<ul class="rlist">${opsAsst.map(p => `<li><span><strong>${esc(p.display_name || p.email)}</strong>${p.ops_editor ? "" : ` <span class="tag nd">Can't edit</span>`}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.must_change_password ? " (temporary password)" : ""}</span></span>
+          <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button><button class="btn small" data-act="resetpw" data-id="${esc(p.id)}">Reset password</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button></span></li>`).join("")}</ul>` : ""}
+        <p class="hint" style="margin-top:6px">A login that can edit the ops board (and view everything) without instructor admin rights. The CO, DYCO and OCs can always edit; tick other instructors under Edit.</p>
+        <label>Name<input id="oaName" maxlength="60" placeholder="e.g. OPS ASST"></label>
+        <label>Username<input id="oaUser" autocapitalize="none" placeholder="e.g. opsasst"></label>
+        <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddOps">Add ops assistant</button></div></div>
       <div class="card"><h2>Telegram</h2>
         ${isOC() ? `<p class="hint">Get travel requests in your own Telegram and approve or reject them there. <span id="tgLinkState"></span></p>
         <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn primary" data-act="tglink">Link Telegram</button></div>` : ""}
@@ -1229,6 +1244,7 @@ function renderAdmin(v) {
     </div></div>`;
   $("#btnAdd").onclick = postIn;
   $("#btnAddAdmin").onclick = addInstructor;
+  $("#btnAddOps").onclick = addOpsAssistant;
   if (isOC()) S.sb.rpc("tg_link_status").then(({ data }) => { const s = $("#tgLinkState"); if (s) s.textContent = data ? "Linked." : "Not linked yet."; });
 }
 // OC A / OC B can link their Telegram to approve requests from the bot.
@@ -1297,10 +1313,24 @@ async function addInstructor() {
   try { await adminApi({ action: "create", email, password: pw, display_name: name, role: "admin" }); fetchAll(); await ask("Instructor added", `${name}: username ${user}, temporary password ${pw}. They must set their own password at first sign-in.`, "OK"); }
   catch (e) { toast(e.message); }
 }
+// Ops assistant: a non-admin, non-trainee login with ops_editor on.
+const isOpsAssistant = p => !!p && p.role !== "admin" && !p.trainee_id;
+async function addOpsAssistant() {
+  const name = $("#oaName").value.trim(), user = $("#oaUser").value.trim().toLowerCase();
+  if (!name || !user) return toast("Enter a name and a username.");
+  if (!validUser(user)) return toast("Usernames can only use letters, numbers, dots and dashes (3-30 characters).");
+  const pw = tempPw();
+  try {
+    const r = await adminApi({ action: "create", email: toLogin(user), password: pw, display_name: name, role: "user" });
+    const { error } = await S.sb.rpc("set_ops_editor", { p_user: r.user_id, p_on: true });
+    if (error) throw error;
+    fetchAll(); await ask("Ops assistant added", `${name}: username ${user}, temporary password ${pw}. They must set their own password at first sign-in.`, "OK");
+  } catch (e) { toast(e.message); }
+}
 async function removeInstructor(uid) {
   const p = profOf(uid); if (!p) return;
   if (!await ask(`Remove ${p.display_name || p.email}?`, "Their login is deleted. Their name stays on past log entries as \"Someone\".", "Remove")) return;
-  try { await adminApi({ action: "delete", user_id: uid }); toast("Instructor removed."); fetchAll(); }
+  try { await adminApi({ action: "delete", user_id: uid }); toast("Login removed."); fetchAll(); }
   catch (e) { toast(e.message); }
 }
 async function postOut(tid) {
@@ -1349,6 +1379,7 @@ function openEdit(key) {
   const inst = !!acct && acct.role === "admin";
   $("#eApptWrap").hidden = !inst;
   $("#eAppt").value = inst ? (acct.appointment || "") : "";
+  $("#eOpsWrap").hidden = !acct || (!inst && !isOpsAssistant(acct)); $("#eOps").checked = !!(acct && acct.ops_editor);
   $("#eHint").textContent = acct ? "Changing the username doesn't change the password. Tell them their new username." : "No login yet. Use Create login on the Admin tab to give them one.";
   $("#editErr").textContent = ""; $("#dlgEdit").showModal(); $("#eName").focus();
 }
@@ -1373,6 +1404,10 @@ $("#btnEdit").onclick = async () => {
           const { error } = await S.sb.rpc("set_role", { p_user: acct.id, p_appointment: appt, p_acting: null });
           if (error) throw error;
         }
+      }
+      if (!$("#eOpsWrap").hidden && $("#eOps").checked !== !!acct.ops_editor) {
+        const { error } = await S.sb.rpc("set_ops_editor", { p_user: acct.id, p_on: $("#eOps").checked });
+        if (error) throw error;
       }
     }
     const drive = $("#eDrive").checked, phone = $("#ePhone").value.trim().slice(0, 30);
