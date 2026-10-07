@@ -1,0 +1,111 @@
+# 150 Sqn Trainee Movement Board: brief for Claude Code
+
+You're picking up a working web app. Read this whole brief before changing anything.
+
+## 1. What it is
+A book-in / book-out board for RSAF trainees at 150 Squadron (BA 120 Cazaux, France). Trainees sign in and book out when they leave base, report back in, and the squadron gets Telegram updates. Owner/admin: Gordon Lee (callsign **Brut**, login `brut`), a QFI at the squadron. He isn't a developer, so explain changes in plain language and keep answers concise.
+
+## 2. Architecture
+- **Front end:** one file, `index.html` (vanilla JS, no build step). It uses `@supabase/supabase-js@2.45.4` from jsdelivr, plus Google Fonts (Barlow Condensed, IBM Plex Sans). It supports light and dark mode and is mobile-first.
+- **Back end:** Supabase project **`ighnqntkupzqisstzmpy`** (https://ighnqntkupzqisstzmpy.supabase.co). The anon key is in `index.html`. That's fine because it's public by design and row-level security (RLS) protects the data. **Never put the service_role key in the page.**
+- **Hosting:**
+  - **Live:** GitHub Pages, repo `gordonlee91/150movementboard`, serving `https://gordonlee91.github.io/150movementboard/`. Pages source is branch `main`, folder `/ (root)`, with an empty `.nojekyll`. To publish a change, commit `index.html` and push to `main`; it's live in about a minute.
+  - **Old host:** Netlify (`https://150traineemovement.netlify.app`, site id `d4661650-7072-4127-8f88-22cb40b89323`). Its free deploy credits ran out on 6 Oct 2026, so it's frozen on an older version.
+- **Telegram:** a Postgres function `tg_send(msg)` posts to the bot using `pg_net`. The bot token and chat id are in Supabase Vault (`telegram_bot_token`, `telegram_chat_id`). Messages use HTML parse mode.
+- **Nightly check:** pg_cron job `nightly-movement-check` runs at `40 19-22 * * *` UTC, calling `nightly_check(false)`. The function itself only sends at **2140L Sun–Thu** and **2340L Fri–Sat** (Europe/Paris), so this one schedule works across summer and winter time.
+
+## 3. Business rules (agreed with Gordon)
+- **Accounts:**
+  - **No emails.** Usernames are stored in Supabase Auth as `<username>@150sqn.local`, and the page adds or strips that suffix.
+  - **Two roles:** admin (instructor) and user (trainee).
+  - **First sign-in:** a trainee must replace the temporary password before using the board.
+- **Instructor appointments:** CO, DYCO, OC A, OC B and CC each have a single holder; QFI can have many.
+  - **Who can approve travel requests:** CO, DYCO, OC A and OC B. CC and QFI cannot.
+  - **No approvers yet:** if nobody holds an approving appointment, any admin can approve.
+  - **Acting OC:** was built and then removed at Gordon's request. Don't re-add it.
+- **Trainees:**
+  - **Fields:** name, course, phone, `can_drive`.
+  - **Courses:** e.g. 200/203/204/206 FWC, 29/30 WSO, PGF. The board groups people by course: FWC first, then WSO, then others, numbers ascending.
+  - **Posting:** "Post in" creates the trainee and their login. "Post out" deactivates both but keeps their history.
+- **Booking out:**
+  - **When:** choose **During office hours** (creates a *travel request* that needs approval) or **After office hours** (books out immediately, for info).
+  - **Transport:** Car / Public transport (tick Bus, Train or both) / Other (taxi, Uber, lift, walk).
+  - **Car rules:**
+    - **Driver:** must have `can_drive`.
+    - **VCOM:** required, except trips to **Cazaux**, which can drive alone.
+    - **Seats:** max people = the car's `seats` (2–9, default 5).
+  - **Public transport / Other:** tick who's going; going alone is allowed but warned against.
+  - **Booking from a trainee's row:** that trainee is locked into the trip.
+  - **Trainees booking themselves:** a non-admin must be on the trip.
+  - **Not allowed:** booking out someone who is already out, has a pending request, or is on leave.
+- **Back in base is per person:** each person is marked Back in base, On leave (with a return date) or Still out.
+  - **Partial returns:** the trip stays open for anyone still out.
+  - **No solo driving:** the board refuses anything that would leave one person alone in a car on a non-Cazaux trip.
+- **On leave** (e.g. dropped at the airport during base closure): a separate board section with a return date. The person can't be booked out until "Back from leave", and the nightly check lists them separately.
+- **Rearrange for return:** one screen to move people between open trips and set roles, applied atomically on Confirm.
+  - **Validation:** each car has one driver who can drive, at most one VCOM, a VCOM unless it's a Cazaux trip, and no more people than seats.
+  - **Empty trips:** close.
+- **Vehicles:** course or personal cars, with description, plate (unique) and seats. Admins can edit; trainees can add and remove their own.
+- **Phone numbers:** optional. Shown as tap-to-call on out-of-base strips, Roster and Admin; editable by admins under Edit.
+
+## 4. Telegram message formats (Gordon specified these, keep them)
+- **Car book-out:**
+  ```
+  🚗 Booked out
+  Location: Biscarrosse
+  ETD: 1423L
+  ETA: 2000L
+  Vehicle: 206 mini, AB-123-CD
+  Driver: Cheong G
+  Vcomm: Lee J
+  Passengers: Kok J / Nil
+  ```
+- **Public transport / Other:** 🚌 / 🚆 / 🚌🚆 / 🚶 "Booked out", then Location, ETD, ETA, `Transport: Bus + Train (TER 1412)` and `Personnel: … (alone)`.
+- **Travel request:**
+  ```
+  📝 TRAINEE TRAVEL REQUEST
+  During or After Office: During
+  Name of Personnel: Tok J (Driver), Lee L (Vcomm)
+  Destination / Purpose / Date & ETD: 0942L 05/10/2026 / Date & ETA / Transportation plan
+  ⏳ Pending approval
+  ```
+  Then reposted with ✅ Approved by OC 'B' / ❌ Not approved by … (+ Reason) / ↩️ Withdrawn by ….
+- **Other messages:** ✅ Back in base (Back: / 🏖️ On leave until … / Still out:), ⏱️ Return time changed, 🏠 Back from leave, 🔄 Rearranged for the return.
+- **Times:** shown as `HHMML`, with the date added if it isn't today (`fmt_l`). Emojis stay as they are.
+
+## 5. Database (public schema)
+- **Tables:**
+  - **`trainees`:** id, name, course, phone, active, posted_out_at, can_drive.
+  - **`profiles`:** id = auth user, email (`user@150sqn.local`), display_name, role admin|user, trainee_id, must_change_password, appointment (CO|DYCO|OC A|OC B|CC|QFI), acting_oc/acting_for (unused).
+  - **`vehicles`:** description, plate, plate_key (generated), owner_type course|personal, course, owner_trainee, added_by, seats.
+  - **`movements`:** one row per trip.
+    - **People:** `members` jsonb (current crew: id, name, course, role driver|vcom|pax|person) and `member_ids` uuid[] (current crew), plus `orig_members` (original crew, set by a trigger) and `events` jsonb (per-person in / leave / moved / joined).
+    - **Status:** `status` is pending|out|in|rejected|withdrawn.
+    - **Trip details:** transport (car|public|bus|train|other), vehicle_id, vehicle_label, destination, reason, expected_back, etd, office_hours.
+    - **Approval:** decided_by, decided_at, decided_as, decision_note.
+    - **Logging:** out_at, out_by, out_loc, in_at, in_by, in_loc.
+  - **`leaves`:** trainee_id, until (date), movement_id, started_*, ended_*. Only one open leave per trainee.
+- **Main functions (SECURITY DEFINER; the page calls them through RPC):**
+  - **Booking:** `book_movement(p_transport, p_driver, p_vcom, p_pax, p_people, p_destination, p_vehicle_id, p_vehicle_other, p_details, p_reason, p_expected_back, p_loc, p_office, p_etd)` is what the page calls. Car bookings delegate to `book_out(...13 args)`. The 11-arg `book_out` is legacy and EXECUTE is revoked.
+  - **Approvals:** `decide_request`, `withdraw_request`.
+  - **Returns and leave:** `return_people(p_id, p_in[], p_leave[], p_until, p_loc)`, `end_leave(p_trainee)`, `change_time`.
+  - **Rearranging:** `rearrange_trips(p_plan jsonb)`. `swap_person` is used by no screen now; `swap_car` is revoked.
+  - **Admin:** `set_role(p_user, p_appointment, p_acting)` (p_acting is ignored), `clear_must_change`, `set_my_phone`, `nightly_check(p_force)`.
+  - **Helpers:** `can_approve`, `approver_label`, `crew_lines`, `crew_text`, `tg_request`, `fmt_l`, `fmt_dt`, `names_of`, `car_seats`, `is_admin`, `my_trainee`, `who`.
+- **Edge function `admin-users`** (verify_jwt on): actions create / update (rename username or display name; it also renames the linked trainee) / reset_password / ban / unban / delete. It checks the caller is an admin, then uses the service role.
+- **Realtime:** trainees, profiles, vehicles, movements and leaves are in `supabase_realtime`, and the page re-fetches on any change.
+- **Gotcha:** through the Supabase MCP, any statement containing `DROP` hung waiting for a confirmation that never came, and timed out. On 7 Oct a plain `DELETE` hung the same way. Earlier changes avoided it with `CREATE OR REPLACE`, new function names, or `pg_get_functiondef` + `replace` + `EXECUTE`. If you have the Supabase CLI or direct SQL access, normal migrations are fine.
+
+## 6. Status (7 Oct 2026)
+- **Done:** the latest `index.html` (solo-driving warnings, random `Falcon-xxxxxxxx` temporary passwords) and `.nojekyll` are on `main`, and Pages is deployed.
+- **Still in trial:** trainees haven't been given logins yet. The test movements were cleared from the log.
+
+## 7. Open items
+- **Before rollout:** 15 of 20 accounts still have `must_change_password = true` and the original temporary password, which was visible in the old page's source. Reset them when handing out logins; Admin → Reset password generates a random password.
+- **Leftover test data:** one ended row in `leaves`. It doesn't show anywhere; delete it from the Supabase Table Editor if wanted (the MCP delete hung).
+- When Netlify credits reset, optionally replace the Netlify page with a "moved to …" notice.
+
+## 8. How Gordon likes to work
+- **Communication:** short, direct answers. Say what changed and how to try it. He tests on his phone, often in dark mode.
+- **Testing:** test every change before publishing, and say honestly what was and wasn't tested.
+- **Scope:** don't add features he didn't ask for without checking first.
