@@ -93,6 +93,12 @@ A book-in / book-out board for RSAF trainees at 150 Squadron (BA 120 Cazaux, Fra
   - **Admin:** `set_role(p_user, p_appointment, p_acting)` (p_acting is ignored), `clear_must_change`, `set_my_phone`, `nightly_check(p_force)`.
   - **Helpers:** `can_approve`, `approver_label`, `crew_lines`, `crew_text`, `tg_request`, `fmt_l`, `fmt_dt`, `names_of`, `car_seats`, `is_admin`, `my_trainee`, `who`.
 - **Edge function `admin-users`** (verify_jwt on): actions create / update (rename username or display name; it also renames the linked trainee) / reset_password / ban / unban / delete. It checks the caller is an admin, then uses the service role.
+- **Telegram approvals for OCs (added 7 Oct 2026):** OC A and OC B tap **Link Telegram** (Admin tab, Telegram card) to get each travel request privately from @Trainee_Movement_Bot with ✅ Approve / ❌ Reject buttons. Reject asks for an optional reason (type it, or tap "Reject without reason"). CO/DYCO are deliberately not included (Gordon's choice); they still approve on the board.
+  - **Edge function `telegram-bot`** (verify_jwt off; checks the `telegram_webhook_secret` Vault secret on every call) is the bot's webhook and also handles internal calls from the trigger.
+  - **Trigger `movements_tg_notify`** (`tg_movement_notify`): a new pending request DMs linked OCs; a request leaving pending (any route) edits their copies to show the outcome and removes the buttons.
+  - **Decisions** go through `tg_decide_as(user, id, approve, note)`, which checks the user is OC A/B and then calls `decide_request` as that user, so the board's rules and group messages apply.
+  - **Tables (RLS on, service role only):** `tg_links` (OC user → Telegram chat), `tg_link_codes` (one-time /start codes, 30 min), `tg_request_msgs` (DM message ids per request), `tg_await_reason` (OC is typing a reject reason).
+  - **Board RPCs:** `tg_link_code()`, `tg_link_status()`.
 - **Realtime:** trainees, profiles, vehicles, movements and leaves are in `supabase_realtime`, and the page re-fetches on any change.
 - **Gotcha:** through the Supabase MCP, any statement containing `DROP` hung waiting for a confirmation that never came, and timed out. On 7 Oct a plain `DELETE` hung the same way. Earlier changes avoided it with `CREATE OR REPLACE`, new function names, or `pg_get_functiondef` + `replace` + `EXECUTE`. If you have the Supabase CLI or direct SQL access, normal migrations are fine.
 

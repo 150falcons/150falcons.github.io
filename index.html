@@ -1219,13 +1219,27 @@ function renderAdmin(v) {
         <label>Name / callsign<input id="iName" maxlength="60" placeholder="e.g. CPT TAN"></label>
         <label>Username<input id="iEmail" autocapitalize="none" placeholder="e.g. tanjh"></label>
         <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddAdmin">Add instructor</button></div></div>
-      <div class="card"><h2>Telegram</h2><p class="hint">Sends tonight's movement check to the group now, so you can confirm the bot works.</p>
+      <div class="card"><h2>Telegram</h2>
+        ${isOC() ? `<p class="hint">Get travel requests in your own Telegram and approve or reject them there. <span id="tgLinkState"></span></p>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn primary" data-act="tglink">Link Telegram</button></div>` : ""}
+        <p class="hint">Sends tonight's movement check to the group now, so you can confirm the bot works.</p>
         <div style="display:flex;justify-content:flex-end"><button class="btn" data-act="tgtest">Send test message now</button></div></div>
       <div class="card"><h2>Posted out (${gone.length})</h2>
         ${glist ? `<ul class="rlist">${glist}</ul><p class="hint">Their past movements stay in the log.</p>` : `<p class="hint">Trainees you post out appear here. Their login is disabled and their history is kept.</p>`}</div>
     </div></div>`;
   $("#btnAdd").onclick = postIn;
   $("#btnAddAdmin").onclick = addInstructor;
+  if (isOC()) S.sb.rpc("tg_link_status").then(({ data }) => { const s = $("#tgLinkState"); if (s) s.textContent = data ? "Linked." : "Not linked yet."; });
+}
+// OC A / OC B can link their Telegram to approve requests from the bot.
+const isOC = () => isAdmin() && ["OC A", "OC B"].includes(S.me.appointment);
+async function tgLink() {
+  const w = window.open("", "_blank"); // open now, before the await, so phones don't block it
+  const { data, error } = await S.sb.rpc("tg_link_code");
+  if (error) { if (w) w.close(); return toast(errMsg(error)); }
+  const url = `https://t.me/${data.bot}?start=${data.code}`;
+  if (w) w.location.href = url; else location.href = url;
+  toast("In Telegram, press Start. Then come back here.");
 }
 async function postIn() {
   const lines = $("#addList").value.split("\n").map(l => l.trim()).filter(Boolean);
@@ -1388,7 +1402,7 @@ document.addEventListener("click", e => {
     out: openOut, in: openReturn, eta: openEta, phone: editPhone, swap: openSwap, endleave: endLeave, rearrange: openRearrange,
     dellog: deleteLog, clearlog: clearLog, csv: exportCsv, delveh: deleteVehicle, editveh: editVehicle,
     mkacct: makeLogin, resetpw: resetPw, rmadmin: removeInstructor,
-    postout: postOut, edit: openEdit, approve: approveReq, reject: rejectReq, withdraw: withdrawReq, restore: restoreTrainee, deltrainee: deleteTrainee, tgtest: telegramTest
+    postout: postOut, edit: openEdit, approve: approveReq, reject: rejectReq, withdraw: withdrawReq, restore: restoreTrainee, deltrainee: deleteTrainee, tgtest: telegramTest, tglink: tgLink
   }[el.dataset.act] || (() => {}))(id);
 });
 $("#btnSignOut").onclick = signOut;
