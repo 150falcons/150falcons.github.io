@@ -1,0 +1,549 @@
+/* =====================================================================
+   Operations: Ops board (airfield status + Cazaux weather), Go / No-Go
+   (read & sign), Aircraft status, and a TV mode for the crew-room screen.
+   Data: ops_state ('board', 'aircraft', 'gonogo' documents), ops_wx (METARs,
+   refreshed every 15 min by the metar edge function), crew, rs_items, rs_acks.
+   Loaded before the main script; uses its helpers at call time
+   ($, esc, S, toast, ask, errMsg, who, active, todayStr) and ops.js (OPS, opsGet...).
+   ===================================================================== */
+const OB = { loaded: false, loading: false, state: {}, wx: {}, crew: [], items: [], acks: [], edit: null, showClosed: false, open: {} };
+const OB_STATUS = { g: "Available", a: "Limited", r: "U/S", "": "-" };
+const OB_GROUPS = ["QFI", "PGF", "TRAINEES", "ATCO", "STEDAS", "OTH"];
+const OB_LEGEND = [
+  ["BF", "Boldface"], ["OL", "Ops limit"], ["OB", "Ops brief"], ["ED", "EODD"], ["RS", "Read & sign"], ["SAM", "Safety alert message"],
+  ["UP", "Up chit"], ["IFG", "In-flight guide"], ["TS", "Take & sign"], ["MIAC 4", "MIAC 4"], ["HTC", "GFET"], ["ST", "Standardisation"],
+  ["MED", "Medical"], ["SMM", "Safety meeting minutes"], ["MM", "Monthly minutes"], ["CRC", "Aircrew currencies"], ["LSS", "LSS currencies"],
+  ["QN", "Quality notice"], ["OTH", "Other"],
+];
+const CZX = { lat: 44.533, lng: -1.125 };
+
+/* ---------- defaults (first use) ---------- */
+const obAid = (name, s) => ({ name, s: s || "g" });
+const obBlank = {
+  board: () => ({
+    eor: "NORMAL", inHse: "", banner: "", zrt: "",
+    airfields: [
+      { icao: "LFBC", grp: "main", p: false, rwy: "24", fasf: "B", rsaf: "B", wx: "", restr: "", aids: [obAid("ILS (24)"), obAid("PAR"), obAid("TACAN"), obAid("CENTAURE"), obAid("CAT 1 LINE")] },
+      { icao: "LFBM", grp: "main", p: true, rwy: "09", fasf: "B", rsaf: "B", wx: "", restr: "", aids: [obAid("ILS (27)"), obAid("PAR"), obAid("TACAN"), obAid("ALADIN"), obAid("VOR/DME")] },
+      { icao: "LFBD", grp: "main", p: false, rwy: "11", fasf: "B", rsaf: "B", wx: "", restr: "", aids: [obAid("ILS (23)"), obAid("VOR/DME")] },
+      { icao: "LFBZ", grp: "main", p: false, rwy: "09", fasf: "B", rsaf: "B", wx: "", restr: "", aids: [obAid("ILS (27)"), obAid("VOR/DME")] },
+      { icao: "LFBG", grp: "alt", p: false, rwy: "05", fasf: "B", rsaf: "B", wx: "", restr: "", aids: [] },
+      { icao: "LFSL", grp: "alt", p: false, rwy: "11", fasf: "B", rsaf: "B", wx: "", restr: "", aids: [] },
+      { icao: "LFBE", grp: "alt", p: false, rwy: "09", fasf: "B", rsaf: "B", wx: "", restr: "", aids: [] },
+    ],
+    czx: { sun: "", icingBand: "", rwySurface: "DRY", seaTemp: "", swell: "", bird: "", windHazard: "", firing: "", calamar: "" },
+    equip: { parachute: "g", samar: "G3", canopy: "", apu1: "", apu2: "" },
+    restricted: [],
+  }),
+  aircraft: () => ({ tails: [], callsigns: [], vehicleCap: "" }),
+  gonogo: () => ({ miac: "", legend: OB_LEGEND.map(([code, label]) => ({ code, label })) }),
+};
+const obDoc = k => { const r = OB.state[k], b = obBlank[k](); return r && r.data && Object.keys(r.data).length ? { ...b, ...r.data, ...(k === "board" ? { czx: { ...b.czx, ...(r.data.czx || {}) }, equip: { ...b.equip, ...(r.data.equip || {}) } } : {}) } : b; };
+const obGet = k => (OB.edit && OB.edit.key === k) ? OB.edit.data : obDoc(k);
+const obCanEditAc = () => opsCanEdit() || !!(S.me && S.me.eng_editor);
+const obMyCrew = () => OB.crew.filter(c => c.active && S.me && c.profile_id === S.me.id);
+
+/* ---------- data ---------- */
+async function obLoad() {
+  if (OB.loading) return; OB.loading = true;
+  const sb = S.sb;
+  const res = await Promise.all([
+    sb.from("ops_state").select("*"), sb.from("ops_wx").select("*"), sb.from("crew").select("*").order("sort").order("name"),
+    sb.from("rs_items").select("*").order("created_at", { ascending: false }).limit(200), sb.from("rs_acks").select("*"),
+  ]);
+  OB.loading = false;
+  const bad = res.find(r => r.error);
+  if (bad) { toast("Couldn't load operations: " + errMsg(bad.error)); return; }
+  OB.state = {}; for (const r of res[0].data) OB.state[r.key] = r;
+  OB.wx = {}; for (const r of res[1].data) OB.wx[r.station] = r;
+  [OB.crew, OB.items, OB.acks] = [res[2].data, res[3].data, res[4].data];
+  OB.loaded = true;
+  if (["opsboard", "gonogo", "aircraft", "tv", "home", "ops"].includes(S.tab) && !OB.edit) render();
+}
+let obTimer;
+const obRealtime = () => { clearTimeout(obTimer); obTimer = setTimeout(obLoad, 400); };
+
+/* ---------- weather maths (same rules as the Excel board) ---------- */
+const obN = v => (v === null || v === undefined || v === "" || isNaN(+v)) ? null : +v;
+function obWind(m) {
+  if (!m) return null;
+  const dir = m.wdir === "VRB" ? null : obN(m.wdir), spd = obN(m.wspd) ?? 0, gst = obN(m.wgst);
+  return { dir, spd, gst, gov: Math.max(spd, gst ?? 0), vrb: m.wdir === "VRB" };
+}
+// Components of the governing wind relative to a heading: head (+) / tail (-) and cross.
+function obComp(w, hdg) {
+  if (!w || w.dir == null || hdg == null) return null;
+  const a = (w.dir - hdg) * Math.PI / 180;
+  return { head: w.gov * Math.cos(a), cross: Math.abs(w.gov * Math.sin(a)) };
+}
+const obRH = (t, td) => (t == null || td == null) ? null : Math.round(100 * Math.exp(17.625 * td / (243.04 + td)) / Math.exp(17.625 * t / (243.04 + t)));
+const obRwyHdg = rwy => { const n = parseInt(String(rwy || ""), 10); return n >= 1 && n <= 36 ? n * 10 : null; };
+// Main part of the METAR (before TEMPO/BECMG): vis, weather, lowest BKN/OVC.
+function obWxText(m) {
+  if (!m) return "";
+  const raw = String(m.rawOb || "").split(/\s+(?:TEMPO|BECMG|NOSIG)\b/)[0];
+  if (/\bCAVOK\b/.test(raw)) return "CAVOK";
+  const v = raw.split(/\s+/).slice(3).find(t => /^\d{4}$/.test(t));
+  const vis = v ? (v === "9999" ? "10KM+" : +v >= 5000 ? (+v / 1000) + "KM" : v + "M") : "";
+  const ceil = (m.clouds || []).filter(c => /BKN|OVC|OVX|VV/.test(c.cover)).sort((a, b) => a.base - b.base)[0];
+  const cl = ceil ? `${ceil.cover}${String(Math.round(ceil.base / 100)).padStart(3, "0")}` : /\bNSC\b/.test(raw) ? "NSC" : /\bNCD\b/.test(raw) ? "NCD" : "";
+  return [vis, m.wxString || "", cl].filter(Boolean).join(" ");
+}
+const obObsZ = m => m && m.obsTime ? new Date(m.obsTime * 1000).toISOString().slice(11, 16).replace(":", "") + "Z" : "";
+// Sunrise / sunset (UTC minutes) for a date at Cazaux (NOAA approximation, ±1 min).
+function obSun(day) {
+  const r = Math.PI / 180, d = new Date(day + "T12:00:00Z"), n = Math.round((d - Date.UTC(d.getUTCFullYear(), 0, 0)) / 864e5);
+  const g = 2 * Math.PI / 365 * (n - 1);
+  const eq = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
+  const dec = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g) - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
+  const ha = Math.acos(Math.cos(90.833 * r) / (Math.cos(CZX.lat * r) * Math.cos(dec)) - Math.tan(CZX.lat * r) * Math.tan(dec)) / r;
+  const z = m => { m = Math.round(m); return String(Math.floor(m / 60)).padStart(2, "0") + String(m % 60).padStart(2, "0") + "Z"; };
+  return { rise: z(720 - 4 * (CZX.lng + ha) - eq), set: z(720 - 4 * (CZX.lng - ha) - eq) };
+}
+// Everything the Excel worked out for Cazaux.
+function obCzx() {
+  const b = obGet("board"), m = OB.wx.LFBC && OB.wx.LFBC.data, w = obWind(m);
+  const lfbc = (b.airfields || []).find(a => a.icao === "LFBC") || {};
+  const rwy = obRwyHdg(lfbc.rwy), c = obComp(w, rwy);
+  const t = m ? obN(m.temp) : null, rh = m ? obRH(obN(m.temp), obN(m.dewp)) : null;
+  const sea = obN(b.czx && b.czx.seaTemp);
+  const auto = st => st === "" || st == null;
+  const apu = h => { const k = obComp(w, h); return t == null && !k ? "" : (t != null && t < 1) || (k && k.cross > 14.9) ? "r" : "g"; };
+  const canopy = !w ? "" : (w.gov < 50 && (!c || (Math.abs(c.head) < 35 && c.cross < 35))) ? "g" : "r";
+  return {
+    m, w, rwy, c, t, rh, qnh: m ? obN(m.altim) : null, sun: obSun(todayStr()),
+    icing: t == null || rh == null ? "" : t < 6 && rh > 50 ? "YES" : "NO",
+    immersion: sea == null ? "" : sea >= 16 ? "NO" : (sea < 15.5 && t != null && t < 22) ? "YES" : "NO",
+    canopy: auto(b.equip.canopy) ? canopy : b.equip.canopy,
+    apu1: auto(b.equip.apu1) ? apu(280) : b.equip.apu1,
+    apu2: auto(b.equip.apu2) ? apu(315) : b.equip.apu2,
+  };
+}
+
+/* ---------- Go / No-Go ---------- */
+const obOpenItems = () => OB.items.filter(i => !i.closed);
+function obOutstanding(crewId) {
+  const open = new Set(obOpenItems().map(i => i.id));
+  return OB.acks.filter(a => a.crew_id === crewId && !a.done_at && open.has(a.item_id)).map(a => OB.items.find(i => i.id === a.item_id));
+}
+// "BF, OB(2), SMM"
+function obCodes(items) {
+  const n = {}; for (const i of items) n[i.code] = (n[i.code] || 0) + 1;
+  return Object.entries(n).map(([c, k]) => k > 1 ? `${c}(${k})` : c).join(", ");
+}
+function obMyPending() {
+  const mine = obMyCrew(); if (!mine.length) return [];
+  const out = [];
+  for (const c of mine) for (const i of obOutstanding(c.id)) out.push({ item: i, crew: c });
+  return out;
+}
+
+/* ---------- shared bits ---------- */
+const obDot = s => `<span class="obst obst-${s || "n"}">${esc(OB_STATUS[s] ?? s ?? "-")}</span>`;
+const obPill = (s, label) => `<span class="obpill obst-${s || "n"}">${esc(label)}</span>`;
+const obMeta = k => { const r = OB.state[k]; return r && r.updated_at ? `Updated ${new Date(r.updated_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${r.updated_by ? " by " + esc(who(r.updated_by)) : ""}` : ""; };
+const obEditBtn = (k, can, label) => can && !OB.edit ? `<button class="btn small" data-ob="edit" data-k="${k}">${label || "Edit"}</button>` : "";
+function obCard(id, title, meta, body, tools) {
+  return `<section class="card opscard" id="${id}"><div class="opshead"><h2>${title}</h2><span class="opsmeta">${meta || ""}${tools || ""}</span></div>${body}</section>`;
+}
+const obNotLoaded = v => { v.innerHTML = `<div class="empty">Loading…</div>`; if (!OB.loading) obLoad(); };
+
+/* ---------- Ops board page ---------- */
+function renderOpsBoard(v) {
+  if (!OB.loaded) return obNotLoaded(v);
+  const editing = OB.edit && OB.edit.key === "board", can = opsCanEdit();
+  const top = `<div class="opsbar"><span class="grow"></span><button class="btn small" data-ob="metar">Refresh METARs</button><button class="btn small primary" data-tab="tv">TV mode</button></div>`;
+  v.innerHTML = top + (editing ? obCard("ob-board", "Ops board", "", obEditor("board")) : obBoardView(false) + `<p class="opsmeta" style="justify-content:flex-end">${obMeta("board")} ${obEditBtn("board", can, "Edit ops board")}</p>`);
+}
+function obBoardView(tv) {
+  const b = obGet("board"), z = obCzx();
+  const wxAge = OB.wx.LFBC ? obObsZ(OB.wx.LFBC.data) : "";
+  const afRow = a => {
+    const m = OB.wx[a.icao] && OB.wx[a.icao].data;
+    const wx = a.wx || obWxText(m);
+    return `<tr><td><b>${esc(a.icao)}</b></td>${a.grp === "main" ? `<td>${a.p ? obPill("g", "P") : ""}</td>` : ""}<td>${esc(a.rwy)}</td>
+      <td>${obPill(obCol(a.fasf), a.fasf || "-")}</td><td>${obPill(obCol(a.rsaf), a.rsaf || "-")}</td><td>${esc(wx)}${a.wx && m ? ` <span class="hint">(override)</span>` : ""}</td><td>${esc(a.restr)}</td>
+      ${a.grp === "main" ? `<td class="obaids">${(a.aids || []).map(x => obPill(x.s, x.name)).join(" ")}</td>` : ""}</tr>`;
+  };
+  const main = (b.airfields || []).filter(a => a.grp === "main"), alt = (b.airfields || []).filter(a => a.grp !== "main");
+  const w = z.w, comp = z.c;
+  const windTxt = !w ? "-" : w.vrb ? `VRB / ${w.spd} KT` : `${String(w.dir).padStart(3, "0")}° / ${w.spd}${w.gst ? "G" + w.gst : ""} KT`;
+  const yn = (v2, bad) => v2 ? obPill(v2 === bad ? "r" : "g", v2) : "-";
+  const czx = b.czx || {};
+  return `
+    <div class="obhead"><span>EOR: ${obPill(b.eor === "NORMAL" ? "g" : "a", b.eor || "-")}</span>${b.inHse ? `<span>${esc(b.inHse)}</span>` : ""}
+      <b>Airfield status${wxAge ? " as of " + esc(wxAge) : ""}</b></div>
+    ${b.banner ? `<div class="obbanner">${esc(b.banner)}</div>` : ""}
+    <div class="obgrid ${tv ? "tv" : ""}">
+      <section class="card opscard obwide"><div class="tablewrap"><table class="opst obt"><thead><tr><th>Airfield</th><th>P</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS</th><th>Restrictions</th><th>Aids</th></tr></thead><tbody>${main.map(afRow).join("")}</tbody></table></div>
+        ${alt.length ? `<div class="tablewrap" style="margin-top:8px"><table class="opst obt"><thead><tr><th>Airfield</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS</th><th>Restrictions</th></tr></thead><tbody>${alt.map(afRow).join("")}</tbody></table></div>` : ""}
+        ${b.zrt ? `<p class="obnote">${esc(b.zrt)}</p>` : ""}</section>
+      <section class="card opscard"><h2>Cazaux weather</h2><dl class="opsdl">
+        <dt>Sunrise / sunset</dt><dd>${czx.sun ? esc(czx.sun) : `${esc(z.sun.rise)} / ${esc(z.sun.set)}`}</dd>
+        ${czx.icingBand ? `<dt>Icing band</dt><dd>${esc(czx.icingBand)}</dd>` : ""}
+        <dt>Temperature</dt><dd>${z.t ?? "-"}°C</dd><dt>Humidity</dt><dd>${z.rh ?? "-"}%</dd><dt>QNH</dt><dd>${z.qnh ?? "-"}</dd>
+        <dt>Runway surface</dt><dd>${esc(czx.rwySurface || "-")}</dd><dt>Sea surface</dt><dd>${esc(czx.seaTemp ? czx.seaTemp + "°C" : "-")}</dd>
+        ${czx.swell ? `<dt>Sea swell</dt><dd>${esc(czx.swell)}</dd>` : ""}${czx.bird ? `<dt>Bird hazard</dt><dd>${esc(czx.bird)}</dd>` : ""}
+        <dt>Icing conditions</dt><dd>${yn(z.icing, "YES")}</dd><dt>Immersion suit</dt><dd>${yn(z.immersion, "YES")}</dd></dl>
+        ${z.m ? `<p class="obraw">${esc(z.m.rawOb)}</p>` : `<p class="hint">No METAR yet.</p>`}</section>
+      <section class="card opscard"><h2>Wind (CZX)</h2><div class="obwind">${obRose(w, z.rwy)}<div><div class="obbig">${esc(windTxt)}</div>
+        ${comp ? `<div>${comp.head < 0 ? "Tailwind" : "Headwind"} <b>${Math.abs(comp.head).toFixed(1)}</b> KT</div><div>Crosswind <b>${comp.cross.toFixed(1)}</b> KT</div><div class="hint">RWY ${esc(String(z.rwy / 10).padStart(2, "0"))} · governing wind ${w.gov} KT</div>` : ""}
+        ${czx.windHazard ? `<div>Wind hazard: ${esc(czx.windHazard)}</div>` : ""}</div></div></section>
+      <section class="card opscard"><h2>Canopy / equipment</h2><div class="obeq">
+        <div>Canopy ${obDot(z.canopy)}</div><div>APU (A11–15) ${obDot(z.apu1)}</div><div>APU (A16–23) ${obDot(z.apu2)}</div>
+        <div>Parachute ${obDot(b.equip.parachute)}</div><div>SAMAR ${obPill(/^G/i.test(b.equip.samar || "") ? "g" : b.equip.samar ? "a" : "", b.equip.samar || "-")}</div></div>
+        <p class="hint" style="margin:6px 0 0">Canopy and APU are worked out from the Cazaux wind and temperature unless ops sets them.</p></section>
+      <section class="card opscard obwide"><h2>Restricted areas</h2>${(b.restricted || []).length ? `<div class="tablewrap"><table class="opst obt"><thead><tr><th>Item</th><th>TGT</th><th>WX</th><th>Before</th><th>After</th><th>Restrictions</th></tr></thead><tbody>${b.restricted.map(r =>
+          `<tr><td>${esc(r.item)}</td><td>${esc(r.tgt)}</td><td>${esc(r.wx)}</td><td>${esc(r.before)}</td><td>${esc(r.after)}</td><td>${r.hot ? obPill("r", r.restr || "ACTIVE") : esc(r.restr)}</td></tr>`).join("")}</tbody></table></div>` : `<p class="hint">None entered.</p>`}
+        ${czx.firing ? `<p><b>Firing sch:</b> ${esc(czx.firing)}</p>` : ""}${czx.calamar ? `<p><b>CALAMAR:</b> ${esc(czx.calamar)}</p>` : ""}</section>
+    </div>`;
+}
+// Colour state letter → pill colour.
+const obCol = c => /^(B|W|BLU|WHT)/i.test(c || "") ? "b" : /^(G|GRN)/i.test(c || "") ? "g" : /^(Y|A|YLO|AMB)/i.test(c || "") ? "a" : /^R/i.test(c || "") ? "r" : "";
+// Small wind rose: runway line and an arrow from the wind direction.
+function obRose(w, rwy) {
+  const R = 46, cx = 55, cy = 55, p = (deg, r) => [cx + r * Math.sin(deg * Math.PI / 180), cy - r * Math.cos(deg * Math.PI / 180)];
+  const rw = rwy != null ? [p(rwy, 30), p(rwy + 180, 30)] : null;
+  const arrow = w && w.dir != null ? (() => { const [x1, y1] = p(w.dir, R), [x2, y2] = p(w.dir, 8); return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--out)" stroke-width="4" stroke-linecap="round" marker-end="url(#obArr)"/>`; })() : "";
+  return `<svg class="obrose" viewBox="0 0 110 110" role="img" aria-label="Wind"><defs><marker id="obArr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="var(--out)"/></marker></defs>
+    <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="var(--line)" stroke-width="2"/>
+    ${["N", "E", "S", "W"].map((t, i) => { const [x, y] = p(i * 90, R - 9); return `<text x="${x}" y="${y + 3}" text-anchor="middle" font-size="9" fill="var(--muted)">${t}</text>`; }).join("")}
+    ${rw ? `<line x1="${rw[0][0]}" y1="${rw[0][1]}" x2="${rw[1][0]}" y2="${rw[1][1]}" stroke="var(--muted)" stroke-width="7" stroke-linecap="square" opacity=".55"/>` : ""}${arrow}</svg>`;
+}
+
+/* ---------- Go / No-Go page ---------- */
+function renderGoNoGo(v) {
+  if (!OB.loaded) return obNotLoaded(v);
+  const can = opsCanEdit(), gm = obGet("gonogo");
+  let html = obMyItemsCard();
+  // status grid
+  const crew = OB.crew.filter(c => c.active);
+  const groups = [...new Set([...OB_GROUPS, ...crew.map(c => c.grp)])].filter(g => crew.some(c => c.grp === g));
+  const goCount = crew.filter(c => !obOutstanding(c.id).length).length;
+  html += obCard("ob-go", "Aircrew status", `${goCount} of ${crew.length} GO${gm.miac ? ` · MIAC 4 effective till ${esc(fmtDay(gm.miac))}` : ""}`,
+    crew.length ? `<div class="obgo">${groups.map(g => `<div><h3 class="opssub">${esc(g)}</h3><table class="opst obt"><tbody>${crew.filter(c => c.grp === g).map(c => {
+      const out = obOutstanding(c.id);
+      return `<tr><td>${opsX(c.name)}</td><td class="hint">${esc(obCodes(out))}</td><td>${obPill(out.length ? "r" : "g", out.length ? "NO-GO" : "GO")}</td></tr>`;
+    }).join("")}</tbody></table></div>`).join("")}</div>` : `<p class="hint">${can ? "Add the aircrew under Crew list below." : "No crew list yet."}</p>`);
+  if (can) html += obItemsCard() + obCrewCard();
+  html += obCard("ob-legend", "Legend", "", `<dl class="opsdl obleg">${(gm.legend || []).map(l => `<dt>${esc(l.code)}</dt><dd>${esc(l.label)}</dd>`).join("")}</dl>`,
+    can && !OB.edit ? `<button class="btn small" data-ob="edit" data-k="gonogo">Edit MIAC / legend</button>` : "");
+  if (OB.edit && OB.edit.key === "gonogo") html += obCard("ob-gonogo", "MIAC 4 / legend", "", obEditor("gonogo"));
+  v.innerHTML = html;
+}
+function obMyItemsCard() {
+  const mine = obMyCrew();
+  if (!mine.length) return "";
+  const pend = obMyPending();
+  const body = pend.length ? pend.map(({ item: i, crew: c }) => `<div class="obitem"><div class="obitemhead">${obPill("r", i.code)} <b>${esc(i.title)}</b>${mine.length > 1 ? ` <span class="hint">(${esc(c.name)})</span>` : ""}</div>
+      ${i.body ? `<div class="obbody">${esc(i.body).replace(/\n/g, "<br>")}</div>` : ""}${i.link ? `<p><a href="${esc(obSafeUrl(i.link))}" target="_blank" rel="noopener">Open document</a></p>` : ""}
+      <div style="display:flex;justify-content:flex-end"><button class="btn primary small" data-ob="done" data-item="${esc(i.id)}" data-crew="${esc(c.id)}">I've read it: Done</button></div></div>`).join("")
+    : `<p style="margin:0">${obPill("g", "GO")} Nothing outstanding.</p>`;
+  return obCard("ob-mine", "Your read &amp; sign", pend.length ? `${pend.length} outstanding` : "", body);
+}
+const obSafeUrl = u => /^https?:\/\//i.test(u || "") ? u : "#";
+function obItemsCard() {
+  const items = OB.items.filter(i => OB.showClosed || !i.closed);
+  const crewName = id => (OB.crew.find(c => c.id === id) || {}).name || "?";
+  const list = items.map(i => {
+    const acks = OB.acks.filter(a => a.item_id === i.id), done = acks.filter(a => a.done_at).length, open = OB.open[i.id];
+    return `<div class="obitem${i.closed ? " closed" : ""}"><div class="obitemhead" data-ob="toggle" data-item="${esc(i.id)}" style="cursor:pointer">${obPill(i.closed ? "" : done === acks.length ? "g" : "a", i.code)} <b>${esc(i.title)}</b>
+        <span class="hint">${done}/${acks.length} done · ${esc(new Date(i.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }))}${i.closed ? " · closed" : ""}</span> <span class="hint">${open ? "▲" : "▼"}</span></div>
+      ${open ? `${i.body ? `<div class="obbody">${esc(i.body).replace(/\n/g, "<br>")}</div>` : ""}${i.link ? `<p><a href="${esc(obSafeUrl(i.link))}" target="_blank" rel="noopener">Open document</a></p>` : ""}
+        <div class="obacks">${acks.sort((a, b) => crewName(a.crew_id).localeCompare(crewName(b.crew_id))).map(a => `<label class="opschk"><input type="checkbox" data-ob="ack" data-item="${esc(i.id)}" data-crew="${esc(a.crew_id)}" ${a.done_at ? "checked" : ""}>${esc(crewName(a.crew_id))}</label>`).join("")}</div>
+        <div class="tools" style="margin-top:6px"><button class="btn small" data-ob="assign" data-item="${esc(i.id)}">+ Add people</button><button class="btn small" data-ob="close" data-item="${esc(i.id)}" data-closed="${i.closed ? "0" : "1"}">${i.closed ? "Reopen" : "Close item"}</button></div>` : ""}</div>`;
+  }).join("");
+  return obCard("ob-items", "Read &amp; sign items", "", `${list || `<p class="hint">No items.</p>`}
+    <div class="tools" style="margin-top:8px"><button class="btn primary small" data-ob="newitem">+ New item</button><label class="opschk"><input type="checkbox" data-ob="showclosed" ${OB.showClosed ? "checked" : ""}>Show closed</label></div>
+    <p class="hint">Tap an item to see who's done it. Tick people off for them, or they tap Done on their own phone.</p>`);
+}
+function obCrewCard() {
+  const logins = S.profiles.filter(p => !p.trainee_id || active().some(t => t.id === p.trainee_id));
+  const opts = sel => `<option value="">No login</option>` + logins.map(p => `<option value="${esc(p.id)}" ${p.id === sel ? "selected" : ""}>${esc(p.display_name || showLogin(p.email))}</option>`).join("");
+  const rows = OB.crew.map(c => `<tr class="${c.active ? "" : "opsadd"}"><td><input value="${esc(c.name)}" data-crew="${esc(c.id)}" data-f="name" style="width:130px"></td>
+      <td><input value="${esc(c.grp)}" list="obGroups" data-crew="${esc(c.id)}" data-f="grp" style="width:110px"></td>
+      <td><select data-crew="${esc(c.id)}" data-f="profile_id" style="width:150px">${opts(c.profile_id)}</select></td>
+      <td><label class="opschk"><input type="checkbox" data-crew="${esc(c.id)}" data-f="active" ${c.active ? "checked" : ""}>Active</label></td></tr>`).join("");
+  return obCard("ob-crew", "Crew list", "", `<datalist id="obGroups">${OB_GROUPS.map(g => `<option value="${g}">`).join("")}</datalist>
+    <div class="tablewrap"><table class="obed"><thead><tr><th>Name (as on the programme)</th><th>Group</th><th>Login</th><th></th></tr></thead><tbody>${rows}
+      <tr><td><input id="obNewName" placeholder="e.g. M LIM" style="width:130px"></td><td><input id="obNewGrp" list="obGroups" value="QFI" style="width:110px"></td><td><select id="obNewLogin" style="width:150px">${opts("")}</select></td><td><button class="btn small" data-ob="addcrew">Add</button></td></tr></tbody></table></div>
+    <div class="tools"><button class="btn small" data-ob="addtrainees">+ All trainees on roster</button></div>
+    <p class="hint">Changes save as you go. Linking a login lets that person sign off their own items and see their own day on the flying program. Untick Active instead of deleting.</p>`);
+}
+
+/* ---------- Aircraft page ---------- */
+function renderAircraft(v) {
+  if (!OB.loaded) return obNotLoaded(v);
+  const editing = OB.edit && OB.edit.key === "aircraft";
+  v.innerHTML = editing ? obCard("ob-aircraft", "Aircraft status", "", obEditor("aircraft")) : obAircraftView(false) + `<p class="opsmeta" style="justify-content:flex-end">${obMeta("aircraft")} ${obEditBtn("aircraft", obCanEditAc(), "Edit aircraft")}</p>`;
+}
+const obNoteLine = l => /^\s*(NTS|AMC|NPC|OJT|MAX FLY|CFH|CONTROL HOURS)\b/i.test(l) ? `<span class="obamb">${esc(l)}</span>` : esc(l);
+function obAircraftView(tv) { return `<div class="obgrid ${tv ? "tv" : ""}">${obAircraftCards().join("")}</div>`; }
+function obAircraftCards() {
+  const a = obGet("aircraft"), tails = a.tails || [];
+  const sv = tails.filter(t => t.status === "S").length;
+  const tailsHtml = tails.length ? `<div class="tablewrap"><table class="opst obt"><thead><tr><th>Tail</th><th>Status</th><th>NPC</th><th>NTS</th><th>OJT</th><th>Significant ADDL / NPC / AMC</th></tr></thead><tbody>${tails.map(t => `<tr>
+      <td><b>${esc(t.tail)}</b></td><td>${obPill(t.status === "S" ? "g" : t.status === "US" ? "r" : "a", t.status === "S" ? "S" : t.status === "US" ? "U/S" : "MX")}</td>
+      <td>${t.npc ? obPill("a", "NPC") : ""}</td><td>${t.nts ? obPill("a", "NTS") : ""}</td><td>${t.ojt ? obPill("a", "OJT") : ""}</td>
+      <td class="obnotes">${String(t.notes || "").split("\n").filter(Boolean).map(obNoteLine).join("<br>")}</td></tr>`).join("")}</tbody></table></div>` : `<p class="hint">No aircraft entered yet.</p>`;
+  const cs = a.callsigns || [];
+  return [obCard("ob-tails", "Aircraft status", tails.length ? `${sv} of ${tails.length} serviceable` : "", tailsHtml).replace('class="card opscard"', 'class="card opscard obwide"'),
+    obCard("ob-cs", "Callsigns", "", cs.length ? `<table class="opst obt"><thead><tr><th>Callsign</th><th>ETTS</th><th>Vehicle</th></tr></thead><tbody>${cs.map(c => `<tr><td>${esc(c.callsign)}</td><td>${esc(c.etts)}</td><td>${esc(c.vehicle)}</td></tr>`).join("")}</tbody></table>${a.vehicleCap ? `<p class="hint">Vehicle cap: ${esc(a.vehicleCap)}</p>` : ""}` : `<p class="hint">None entered.</p>`)];
+}
+
+/* ---------- TV mode ---------- */
+let obWake = null;
+function renderTv(v) {
+  document.body.classList.add("tvmode");
+  if (!OB.loaded) return obNotLoaded(v);
+  if ("wakeLock" in navigator && !obWake) navigator.wakeLock.request("screen").then(l => { obWake = l; l.addEventListener("release", () => obWake = null); }).catch(() => {});
+  const crew = OB.crew.filter(c => c.active), nogo = crew.filter(c => obOutstanding(c.id).length);
+  const fl = OPS.rowsDay === todayStr() ? opsGet("flying") : null, st = fl ? opsStats(fl) : null;
+  if (OPS.rowsDay !== todayStr() && !OPS.loading) { OPS.day = todayStr(); opsLoad(OPS.day); }
+  const n = new Date();
+  v.innerHTML = `<div class="tvbar"><b>150 Falcon Det · Ops board</b><span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 16).replace(":", ""))}Z</small></span>
+      <span class="grow"></span>${st ? `<span>Today: ${st.sorties} sorties · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>` : ""}<button class="btn small" data-ob="exittv">Exit TV</button></div>
+    ${obBoardView(true)}
+    <div class="obgrid tv">${obAircraftCards().join("")}
+      ${obCard("ob-tvgo", "Aircrew status", `${crew.length - nogo.length} of ${crew.length} GO`, nogo.length ? `<div class="obtvgo">${nogo.map(c => `<span>${obPill("r", c.name)} <span class="hint">${esc(obCodes(obOutstanding(c.id)))}</span></span>`).join("")}</div>` : `<p>${obPill("g", "ALL GO")}</p>`)}</div>`;
+}
+const obLeaveTv = () => { document.body.classList.remove("tvmode"); if (obWake) { obWake.release().catch(() => {}); obWake = null; } };
+
+/* ---------- editors (board, aircraft, gonogo) ---------- */
+const bI = (p, v, w, ph) => `<input data-bp="${p}" value="${esc(v ?? "")}"${w ? ` style="width:${w}"` : ""}${ph ? ` placeholder="${esc(ph)}"` : ""}>`;
+const bT = (p, v, rows) => `<textarea data-bp="${p}" rows="${rows || 2}">${esc(v ?? "")}</textarea>`;
+const bC = (p, v, label) => `<label class="opschk"><input type="checkbox" data-bp="${p}" ${v ? "checked" : ""}>${label}</label>`;
+const bS = (p, v, opts) => `<select data-bp="${p}">${opts.map(([k, l]) => `<option value="${esc(k)}" ${String(v ?? "") === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+const bB = (op, p, i, label, tpl) => `<button type="button" class="btn small" data-bop="${op}" data-p="${p}" data-i="${i ?? ""}" data-tpl="${tpl || ""}">${label}</button>`;
+const bTools = (p, i) => `<span class="tools">${bB("up", p, i, "↑")}${bB("down", p, i, "↓")}${bB("del", p, i, "✕")}</span>`;
+const OB_ST = [["g", "Available"], ["a", "Limited"], ["r", "U/S"], ["", "-"]];
+const OB_AUTO = [["", "Auto"], ["g", "Green"], ["r", "Red"]];
+const obTpl = {
+  af: () => ({ icao: "", grp: "alt", p: false, rwy: "", fasf: "B", rsaf: "B", wx: "", restr: "", aids: [] }),
+  aid: () => obAid("", "g"),
+  ra: () => ({ item: "", tgt: "", wx: "", before: "", after: "", restr: "", hot: false }),
+  tail: () => ({ tail: "", status: "S", npc: false, nts: false, ojt: false, notes: "" }),
+  cs: () => ({ callsign: "", etts: "", vehicle: "" }),
+  leg: () => ({ code: "", label: "" }),
+};
+function obEditor(k) {
+  const d = OB.edit.data;
+  let body = "";
+  if (k === "board") {
+    body = `<div class="opsed"><div class="grid"><label>EOR${bS("eor", d.eor, [["NORMAL", "NORMAL"], ["LIMITED", "LIMITED"], ["CLOSED", "CLOSED"]])}</label><label>In hse${bI("inHse", d.inHse)}</label>
+        <label>Banner${bI("banner", d.banner, "", "e.g. BIRD MIGRATORY SEASON (OCT - NOV)")}</label><label>Airspace note${bI("zrt", d.zrt, "", "e.g. ZRT ARCACHON SFC - FL130")}</label></div>
+      <h3 class="opssub">Airfields</h3>${(d.airfields || []).map((a, i) => `<div class="blk"><div class="tablewrap"><table><thead><tr><th>ICAO</th><th>Table</th><th>P</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS override</th><th>Restrictions</th><th></th></tr></thead><tbody><tr>
+          <td>${bI(`airfields.${i}.icao`, a.icao, "60px")}</td><td>${bS(`airfields.${i}.grp`, a.grp, [["main", "Main"], ["alt", "Other"]])}</td><td>${bC(`airfields.${i}.p`, a.p, "")}</td><td>${bI(`airfields.${i}.rwy`, a.rwy, "46px")}</td>
+          <td>${bI(`airfields.${i}.fasf`, a.fasf, "46px")}</td><td>${bI(`airfields.${i}.rsaf`, a.rsaf, "46px")}</td><td>${bI(`airfields.${i}.wx`, a.wx, "130px", "blank = from METAR")}</td><td>${bI(`airfields.${i}.restr`, a.restr, "200px")}</td><td>${bTools("airfields", i)}</td></tr></tbody></table>
+        ${a.grp === "main" ? `<table><tbody><tr><td class="hint">Aids</td>${(a.aids || []).map((x, j) => `<td>${bI(`airfields.${i}.aids.${j}.name`, x.name, "90px")}${bS(`airfields.${i}.aids.${j}.s`, x.s, OB_ST)}${bB("del", `airfields.${i}.aids`, j, "✕")}</td>`).join("")}<td>${bB("add", `airfields.${i}.aids`, "", "+ Aid", "aid")}</td></tr></tbody></table>` : ""}</div></div>`).join("")}
+      ${bB("add", "airfields", "", "+ Airfield", "af")}
+      <h3 class="opssub">Cazaux</h3><div class="grid">${[["sun", "Sunrise / sunset (blank = auto)"], ["icingBand", "Icing band"], ["rwySurface", "Runway surface"], ["seaTemp", "Sea surface (°C)"], ["swell", "Sea swell"], ["bird", "Bird hazard state"], ["windHazard", "Wind hazard"], ["firing", "Firing schedule"], ["calamar", "CALAMAR"]].map(([f, l]) => `<label>${l}${bI("czx." + f, d.czx[f])}</label>`).join("")}</div>
+      <h3 class="opssub">Canopy / equipment</h3><div class="grid"><label>Canopy${bS("equip.canopy", d.equip.canopy, OB_AUTO)}</label><label>APU (A11–15)${bS("equip.apu1", d.equip.apu1, OB_AUTO)}</label><label>APU (A16–23)${bS("equip.apu2", d.equip.apu2, OB_AUTO)}</label>
+        <label>Parachute${bS("equip.parachute", d.equip.parachute, OB_ST)}</label><label>SAMAR${bI("equip.samar", d.equip.samar)}</label></div>
+      <h3 class="opssub">Restricted areas</h3><div class="tablewrap"><table><thead><tr><th>Item</th><th>TGT</th><th>WX</th><th>Before</th><th>After</th><th>Restrictions</th><th>Active</th><th></th></tr></thead><tbody>${(d.restricted || []).map((r, i) => `<tr>
+        <td>${bI(`restricted.${i}.item`, r.item, "140px")}</td><td>${bI(`restricted.${i}.tgt`, r.tgt, "70px")}</td><td>${bI(`restricted.${i}.wx`, r.wx, "70px")}</td><td>${bI(`restricted.${i}.before`, r.before, "80px")}</td><td>${bI(`restricted.${i}.after`, r.after, "80px")}</td>
+        <td>${bI(`restricted.${i}.restr`, r.restr, "150px")}</td><td>${bC(`restricted.${i}.hot`, r.hot, "")}</td><td>${bTools("restricted", i)}</td></tr>`).join("")}</tbody></table></div>${bB("add", "restricted", "", "+ Area", "ra")}
+      <p class="hint">FASF / RSAF: colour state letter (B, W, G, Y, A, R). Weather, wind, temperature, QNH and sunrise/sunset come in automatically.</p></div>`;
+  } else if (k === "aircraft") {
+    body = `<div class="opsed"><div class="tablewrap"><table><thead><tr><th>Tail</th><th>Status</th><th>Flags</th><th>Significant ADDL / NPC / AMC (one per line)</th><th></th></tr></thead><tbody>${(d.tails || []).map((t, i) => `<tr>
+        <td>${bI(`tails.${i}.tail`, t.tail, "80px", "e.g. 327#(W)")}</td><td>${bS(`tails.${i}.status`, t.status, [["S", "Serviceable"], ["US", "U/S"], ["MX", "Maintenance"]])}</td>
+        <td>${bC(`tails.${i}.npc`, t.npc, "NPC")}${bC(`tails.${i}.nts`, t.nts, "NTS")}${bC(`tails.${i}.ojt`, t.ojt, "OJT")}</td><td>${bT(`tails.${i}.notes`, t.notes, 3)}</td><td>${bTools("tails", i)}</td></tr>`).join("")}</tbody></table></div>${bB("add", "tails", "", "+ Aircraft", "tail")}
+      <h3 class="opssub">Callsigns</h3><div class="tablewrap"><table><thead><tr><th>Callsign</th><th>ETTS</th><th>Vehicle</th><th></th></tr></thead><tbody>${(d.callsigns || []).map((c, i) => `<tr>
+        <td>${bI(`callsigns.${i}.callsign`, c.callsign, "120px")}</td><td>${bI(`callsigns.${i}.etts`, c.etts, "50px")}</td><td>${bI(`callsigns.${i}.vehicle`, c.vehicle, "100px")}</td><td>${bTools("callsigns", i)}</td></tr>`).join("")}</tbody></table></div>${bB("add", "callsigns", "", "+ Callsign", "cs")}
+      <label style="max-width:300px;margin-top:8px">Vehicle cap${bI("vehicleCap", d.vehicleCap, "", "e.g. VAN - 8, ZOE - 4")}</label>
+      <p class="hint">Lines starting with NTS, AMC, NPC, OJT, CFH, Max fly or Control hours are highlighted.</p></div>`;
+  } else if (k === "gonogo") {
+    body = `<div class="opsed"><label style="max-width:240px">MIAC 4 effective till<input type="date" data-bp="miac" value="${esc(d.miac || "")}"></label>
+      <div class="tablewrap"><table><thead><tr><th>Code</th><th>Meaning</th><th></th></tr></thead><tbody>${(d.legend || []).map((l, i) => `<tr><td>${bI(`legend.${i}.code`, l.code, "80px")}</td><td>${bI(`legend.${i}.label`, l.label, "220px")}</td><td>${bTools("legend", i)}</td></tr>`).join("")}</tbody></table></div>${bB("add", "legend", "", "+ Code", "leg")}</div>`;
+  }
+  return `<div id="obEdit">${body}<div class="err" id="obErr"></div><div class="row" style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px"><button class="btn" data-ob="cancel">Cancel</button><button class="btn primary" data-ob="save">Save</button></div></div>`;
+}
+const obRerender = () => { const y = window.scrollY; render(); window.scrollTo(0, y); };
+document.addEventListener("input", e => {
+  const el = e.target; if (!OB.edit || !el.dataset || !el.dataset.bp || !el.closest("#obEdit")) return;
+  opsSetPath(OB.edit.data, el.dataset.bp, el.type === "checkbox" ? el.checked : el.value);
+});
+document.addEventListener("change", async e => {
+  const el = e.target;
+  if (OB.edit && el.dataset && el.dataset.bp && el.closest("#obEdit")) {
+    opsSetPath(OB.edit.data, el.dataset.bp, el.type === "checkbox" ? el.checked : el.value);
+    if (el.tagName === "SELECT" || el.type === "checkbox") obRerender();
+    return;
+  }
+  // Crew list edits save straight away.
+  if (el.dataset && el.dataset.crew && el.dataset.f) {
+    const c = OB.crew.find(x => x.id === el.dataset.crew); if (!c) return;
+    const nc = { ...c, [el.dataset.f]: el.type === "checkbox" ? el.checked : el.value || null };
+    const { error } = await S.sb.rpc("crew_save", { p_id: c.id, p_name: nc.name, p_grp: nc.grp, p_profile: nc.profile_id || null, p_active: nc.active, p_sort: nc.sort });
+    if (error) { toast(errMsg(error)); return obRerender(); }
+    Object.assign(c, nc, { name: String(nc.name).toUpperCase().trim(), grp: String(nc.grp || c.grp).toUpperCase().trim() }); toast("Saved.");
+    return;
+  }
+  if (el.dataset && el.dataset.ob === "ack") {
+    el.disabled = true;
+    const { error } = await S.sb.rpc("rs_done", { p_item: el.dataset.item, p_crew: el.dataset.crew, p_done: el.checked });
+    el.disabled = false;
+    if (error) { el.checked = !el.checked; return toast(errMsg(error)); }
+    const a = OB.acks.find(x => x.item_id === el.dataset.item && x.crew_id === el.dataset.crew); if (a) a.done_at = el.checked ? new Date().toISOString() : null;
+    return obRerender();
+  }
+  if (el.dataset && el.dataset.ob === "showclosed") { OB.showClosed = el.checked; obRerender(); }
+});
+document.addEventListener("click", async e => {
+  const op = e.target.closest("#obEdit [data-bop]");
+  if (op && OB.edit) {
+    const p = op.dataset.p, i = +op.dataset.i;
+    let arr = opsPath(OB.edit.data, p); if (!arr) { opsSetPath(OB.edit.data, p, []); arr = opsPath(OB.edit.data, p); }
+    if (op.dataset.bop === "add") arr.push(obTpl[op.dataset.tpl]());
+    else if (op.dataset.bop === "del") arr.splice(i, 1);
+    else if (op.dataset.bop === "up" && i > 0) [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]];
+    else if (op.dataset.bop === "down" && i < arr.length - 1) [arr[i + 1], arr[i]] = [arr[i], arr[i + 1]];
+    return obRerender();
+  }
+  const el = e.target.closest("[data-ob]"); if (!el || el.tagName === "INPUT") return;
+  const a = el.dataset.ob;
+  if (a === "edit") { const k = el.dataset.k; OB.edit = { key: k, data: opsClone(obDoc(k)), version: OB.state[k] ? OB.state[k].version : 0 }; render(); }
+  else if (a === "cancel") { OB.edit = null; render(); }
+  else if (a === "save") {
+    const ed = OB.edit; el.disabled = true;
+    const { data, error } = await S.sb.rpc("ops_state_save", { p_key: ed.key, p_data: ed.data, p_version: ed.version });
+    el.disabled = false;
+    if (error) {
+      if (/someone else/i.test(error.message)) { await ask("Not saved", error.message, "OK"); OB.edit = null; return obLoad(); }
+      const er = $("#obErr"); if (er) er.textContent = errMsg(error); return;
+    }
+    OB.state[ed.key] = { key: ed.key, data: ed.data, version: data, updated_at: new Date().toISOString(), updated_by: S.me.id };
+    OB.edit = null; toast("Saved."); render();
+  }
+  else if (a === "metar") {
+    el.disabled = true; el.textContent = "Refreshing…";
+    const { error } = await S.sb.functions.invoke("metar", { body: {} });
+    el.disabled = false; el.textContent = "Refresh METARs";
+    if (error) return toast("Couldn't refresh: " + errMsg(error));
+    toast("METARs refreshed."); obLoad();
+  }
+  else if (a === "done") {
+    if (!await ask("Done?", "Confirm you've read and understood this item.", "Done")) return;
+    const { error } = await S.sb.rpc("rs_done", { p_item: el.dataset.item, p_crew: el.dataset.crew, p_done: true });
+    if (error) return toast(errMsg(error));
+    toast("Signed off."); obLoad();
+  }
+  else if (a === "toggle") { OB.open[el.dataset.item] = !OB.open[el.dataset.item]; obRerender(); }
+  else if (a === "close") {
+    const { error } = await S.sb.rpc("rs_close", { p_item: el.dataset.item, p_closed: el.dataset.closed === "1" });
+    if (error) return toast(errMsg(error)); obLoad();
+  }
+  else if (a === "newitem") obNewItem();
+  else if (a === "assign") obAssign(el.dataset.item);
+  else if (a === "addcrew") {
+    const name = $("#obNewName").value.trim(); if (!name) return toast("Enter a name.");
+    const { error } = await S.sb.rpc("crew_save", { p_id: null, p_name: name, p_grp: $("#obNewGrp").value, p_profile: $("#obNewLogin").value || null, p_active: true, p_sort: OB.crew.length });
+    if (error) return toast(errMsg(error)); toast(`${name.toUpperCase()} added.`); obLoad();
+  }
+  else if (a === "addtrainees") {
+    const have = new Set(OB.crew.map(c => opsNorm(c.name))); let n = 0;
+    for (const t of active()) {
+      if (have.has(opsNorm(t.name))) continue;
+      const p = S.profiles.find(x => x.trainee_id === t.id);
+      const { error } = await S.sb.rpc("crew_save", { p_id: null, p_name: t.name, p_grp: "TRAINEES", p_profile: p ? p.id : null, p_active: true, p_sort: 500 + n });
+      if (error) return toast(errMsg(error)); n++;
+    }
+    toast(n ? `${n} trainee${n > 1 ? "s" : ""} added.` : "All trainees are already on the list."); obLoad();
+  }
+  else if (a === "exittv") { obLeaveTv(); S.tab = "opsboard"; render(); }
+});
+
+// Pick crew dialog: group buttons + one checkbox per person. onOk(ids, dialog) returns an error
+// message to show (dialog stays open, nothing typed is lost) or "" to close.
+function obPickCrew(title, intro, okLabel, extraHtml, preset, onOk) {
+  let d = document.getElementById("dlgOb");
+  if (!d) { d = document.createElement("dialog"); d.id = "dlgOb"; document.body.appendChild(d); }
+  const crew = OB.crew.filter(c => c.active), groups = [...new Set(crew.map(c => c.grp))];
+  d.innerHTML = `<div class="dlg"><h2 tabindex="-1" autofocus>${esc(title)}</h2>${intro ? `<p class="hint">${esc(intro)}</p>` : ""}${extraHtml || ""}
+    <label style="margin-bottom:4px">Who needs to do it</label>
+    <div class="tools" style="margin-bottom:6px"><button type="button" class="btn small" data-g="*">Everyone</button>${groups.map(g => `<button type="button" class="btn small" data-g="${esc(g)}">${esc(g)}</button>`).join("")}<button type="button" class="btn small" data-g="">Clear</button></div>
+    <div class="pax" style="max-height:220px">${crew.map(c => `<label><input type="checkbox" value="${esc(c.id)}" data-grp="${esc(c.grp)}" ${preset && preset.has(c.id) ? "checked disabled" : ""}>${esc(c.name)}</label>`).join("") || `<span class="hint">Add people to the crew list first.</span>`}</div>
+    <div class="err" id="obPickErr"></div><div class="row"><button class="btn" data-x="cancel">Cancel</button><button class="btn primary" data-x="ok">${esc(okLabel)}</button></div></div>`;
+  d.onclick = async e => {
+    const g = e.target.closest("[data-g]");
+    if (g) {
+      const k = g.dataset.g;
+      d.querySelectorAll(".pax input:not(:disabled)").forEach(i => { if (k === "*") i.checked = true; else if (k === "") i.checked = false; else if (i.dataset.grp === k) i.checked = true; });
+      return;
+    }
+    const x = e.target.closest("[data-x]"); if (!x) return;
+    if (x.dataset.x === "cancel") return d.close();
+    const ids = [...d.querySelectorAll(".pax input:checked:not(:disabled)")].map(i => i.value);
+    x.disabled = true;
+    const err = await onOk(ids, d);
+    x.disabled = false;
+    if (err) d.querySelector("#obPickErr").textContent = err; else d.close();
+  };
+  d.oncancel = e => { e.preventDefault(); d.close(); };
+  d.showModal();
+}
+function obNewItem() {
+  const legend = obGet("gonogo").legend || [];
+  obPickCrew("New read & sign item", "", "Send", `<div class="grid2"><label>Code<input id="obiCode" list="obCodes" value="RS" maxlength="10"></label><label>Title<input id="obiTitle" maxlength="200" placeholder="e.g. SAM 12: bird strike advisory"></label></div>
+      <datalist id="obCodes">${legend.map(l => `<option value="${esc(l.code)}">${esc(l.label)}</option>`).join("")}</datalist>
+      <label>What to read (optional)<textarea id="obiBody" rows="4" placeholder="Paste the notice or key points"></textarea></label>
+      <label>Link to document (optional)<input id="obiLink" type="url" placeholder="https://…"></label>`, null, async (ids, d) => {
+    const title = d.querySelector("#obiTitle").value.trim();
+    if (!title) return "Enter a title.";
+    if (!ids.length) return "Pick who needs to do it.";
+    const { error } = await S.sb.rpc("rs_create", { p_code: d.querySelector("#obiCode").value, p_title: title, p_body: d.querySelector("#obiBody").value, p_link: d.querySelector("#obiLink").value.trim(), p_crew: ids });
+    if (error) return errMsg(error);
+    toast(`Sent to ${ids.length} ${ids.length === 1 ? "person" : "people"}.`); obLoad(); return "";
+  });
+}
+function obAssign(itemId) {
+  const have = new Set(OB.acks.filter(a => a.item_id === itemId).map(a => a.crew_id));
+  obPickCrew("Add people", "People already on this item are ticked and greyed out.", "Add", "", have, async ids => {
+    if (!ids.length) return "";
+    const { error } = await S.sb.rpc("rs_assign", { p_item: itemId, p_crew: ids });
+    if (error) return errMsg(error);
+    toast("Added."); obLoad(); return "";
+  });
+}
+
+/* ---------- styles ---------- */
+(() => {
+  const s = document.createElement("style");
+  s.textContent = `
+.obhead{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;margin-bottom:8px;font-size:.9rem}
+.obhead b{font:700 1.2rem var(--cond);text-transform:uppercase}
+.obbanner{background:var(--out);color:#1a1200;text-align:center;font:700 .95rem var(--cond);border-radius:4px;padding:3px 8px;margin-bottom:10px;letter-spacing:.03em}
+.obgrid{display:grid;grid-template-columns:1fr;gap:0 14px}
+@media (min-width:900px){.obgrid{grid-template-columns:1fr 1fr}.obgrid .obwide{grid-column:1/-1}}
+.obpill{display:inline-block;padding:1px 7px;border-radius:3px;font:600 .8rem var(--body);white-space:nowrap;background:color-mix(in srgb,var(--muted) 18%,transparent);color:var(--ink)}
+.obst{display:inline-block;padding:1px 7px;border-radius:3px;font-size:.8rem;font-weight:600;background:color-mix(in srgb,var(--muted) 18%,transparent)}
+.obst-g{background:#1f9d55;color:#fff}.obst-a{background:#e0a800;color:#1a1200}.obst-r{background:#d63c3c;color:#fff}.obst-b{background:#2563eb;color:#fff}.obst-n{opacity:.7}
+.obaids{display:flex;flex-wrap:wrap;gap:3px}
+table.obt{min-width:0}
+.obnote{margin:8px 0 0;font-weight:600}
+.obraw{font:500 .78rem ui-monospace,Menlo,Consolas,monospace;color:var(--muted);margin:8px 0 0;word-break:break-word}
+.obwind{display:flex;gap:14px;align-items:center}
+.obrose{width:110px;height:110px;flex:none}
+.obbig{font:700 1.6rem var(--cond)}
+.obeq{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;font-size:.9rem}
+.obgo{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:4px 16px}
+.obgo td{padding:3px 6px}
+.obitem{border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-bottom:8px;background:var(--field)}
+.obitem.closed{opacity:.6}
+.obitemhead{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}
+.obbody{margin:6px 0;font-size:.9rem}
+.obacks{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:2px 10px;margin-top:6px}
+.obleg{grid-template-columns:max-content 1fr}
+.obamb{color:var(--out);font-weight:600}
+.obnotes{font-size:.82rem}
+table.obed input,table.obed select{padding:4px 6px;font-size:.85rem;margin:0}
+table.obed{min-width:0} table.obed td,table.obed th{border:0;padding:2px 4px;background:none}
+.obtvgo{display:flex;flex-wrap:wrap;gap:6px 14px}
+body.tvmode .topbar,body.tvmode #subtabs,body.tvmode #tally{display:none!important}
+body.tvmode .wrap{max-width:none;padding:10px 16px}
+body.tvmode{font-size:17px}
+.tvbar{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-bottom:10px}
+.tvbar b{font:700 1.5rem var(--cond)} .tvclock{font:700 1.5rem var(--cond)} .tvbar .grow{flex:1}
+@media (min-width:1400px){body.tvmode .obgrid.tv{grid-template-columns:2fr 1fr 1fr}body.tvmode .obgrid.tv .obwide{grid-column:auto}}`;
+  document.head.appendChild(s);
+})();

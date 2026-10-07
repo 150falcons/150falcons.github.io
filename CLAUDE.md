@@ -17,7 +17,7 @@ A book-in / book-out board for RSAF trainees at 150 Squadron (BA 120 Cazaux, Fra
 ## 2b. Name and navigation (7 Oct 2026)
 - **Name:** the site is **150 Falcon Det** (page title and top bar). Tapping the name goes to the home screen.
 - **Home** (after sign-in): two cards, **Trainee movement** (in base / out / on leave / overdue, pending approvals) and **Operations** (today's sorties and first takeoff).
-- **Top bar areas:** Movement · Operations · Admin (Roster for trainees). Sub-tabs: Movement → Board / Log / Vehicles; Operations → Flying program. The movement counts strip only shows inside Movement. Ops assistants open on Operations.
+- **Top bar areas:** Movement · Operations · Admin (Roster for trainees). Sub-tabs: Movement → Board / Log / Vehicles; Operations → Ops board / Flying program / Go / No-Go / Aircraft. The movement counts strip only shows inside Movement. Ops assistants open on Operations.
 - **Code:** `AREA` (tab → area) and `SUBTABS` (area → pages) in `index.html`; tabs are `home`, `board`, `log`, `vehicles`, `ops`, `roster`.
 
 ## 3. Business rules (agreed with Gordon)
@@ -62,6 +62,15 @@ A book-in / book-out board for RSAF trainees at 150 Squadron (BA 120 Cazaux, Fra
 - **Ops assistant account:** a `role = 'user'` login with no trainee and `ops_editor = true`, made under Admin → Ops assistants. It opens on the Ops tab and can't book movements.
 - **Worked out, not typed:** planned sorties / hours (non-"ops add" aircraft lines × ETD–ETA), first takeoff, last landing, HH:MM; duty-table cells get `#` / `(#)` / `SIMS` / `SXO` / `OPS O` automatically from the programme (sims are placed in the wave whose time window they fall in); editors only type extras (LATE IN, ACAD…). QFI rest = today's in − yesterday's out (from yesterday's duties), duty = out − in.
 - **Other features:** day picker, Copy from another day (duty notes and in/out times aren't copied), "Your day" card for the signed-in person, live updates via realtime, PDF = browser print of a sheet-style layout with RESTRICTED top and bottom.
+
+## 3c. Ops board, Go / No-Go, Aircraft, TV (added 8 Oct 2026)
+- **Where:** Operations sub-tabs: Ops board · Flying program · Go / No-Go · Aircraft; TV mode from the Ops board page. Code in `opsboard.js` (`?v=` cache-buster; bump on change). Replaces Gordon's AutoBOTS OPSBOARD Excel.
+- **Ops board:** document `ops_state.key='board'` (EOR, banner, airfields with RWY / FASF / RSAF colour state / restrictions / aids with g-a-r status, Cazaux extras, equipment, restricted areas). WX/VIS per airfield comes from `ops_wx` unless overridden. Worked out like the Excel: governing wind = max(speed, gust); head/tail and crosswind vs the LFBC runway in use; humidity from temp/dewpoint; icing = T<6 & RH>50%; canopy green if wind<50 and both components <35; APU (A11–15) red if T<1 or crosswind vs 280° >14.9 kt, APU (A16–23) same vs 315°; immersion suit: sea ≥16 → NO, sea <15.5 & air <22 → YES; sunrise/sunset calculated for Cazaux (overridable).
+- **METARs:** edge function `metar` (verify_jwt off; accepts the `telegram_webhook_secret` header or a signed-in user's JWT) fetches aviationweather.gov JSON for the board's airfields + LFBC/LFBM/LFBD/LFBZ/LFBG/LFSL/LFBE and upserts `ops_wx`. pg_cron `metar-refresh` every 15 min via `metar_refresh()`. "Refresh METARs" button calls it directly.
+- **Go / No-Go = read & sign:** `crew` (Go/No-Go roster: name as on the programme, group, optional linked login), `rs_items` (code, title, body, link, closed), `rs_acks` (item × crew, done_at). A person is NO-GO while they have an undone ack on an open item. RPCs: `rs_create`, `rs_assign`, `rs_close` (ops editors), `rs_done` (ops editors for anyone; a linked person for themselves), `crew_save`. MIAC 4 date + legend in `ops_state.key='gonogo'`. Linked crew names also feed "Your day" on the flying program.
+- **Aircraft:** `ops_state.key='aircraft'` (tails: status S/US/MX, NPC/NTS/OJT, notes; callsigns → ETTS/vehicle; vehicle cap). Editable by `can_edit_aircraft()` = ops editors + `profiles.eng_editor` (engineer logins, made under Admin → Ops & engineering logins; they open on Aircraft). `set_eng_editor` admin only.
+- **Saving:** `ops_state_save(key, data, version)` with the same optimistic version check as `ops_save`.
+- **TV mode:** full-screen dark dashboard (ops board + aircraft + who is NO-GO + today's sorties), live via realtime, keeps the screen awake where the browser allows. Sign the TV in with any login (e.g. the ops assistant).
 
 ## 4. Telegram message formats (Gordon specified these, keep them)
 - **Car book-out:**

@@ -156,6 +156,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 .subtabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:-4px 0 14px;overflow-x:auto}
 .subtabs button{background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:8px 12px;font:600 1rem var(--cond);color:var(--muted);cursor:pointer;white-space:nowrap}
 .subtabs button[aria-selected="true"]{color:var(--ink);border-color:var(--ink)}
+@media (max-width:420px){.subtabs button{padding:8px 7px;font-size:.92rem}}
 .homegrid{display:grid;grid-template-columns:1fr;gap:14px;margin-top:8px}
 @media (min-width:700px){.homegrid{grid-template-columns:1fr 1fr}}
 .homecard{display:block;width:100%;text-align:left;background:var(--paper);border:1px solid var(--line);border-left:6px solid var(--in);border-radius:6px;padding:18px;cursor:pointer;color:var(--ink)}
@@ -214,7 +215,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
     <button class="brand" data-tab="home">150 Falcon Det</button>
     <nav class="tabs" role="tablist" id="tabs" hidden>
       <button role="tab" data-tab="board" data-area="move" aria-selected="false">Movement</button>
-      <button role="tab" data-tab="ops" data-area="ops" aria-selected="false">Operations</button>
+      <button role="tab" data-tab="opsboard" data-area="ops" aria-selected="false">Operations</button>
       <button role="tab" data-tab="roster" data-area="admin" aria-selected="false">Roster</button>
     </nav>
     <div class="clock"><span id="clock"></span><button class="signout" id="btnSignOut" hidden>Sign out</button></div>
@@ -308,6 +309,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
     <label>Appointment<select id="eAppt"><option value="">None</option><option>CO</option><option>DYCO</option><option>OC A</option><option>OC B</option><option>CC</option><option>QFI</option></select></label>
   </div>
   <label id="eOpsWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eOps" type="checkbox" style="width:auto;margin:0">Can edit the ops board</label>
+  <label id="eEngWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eEng" type="checkbox" style="width:auto;margin:0">Can edit aircraft status</label>
   <label id="eUserWrap">Username<input id="eUser" maxlength="30" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
   <p class="hint" id="eHint" style="margin:-4px 0 10px"></p>
   <div class="err" id="editErr"></div>
@@ -365,7 +367,8 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 
 <div class="toast" id="toast" hidden></div>
 
-<script src="ops.js?v=1"></script>
+<script src="ops.js?v=2"></script>
+<script src="opsboard.js?v=1"></script>
 <script>
 /* =====================================================================
    SETUP: paste your Supabase Project URL and anon (public) key here.
@@ -504,7 +507,7 @@ async function fetchAll() {
   const sb = S.sb;
   const res = await Promise.all([
     sb.from("trainees").select("*").order("course").order("name"),
-    sb.from("profiles").select("id,email,display_name,role,trainee_id,must_change_password,appointment,ops_editor"),
+    sb.from("profiles").select("id,email,display_name,role,trainee_id,must_change_password,appointment,ops_editor,eng_editor"),
     sb.from("vehicles").select("*").order("description"),
     sb.from("movements").select("*").in("status", ["out", "pending"]),
     sb.from("movements").select("*").order("out_at", { ascending: false }).limit(300),
@@ -525,6 +528,8 @@ function subscribe() {
   for (const t of ["trainees", "profiles", "vehicles", "movements", "leaves"])
     S.chan.on("postgres_changes", { event: "*", schema: "public", table: t }, refetchSoon);
   S.chan.on("postgres_changes", { event: "*", schema: "public", table: "ops_sections" }, p => { S.homeOps = null; opsRealtime(p); if (S.tab === "home") render(); });
+  for (const t of ["ops_state", "ops_wx", "crew", "rs_items", "rs_acks"])
+    S.chan.on("postgres_changes", { event: "*", schema: "public", table: t }, obRealtime);
   S.chan.subscribe();
 }
 async function adminApi(body) {
@@ -546,15 +551,16 @@ async function startSession(session) {
   const { data, error } = await S.sb.from("profiles").select("*").eq("id", session.user.id).single();
   if (error || !data) { toast("Your account isn't set up yet. Ask an instructor."); await S.sb.auth.signOut(); return; }
   S.me = data;
-  if (isOpsAssistant(S.me)) S.tab = "ops";
+  if (isOpsAssistant(S.me)) S.tab = S.me.ops_editor ? "opsboard" : "aircraft";
   if (S.me.must_change_password) { render(); return; }
-  await fetchAll(); subscribe();
+  await fetchAll(); subscribe(); obLoad();
 }
 async function signOut() {
   if (S.chan) { await S.sb.removeChannel(S.chan); S.chan = null; }
   await S.sb.auth.signOut();
   Object.assign(S, { session: null, me: null, ready: false, roster: [], profiles: [], vehicles: [], open: [], log: [], tab: "home", homeOps: null });
   Object.assign(OPS, { day: null, rowsDay: null, rows: {}, edit: null });
+  Object.assign(OB, { loaded: false, state: {}, wx: {}, crew: [], items: [], acks: [], edit: null }); obLeaveTv();
   render();
 }
 
@@ -589,28 +595,33 @@ function render() {
   document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.area === area));
   document.querySelector('#tabs [data-tab="roster"]').textContent = isAdmin() ? "Admin" : "Roster";
   renderTally();
+  if (S.tab !== "tv") obLeaveTv();
   if (S.tab === "home") renderHome(v);
   else if (S.tab === "board") renderBoard(v);
   else if (S.tab === "log") renderLog(v);
   else if (S.tab === "vehicles") renderVehicles(v);
   else if (S.tab === "ops") renderOps(v);
+  else if (S.tab === "opsboard") renderOpsBoard(v);
+  else if (S.tab === "gonogo") renderGoNoGo(v);
+  else if (S.tab === "aircraft") renderAircraft(v);
+  else if (S.tab === "tv") renderTv(v);
   else if (isAdmin()) renderAdmin(v); else renderRoster(v);
 }
 
 // Top-level areas (top bar) and their pages (sub-tabs).
-const AREA = { home: "home", board: "move", log: "move", vehicles: "move", ops: "ops", roster: "admin" };
-const SUBTABS = { move: [["board", "Board"], ["log", "Log"], ["vehicles", "Vehicles"]], ops: [["ops", "Flying program"]] };
+const AREA = { home: "home", board: "move", log: "move", vehicles: "move", ops: "ops", opsboard: "ops", gonogo: "ops", aircraft: "ops", tv: "ops", roster: "admin" };
+const SUBTABS = { move: [["board", "Board"], ["log", "Log"], ["vehicles", "Vehicles"]], ops: [["opsboard", "Ops board"], ["ops", "Flying program"], ["gonogo", "Go / No-Go"], ["aircraft", "Aircraft"]] };
 function renderHome(v) {
   const now = Date.now(), ob = openByTrainee(); let i = 0, o = 0, l = 0, lv = 0;
   for (const t of active()) { const m = ob[t.id]; if (leaveOf(t.id)) lv++; else if (!m || isPend(m)) i++; else if (isLate(m, now)) l++; else o++; }
   const pend = S.open.filter(isPend).length, day = todayStr();
   const mv = [`${i} in base`, `${o + l} out`, lv && `${lv} on leave`, l && `${l} overdue`].filter(Boolean).join(" · ");
-  const hs = S.homeOps && S.homeOps.day === day ? S.homeOps : null;
+  const hs = S.homeOps && S.homeOps.day === day ? S.homeOps : null, myRs = OB.loaded ? obMyPending() : [];
   const opsLine = !hs ? "Loading today's programme…" : !hs.any ? "No programme for today yet"
     : `Today: ${hs.st.sorties} sortie${hs.st.sorties === 1 ? "" : "s"}${hs.st.first != null ? ` · first takeoff ${opsHM(hs.st.first)}` : ""}`;
   v.innerHTML = `<div class="homegrid">
     <button class="homecard" data-tab="board"><h2>Trainee movement</h2><p>${esc(mv)}</p>${pend ? `<p>${pend} awaiting approval</p>` : ""}<span>Board, log and vehicles</span></button>
-    <button class="homecard ops" data-tab="ops"><h2>Operations</h2><p>${esc(opsLine)}</p><span>Flying program</span></button></div>`;
+    <button class="homecard ops" data-tab="${myRs.length ? "gonogo" : "opsboard"}"><h2>Operations</h2><p>${esc(opsLine)}</p>${myRs.length ? `<p><span class="obpill obst-r">${myRs.length} to read &amp; sign</span></p>` : ""}<span>Ops board, flying program, Go / No-Go, aircraft</span></button></div>`;
   if (!hs) S.sb.from("ops_sections").select("section,data").eq("day", day).then(({ data }) => {
     const fl = (data || []).find(r => r.section === "flying");
     S.homeOps = { day, any: (data || []).some(r => r.data && Object.keys(r.data).length), st: opsStats(fl ? fl.data : { waves: [] }) };
@@ -673,7 +684,7 @@ function renderBoard(v) {
   }
   let idCard = "";
   if (mine) idCard = `<p class="hint idline">Signed in as <strong>${esc(mine.name)}</strong>${mine.can_drive === false ? " (non-driver)" : ""}.</p>`;
-  else if (!isAdmin() && !S.me.ops_editor) idCard = `<div class="card idcard"><h2>Account not linked</h2><p class="hint">Your login isn't linked to a name on the roster yet. Ask an instructor to fix it.</p></div>`;
+  else if (!isAdmin() && !S.me.ops_editor && !S.me.eng_editor) idCard = `<div class="card idcard"><h2>Account not linked</h2><p class="hint">Your login isn't linked to a name on the roster yet. Ask an instructor to fix it.</p></div>`;
 
   const pend = S.open.filter(isPend).sort((a, b) => ms(a.etd) - ms(b.etd));
   const pendHtml = pend.map(m => {
@@ -1262,13 +1273,14 @@ function renderAdmin(v) {
         <label>Name / callsign<input id="iName" maxlength="60" placeholder="e.g. CPT TAN"></label>
         <label>Username<input id="iEmail" autocapitalize="none" placeholder="e.g. tanjh"></label>
         <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddAdmin">Add instructor</button></div></div>
-      <div class="card"><h2>Ops assistants (${opsAsst.length})</h2>
-        ${opsAsst.length ? `<ul class="rlist">${opsAsst.map(p => `<li><span><strong>${esc(p.display_name || p.email)}</strong>${p.ops_editor ? "" : ` <span class="tag nd">Can't edit</span>`}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.must_change_password ? " (temporary password)" : ""}</span></span>
+      <div class="card"><h2>Ops &amp; engineering logins (${opsAsst.length})</h2>
+        ${opsAsst.length ? `<ul class="rlist">${opsAsst.map(p => `<li><span><strong>${esc(p.display_name || p.email)}</strong>${p.ops_editor ? ` <span class="tag open">Ops</span>` : ""}${p.eng_editor ? ` <span class="tag open">Aircraft</span>` : ""}${p.ops_editor || p.eng_editor ? "" : ` <span class="tag nd">Can't edit</span>`}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.must_change_password ? " (temporary password)" : ""}</span></span>
           <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button><button class="btn small" data-act="resetpw" data-id="${esc(p.id)}">Reset password</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button></span></li>`).join("")}</ul>` : ""}
-        <p class="hint" style="margin-top:6px">A login that can edit the ops board (and view everything) without instructor admin rights. The CO, DYCO and OCs can always edit; tick other instructors under Edit.</p>
-        <label>Name<input id="oaName" maxlength="60" placeholder="e.g. OPS ASST"></label>
+        <p class="hint" style="margin-top:6px">Logins without instructor admin rights. An ops assistant edits the flying program, ops board and Go / No-Go; an engineer edits aircraft status only. The CO, DYCO and OCs can always edit; tick other instructors under Edit.</p>
+        <label>Type<select id="oaType"><option value="ops">Ops assistant</option><option value="eng">Engineer (aircraft status)</option></select></label>
+        <label>Name<input id="oaName" maxlength="60" placeholder="e.g. OPS ASST or ENG"></label>
         <label>Username<input id="oaUser" autocapitalize="none" placeholder="e.g. opsasst"></label>
-        <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddOps">Add ops assistant</button></div></div>
+        <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddOps">Add login</button></div></div>
       <div class="card"><h2>Telegram</h2>
         ${isOC() ? `<p class="hint">Get travel requests in your own Telegram and approve or reject them there. <span id="tgLinkState"></span></p>
         <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn primary" data-act="tglink">Link Telegram</button></div>` : ""}
@@ -1356,10 +1368,11 @@ async function addOpsAssistant() {
   if (!validUser(user)) return toast("Usernames can only use letters, numbers, dots and dashes (3-30 characters).");
   const pw = tempPw();
   try {
+    const eng = $("#oaType").value === "eng";
     const r = await adminApi({ action: "create", email: toLogin(user), password: pw, display_name: name, role: "user" });
-    const { error } = await S.sb.rpc("set_ops_editor", { p_user: r.user_id, p_on: true });
+    const { error } = await S.sb.rpc(eng ? "set_eng_editor" : "set_ops_editor", { p_user: r.user_id, p_on: true });
     if (error) throw error;
-    fetchAll(); await ask("Ops assistant added", `${name}: username ${user}, temporary password ${pw}. They must set their own password at first sign-in.`, "OK");
+    fetchAll(); await ask(eng ? "Engineer login added" : "Ops assistant added", `${name}: username ${user}, temporary password ${pw}. They must set their own password at first sign-in.`, "OK");
   } catch (e) { toast(e.message); }
 }
 async function removeInstructor(uid) {
@@ -1415,6 +1428,7 @@ function openEdit(key) {
   $("#eApptWrap").hidden = !inst;
   $("#eAppt").value = inst ? (acct.appointment || "") : "";
   $("#eOpsWrap").hidden = !acct || (!inst && !isOpsAssistant(acct)); $("#eOps").checked = !!(acct && acct.ops_editor);
+  $("#eEngWrap").hidden = !acct || !isOpsAssistant(acct); $("#eEng").checked = !!(acct && acct.eng_editor);
   $("#eHint").textContent = acct ? "Changing the username doesn't change the password. Tell them their new username." : "No login yet. Use Create login on the Admin tab to give them one.";
   $("#editErr").textContent = ""; $("#dlgEdit").showModal(); $("#eName").focus();
 }
@@ -1439,6 +1453,10 @@ $("#btnEdit").onclick = async () => {
           const { error } = await S.sb.rpc("set_role", { p_user: acct.id, p_appointment: appt, p_acting: null });
           if (error) throw error;
         }
+      }
+      if (!$("#eEngWrap").hidden && $("#eEng").checked !== !!acct.eng_editor) {
+        const { error } = await S.sb.rpc("set_eng_editor", { p_user: acct.id, p_on: $("#eEng").checked });
+        if (error) throw error;
       }
       if (!$("#eOpsWrap").hidden && $("#eOps").checked !== !!acct.ops_editor) {
         const { error } = await S.sb.rpc("set_ops_editor", { p_user: acct.id, p_on: $("#eOps").checked });
@@ -1479,7 +1497,7 @@ $("#btnSignOut").onclick = signOut;
 
 /* ---------- start ---------- */
 renderClock();
-setInterval(() => { renderClock(); if (S.ready && (S.tab === "board" || S.tab === "home") && !document.querySelector("dialog[open]")) render(); else if (S.ready) renderTally(); }, 30000);
+setInterval(() => { renderClock(); if (S.ready && ["board", "home", "tv", "opsboard"].includes(S.tab) && !OB.edit && !document.querySelector("dialog[open]")) render(); else if (S.ready) renderTally(); }, 30000);
 // After sign-in, the board only opens for phones in France: location must be shared, and inside metropolitan France
 // (rough box incl. Corsica). Runs in the browser, so it keeps casual outsiders out, not determined ones.
 const inFrance = l => l.lat >= 41.3 && l.lat <= 51.15 && l.lng >= -5.2 && l.lng <= 9.6;

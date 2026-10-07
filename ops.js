@@ -63,7 +63,7 @@ const opsNorm = s => String(s ?? "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").t
 const opsHas = (text, name) => { const n = opsNorm(name); return !!n && (" " + opsNorm(text) + " ").includes(" " + n + " "); };
 const opsCrewHas = (a, n) => opsNorm(a.crew1) === n || opsNorm(a.crew2) === n;
 const opsLineUsed = a => !!(a.crew1 || a.crew2 || a.tail || a.mission);
-const opsMyNames = () => [me() && me().name, S.me && S.me.display_name].filter(Boolean).map(opsNorm).filter((n, i, a) => n && a.indexOf(n) === i);
+const opsMyNames = () => [me() && me().name, S.me && S.me.display_name, ...(typeof OB !== "undefined" ? obMyCrew().map(c => c.name) : [])].filter(Boolean).map(opsNorm).filter((n, i, a) => n && a.indexOf(n) === i);
 // Escape, and highlight the signed-in person's name.
 function opsX(v) {
   let h = esc(v);
