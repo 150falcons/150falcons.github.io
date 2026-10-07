@@ -526,6 +526,8 @@ async function adminApi(body) {
 /* ---------- auth ---------- */
 async function startSession(session) {
   S.session = session;
+  $("#btnSignOut").hidden = false;
+  if (!await franceGate()) return;
   const { data, error } = await S.sb.from("profiles").select("*").eq("id", session.user.id).single();
   if (error || !data) { toast("Your account isn't set up yet. Ask an instructor."); await S.sb.auth.signOut(); return; }
   S.me = data;
@@ -1407,7 +1409,7 @@ $("#btnSignOut").onclick = signOut;
 /* ---------- start ---------- */
 renderClock();
 setInterval(() => { renderClock(); if (S.ready && S.tab === "board" && !document.querySelector("dialog[open]")) render(); else if (S.ready) renderTally(); }, 30000);
-// The board only opens for phones in France: location must be shared, and inside metropolitan France
+// After sign-in, the board only opens for phones in France: location must be shared, and inside metropolitan France
 // (rough box incl. Corsica). Runs in the browser, so it keeps casual outsiders out, not determined ones.
 const inFrance = l => l.lat >= 41.3 && l.lat <= 51.15 && l.lng >= -5.2 && l.lng <= 9.6;
 async function franceGate() {
@@ -1415,7 +1417,8 @@ async function franceGate() {
   for (;;) {
     v.innerHTML = `<div class="empty">Checking your location…</div>`;
     const l = await getLoc();
-    if (!l.error && inFrance(l)) return;
+    if (!S.session) return false; // signed out meanwhile
+    if (!l.error && inFrance(l)) return true;
     const [title, body] = l.error === "denied"
       ? ["Location needed", "This board is only for personnel stationed in France. Allow location access for this site in your browser settings, then tap Try again."]
       : l.error ? ["Couldn't get your location", "Check that location is turned on for your phone and browser, then tap Try again."]
@@ -1427,7 +1430,6 @@ async function franceGate() {
 }
 (async () => {
   if (SUPABASE_URL.startsWith("PASTE") || !window.supabase) return render();
-  await franceGate();
   S.sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   S.sb.auth.onAuthStateChange((event) => { if (event === "SIGNED_OUT" && S.session) { S.session = null; S.me = null; S.ready = false; render(); } });
   const { data: { session } } = await S.sb.auth.getSession();

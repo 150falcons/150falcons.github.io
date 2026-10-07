@@ -19,7 +19,7 @@ A book-in / book-out board for RSAF trainees at 150 Squadron (BA 120 Cazaux, Fra
   - **No emails.** Usernames are stored in Supabase Auth as `<username>@150sqn.local`, and the page adds or strips that suffix.
   - **Two roles:** admin (instructor) and user (trainee).
   - **First sign-in:** a trainee must replace the temporary password before using the board.
-- **France only (added 7 Oct, Gordon's request):** on opening, the page asks for location and only continues inside metropolitan France (box: lat 41.3–51.15, lng −5.2–9.6, so it spills slightly into neighbours). Denied → "Location needed"; outside → "You are not in France"; both have Try again. Applies to everyone, including instructors and trainees on leave abroad. It's a browser-side check (keeps casual outsiders out, can be faked); the real protection is accounts + RLS.
+- **France only (added 7 Oct, Gordon's request):** after a successful sign-in (and each time a signed-in user opens the page), it asks for location and only shows the board inside metropolitan France (box: lat 41.3–51.15, lng −5.2–9.6, so it spills slightly into neighbours). Denied → "Location needed"; outside → "You are not in France"; both have Try again and Sign out. Applies to everyone, including instructors and trainees on leave abroad. It's a browser-side check (keeps casual outsiders out, can be faked); the real protection is accounts + RLS.
 - **Instructor appointments:** CO, DYCO, OC A, OC B and CC each have a single holder; QFI can have many.
   - **Who can approve travel requests:** CO, DYCO, OC A and OC B. CC and QFI cannot.
   - **No approvers yet:** if nobody holds an approving appointment, any admin can approve.
