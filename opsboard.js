@@ -83,13 +83,20 @@ async function obLoad() {
   const bad = res.slice(0, 5).find(r => r.error); // the chart list (res[5]) is optional
   if (bad) { toast("Couldn't load operations: " + errMsg(bad.error)); return; }
   OB.state = {}; for (const r of res[0].data) OB.state[r.key] = r;
-  OB.wx = {}; for (const r of res[1].data) OB.wx[r.station] = r;
+  OB.wxLive = {}; for (const r of res[1].data) OB.wxLive[r.station] = r;
   [OB.crew, OB.items, OB.acks] = [res[2].data, res[3].data, res[4].data];
   OB.files = {}; for (const f of res[5].data || []) OB.files[f.name] = f;
   OB.loaded = true;
   if (["opsboard", "gonogo", "aircraft", "tv", "home", "ops"].includes(S.tab) && !OB.edit && !obTyping()) render();
 }
 const obTyping = () => { const a = document.activeElement; return !!(a && a.tagName === "INPUT" && a.dataset && a.dataset.obq); };
+// The board shows the METARs ops last accepted with Refresh (like the Excel); new ones wait in ops_wx until then.
+const obWxSnap = () => { const r = OB.state.board, s = r && r.data && r.data.wxSnap; return s && Object.keys(s).length ? s : null; };
+const obWxAll = () => obWxSnap() || OB.wxLive || {};
+function obNewMetar() {
+  const snap = obWxSnap(); if (!snap) return false;
+  return Object.values(OB.wxLive || {}).some(r => { const o = snap[r.station]; return !o || ((r.data && r.data.obsTime) || 0) > ((o.data && o.data.obsTime) || 0); });
+}
 let obTimer;
 const obRealtime = () => { clearTimeout(obTimer); obTimer = setTimeout(obLoad, 400); };
 
@@ -122,7 +129,7 @@ function obWxText(m) {
 const obObsZ = m => m && m.obsTime ? new Date(m.obsTime * 1000).toISOString().slice(11, 16).replace(":", "") + "Z" : "";
 // Visibility (km) and governing cloud base (ft): lowest BKN / OVC / VV. Same rules as the Excel macros.
 function obVisCeil(a) {
-  const m = OB.wx[a.icao] && OB.wx[a.icao].data;
+  const m = obWxAll()[a.icao] && obWxAll()[a.icao].data;
   if (a.wx) { // manual WX/VIS override: read it like the Excel does
     const t = a.wx.toUpperCase().replace(/\s+/g, " ").trim();
     if (t === "CAVOK") return { vis: 10, ceil: 99999 };
@@ -184,7 +191,7 @@ function obSun(day) {
 }
 // Everything the Excel worked out for Cazaux.
 function obCzx() {
-  const b = obGet("board"), m = OB.wx.LFBC && OB.wx.LFBC.data, w = obWind(m);
+  const b = obGet("board"), m = obWxAll().LFBC && obWxAll().LFBC.data, w = obWind(m);
   const lfbc = (b.airfields || []).find(a => a.icao === "LFBC") || {};
   const rwy = obRwyHdg(lfbc.rwy), c = obComp(w, rwy);
   const t = m ? obN(m.temp) : null, rh = m ? obRH(obN(m.temp), obN(m.dewp)) : null;
@@ -234,7 +241,8 @@ const obNotLoaded = v => { v.innerHTML = `<div class="empty">Loading…</div>`; 
 function renderOpsBoard(v) {
   if (!OB.loaded) return obNotLoaded(v);
   const editing = OB.edit && OB.edit.key === "board", can = opsCanEdit();
-  const top = `<div class="opsbar"><span class="grow"></span><button class="btn small" data-ob="metar">Refresh METARs</button><button class="btn small primary" data-tab="tv">TV mode</button></div>`;
+  const nm = obNewMetar();
+  const top = `<div class="opsbar"><span class="grow"></span>${can ? `<button class="btn small ${nm ? "obpulse" : ""}" data-ob="metar">${nm ? "New METAR · Refresh" : "Refresh METARs"}</button>` : ""}<button class="btn small primary" data-tab="tv">TV mode</button></div>`;
   v.innerHTML = top + (editing ? obCard("ob-board", "Ops board", "", obEditor("board")) : obBoardView(false) + obChartsCard() + `<p class="opsmeta" style="justify-content:flex-end">${obMeta("board")} ${obEditBtn("board", can, "Edit ops board")}</p>`);
 }
 // Colours used by the Excel's conditional formats.
@@ -250,7 +258,7 @@ function obBingo(b, czxR) {
 }
 // "AIRFIELD STATUS AS OF hhmm Z": the later of the last board change and the last METAR refresh.
 function obAsOf() {
-  const t = [OB.state.board && OB.state.board.updated_at, OB.wx.LFBC && OB.wx.LFBC.fetched_at].filter(Boolean).map(x => new Date(x)).sort((a, c) => c - a)[0];
+  const t = [OB.state.board && OB.state.board.updated_at || (obWxAll().LFBC && obWxAll().LFBC.fetched_at)].filter(Boolean).map(x => new Date(x)).sort((a, c) => c - a)[0];
   return t ? t.toISOString().slice(11, 16).replace(":", "") + " Z" : "";
 }
 const OB_COLCYCLE = { "": "g", g: "a", a: "r", r: "" };
@@ -262,7 +270,7 @@ function obValCell(q, key, attrs, val, st, setS, ph) {
 }
 function obBoardView(tv) {
   const b = obGet("board"), z = obCzx();
-  const wxAge = OB.wx.LFBC ? obObsZ(OB.wx.LFBC.data) : "";
+  const wxAge = obWxAll().LFBC ? obObsZ(obWxAll().LFBC.data) : "";
   const q = !tv && opsCanEdit(); // ops editors change these straight on the board
   const csCell = (a, i, kind) => {
     const st = obState(a, kind), list = kind === "fasf" ? OB_FASF : OB_RSAF;
@@ -272,7 +280,7 @@ function obBoardView(tv) {
       <option value="AUTO" ${a[kind] === "AUTO" ? "selected" : ""}>${esc(autoV || "-")} (auto)</option>${list.map(v => `<option ${a[kind] === v ? "selected" : ""}>${v}</option>`).join("")}</select>`;
   };
   const afRow = (a, i) => {
-    const m = OB.wx[a.icao] && OB.wx[a.icao].data;
+    const m = obWxAll()[a.icao] && obWxAll()[a.icao].data;
     const wx = a.wx || obWxText(m), opts = OB_RWYS[a.icao] || [];
     const rwy = q && opts.length ? `<select class="obsel" data-obq="rwy" data-af="${i}" aria-label="Runway ${esc(a.icao)}">${[...new Set([...opts, a.rwy].filter(Boolean))].map(r => `<option ${r === a.rwy ? "selected" : ""}>${esc(r)}</option>`).join("")}</select>` : esc(a.rwy);
     const p = a.grp === "main" ? `<td>${q ? `<button class="obpbtn ${a.p ? "on" : ""}" data-obq="p" data-af="${i}" aria-label="Make ${esc(a.icao)} the primary divert">${a.p ? "P" : ""}</button>` : a.p ? obPill("g", "P") : ""}</td>` : "";
@@ -291,7 +299,7 @@ function obBoardView(tv) {
   return `
     <div class="obhead"><span class="obeor">EOR: ${["NORMAL", "IN HSE"].map(e => q ? `<button class="obpill ${b.eor === e ? (e === "NORMAL" ? "obst-g" : "obst-a") : ""} obtap" data-obq="eor" data-v="${e}">${e}</button>` : b.eor === e ? obPill(e === "NORMAL" ? "g" : "a", e) : "").join(" ")}</span>
       ${q ? `<select class="obsel ${bingo ? "obst-y" : ""}" data-obq="bingo" aria-label="Bingo"><option value="AUTO" ${bsel === "AUTO" ? "selected" : ""}>${esc(bg.auto || "—")} (auto)</option>${[["NONE", "— (blank)"], ["BINGO", "BINGO"], ["UPG BINGO", "UPG BINGO"], ["IFR BINGO", "IFR BINGO"]].map(([k2, l]) => `<option value="${k2}" ${bsel === k2 ? "selected" : ""}>${l}</option>`).join("")}</select>` : bingo ? obPill("y", bingo) : ""}
-      <b>Airfield status${asOf ? " as of " + esc(asOf) : ""}</b>${wxAge ? ` <span class="hint">METAR ${esc(wxAge)}</span>` : ""}</div>
+      ${obNewMetar() ? `<span class="obpill obst-a obpulse">New METAR waiting${q ? "" : " for ops"}</span>` : ""}<b>Airfield status${asOf ? " as of " + esc(asOf) : ""}</b>${wxAge ? ` <span class="hint">METAR ${esc(wxAge)}</span>` : ""}</div>
     ${b.banner ? `<div class="obbanner">${esc(b.banner)}</div>` : ""}
     <div class="obgrid ${tv ? "tv" : ""}">
       <section class="card opscard obwide"><div class="tablewrap"><table class="opst obt"><thead><tr><th>Airfield</th><th>P</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS</th><th>Restrictions</th><th>Aids</th></tr></thead><tbody>${main.map(([a, i]) => afRow(a, i)).join("")}</tbody></table></div>
@@ -679,11 +687,18 @@ document.addEventListener("click", async e => {
     OB.edit = null; toast("Saved."); render();
   }
   else if (a === "metar") {
+    // Like the Excel refresh: take the latest METARs onto the board and put colour states, WX/VIS and bingo back to auto.
     el.disabled = true; el.textContent = "Refreshing…";
     const { error } = await S.sb.functions.invoke("metar", { body: {} });
-    el.disabled = false; el.textContent = "Refresh METARs";
-    if (error) return toast("Couldn't refresh: " + errMsg(error));
-    toast("METARs refreshed."); obLoad();
+    if (error) toast("Couldn't fetch new METARs (" + errMsg(error) + "), using the latest saved ones.");
+    const { data: rows, error: e2 } = await S.sb.from("ops_wx").select("*");
+    if (e2) { el.disabled = false; el.textContent = "Refresh METARs"; return toast(errMsg(e2)); }
+    OB.wxLive = {}; for (const r of rows) OB.wxLive[r.station] = r;
+    await obQuick(d => {
+      d.wxSnap = OB.wxLive; d.bingo = "AUTO";
+      (d.airfields || []).forEach(x => { x.rsaf = "AUTO"; if (OB_FASF_AUTO.includes(x.icao)) x.fasf = "AUTO"; x.wx = ""; });
+    });
+    if (!error) toast("Board updated with the latest METARs.");
   }
   else if (a === "done") {
     if (!await ask("Done?", "Confirm you've read and understood this item.", "Done")) return;
@@ -824,6 +839,9 @@ table.obt{min-width:0}
 .obvc{display:inline-flex;gap:4px;align-items:center}
 .obval{font:600 .85rem var(--body);padding:3px 6px;border-radius:3px;border:1px solid var(--line);width:120px;margin:0}
 .obval.obst-n,.obval:not([class*=obst-]){background:var(--field);color:var(--ink);opacity:1}
+.obpulse{background:var(--out)!important;color:#1a1200!important;font-weight:700;animation:obpulse 1.6s ease-in-out infinite}
+@keyframes obpulse{0%,100%{box-shadow:0 0 0 0 rgba(240,180,41,.75)}50%{box-shadow:0 0 0 9px rgba(240,180,41,0)}}
+@media (prefers-reduced-motion:reduce){.obpulse{animation:none}}
 .obcol{min-width:26px;padding:3px 0;border-radius:3px;border:1px solid var(--line);font:700 .75rem var(--body);cursor:pointer}
 .obcol.obst-n{background:var(--field);color:var(--muted);opacity:1}
 .obeq{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;font-size:.9rem}
