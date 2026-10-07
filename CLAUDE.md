@@ -35,7 +35,7 @@ A book-in / book-out board for RSAF trainees at 150 Squadron (BA 120 Cazaux, Fra
     - **VCOM:** required, except trips to **Cazaux**, which can drive alone.
     - **Seats:** max people = the car's `seats` (2–9, default 5).
   - **Public transport / Other:** tick who's going; going alone is allowed but warned against.
-  - **Booking from a trainee's row:** that trainee is locked into the trip.
+  - **One Book out button:** full width at the top of the Board (the search box and the per-row Book out buttons were removed at Gordon's request, 7 Oct). For a trainee, the form starts with them locked into the trip.
   - **Trainees booking themselves:** a non-admin must be on the trip.
   - **Not allowed:** booking out someone who is already out, has a pending request, or is on leave.
 - **Back in base is per person:** each person is marked Back in base, On leave (with a return date) or Still out.

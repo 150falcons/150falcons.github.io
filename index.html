@@ -667,13 +667,13 @@ function renderBoard(v) {
   const strip = t => `<article class="strip s-in"><div class="band"></div>
       <div class="who"><h3>${esc(t.name)}</h3>${t.can_drive === false ? `<span>Non-driver</span>` : ""}</div>
       <div class="where"><span class="state">In base</span></div>
-      <div class="act">${ob[t.id] ? `<span class="hint">Request pending</span>` : isAdmin() || t.id === myTid() ? `<button class="btn small" data-act="out" data-id="${esc(t.id)}">Book out</button>` : ""}</div></article>`;
+      <div class="act">${ob[t.id] ? `<span class="hint">Request pending</span>` : ""}</div></article>`;
   const courseSize = c => active().filter(t => (t.course || "No course") === c).length;
   const inHtml = byCourse(inT).map(([c, ts]) => `<div class="csec">${esc(c)} <span>${ts.length} of ${courseSize(c)} in base</span></div>
       <div class="strips">${ts.map(strip).join("")}</div>`).join("");
   const canBook = isAdmin() || (mine && !ob[mine.id]);
 
-  v.innerHTML = `${idCard}${canBook ? `<div class="toolbar" style="justify-content:flex-end"><button class="btn primary" data-act="out">Book out</button></div>` : ""}
+  v.innerHTML = `${idCard}${canBook ? `<div class="toolbar"><button class="btn primary" data-act="out" style="flex:1;padding:12px;font-size:1rem">Book out</button></div>` : ""}
     ${pend.length ? `<div class="sec">Awaiting approval (${pend.length})</div><div class="strips">${pendHtml}</div>` : ""}
     ${groups.length ? `<div class="sec" style="display:flex;justify-content:space-between;align-items:center">Out of base (${groups.length} ${groups.length === 1 ? "trip" : "trips"})${outTrips().length > 1 && (isAdmin() || outTrips().some(canAct)) ? `<button class="btn small" data-act="rearrange">Rearrange for return</button>` : ""}</div><div class="strips">${outHtml}</div>` : ""}
     ${lvT.length ? `<div class="sec">On leave (${lvT.length})</div><div class="strips">${leaveHtml}</div>` : ""}
