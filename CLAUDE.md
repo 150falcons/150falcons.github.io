@@ -7,7 +7,7 @@ A book-in / book-out board for RSAF trainees at 150 Squadron (BA 120 Cazaux, Fra
 
 ## 2. Architecture
 - **Front end:** one file, `index.html` (vanilla JS, no build step). It uses `@supabase/supabase-js@2.45.4` from jsdelivr, plus Google Fonts (Barlow Condensed, IBM Plex Sans). It supports light and dark mode and is mobile-first.
-- **Back end:** Supabase project **`ighnqntkupzqisstzmpy`** (https://ighnqntkupzqisstzmpy.supabase.co). The anon key is in `index.html`. That's fine because it's public by design and row-level security (RLS) protects the data. **Never put the service_role key in the page.**
+- **Back end:** Supabase project **`ighnqntkupzqisstzmpy`** (https://ighnqntkupzqisstzmpy.supabase.co). The anon key is in `index.html`. That's fine because it's public by design and row-level security (RLS) protects the data. **Never put the service_role key in the page.** Signed-out (anon) users can read nothing (all table policies are `authenticated`), and EXECUTE on every SECURITY DEFINER function is revoked from `anon`/`public` (7 Oct). Grant new RPCs to `authenticated` only.
 - **Hosting:**
   - **Live:** GitHub Pages, repo `150falcons/150falcons.github.io` (a free GitHub organization owned by gordonlee91; formerly `gordonlee91/150movementboard`), serving `https://150falcons.github.io/`. Pages source is branch `main`, folder `/ (root)`, with an empty `.nojekyll` and no custom domain. To publish a change, commit `index.html` and push to `main`; it's live in about a minute.
   - **Old host:** Netlify (`https://150traineemovement.netlify.app`, site id `d4661650-7072-4127-8f88-22cb40b89323`). Its free deploy credits ran out on 6 Oct 2026, so it's frozen on an older version.
