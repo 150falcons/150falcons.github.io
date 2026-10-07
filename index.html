@@ -368,7 +368,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 <div class="toast" id="toast" hidden></div>
 
 <script src="ops.js?v=3"></script>
-<script src="opsboard.js?v=3"></script>
+<script src="opsboard.js?v=4"></script>
 <script>
 /* =====================================================================
    SETUP: paste your Supabase Project URL and anon (public) key here.
@@ -1497,7 +1497,7 @@ $("#btnSignOut").onclick = signOut;
 
 /* ---------- start ---------- */
 renderClock();
-setInterval(() => { renderClock(); if (S.ready && ["board", "home", "tv", "opsboard"].includes(S.tab) && !OB.edit && !document.querySelector("dialog[open]")) render(); else if (S.ready) renderTally(); }, 30000);
+setInterval(() => { renderClock(); if (S.ready && ["board", "home", "tv", "opsboard"].includes(S.tab) && !OB.edit && !obTyping() && !document.querySelector("dialog[open]")) render(); else if (S.ready) renderTally(); }, 30000);
 // After sign-in, the board only opens for phones in France: location must be shared, and inside metropolitan France
 // (rough box incl. Corsica). Runs in the browser, so it keeps casual outsiders out, not determined ones.
 const inFrance = l => l.lat >= 41.3 && l.lat <= 51.15 && l.lng >= -5.2 && l.lng <= 9.6;
