@@ -125,6 +125,7 @@ dialog{border:1px solid var(--line);border-radius:8px;background:var(--paper);co
 dialog::backdrop{background:rgba(10,16,24,.5)}
 .dlg{padding:18px}
 .dlg h2{font:700 1.6rem/1.1 var(--cond);margin:0 0 12px}
+.dlg h2:focus{outline:none} /* dialogs focus their title so phones don't pop open the first list */
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media (max-width:480px){.grid2{grid-template-columns:1fr}}
 label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:10px}
@@ -215,7 +216,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 </div>
 
 <dialog id="dlgOut"><div class="dlg">
-  <h2 id="outTitle">Book out</h2>
+  <h2 tabindex="-1" autofocus id="outTitle">Book out</h2>
   <p class="hint" id="forLine" style="margin:-8px 0 10px" hidden></p>
   <div class="when" role="group" aria-label="During or after office hours">
     <button type="button" data-when="during" aria-pressed="false"><b>During office hours</b><span>Needs OC approval</span></button>
@@ -278,7 +279,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 </div></dialog>
 
 <dialog id="dlgEta"><div class="dlg">
-  <h2>Change return time</h2>
+  <h2 tabindex="-1" autofocus>Change return time</h2>
   <p class="hint" id="etaWho"></p>
   <label>New expected back<input id="fEta2" type="datetime-local"></label>
   <label>Reason (optional)<input id="fEtaWhy" maxlength="120" placeholder="e.g. train delayed"></label>
@@ -315,7 +316,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 </div></dialog>
 
 <dialog id="dlgIn"><div class="dlg">
-  <h2>Back in base</h2>
+  <h2 tabindex="-1" autofocus>Back in base</h2>
   <p class="hint" id="inWhere" style="margin-top:-6px"></p>
   <div id="inRows" style="margin-bottom:12px"></div>
   <label id="leaveWrap" hidden>On leave until (date back in base)<input id="fLeaveUntil" type="date"></label>
@@ -325,7 +326,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 </div></dialog>
 
 <dialog id="dlgSwap"><div class="dlg">
-  <h2>Swap</h2>
+  <h2 tabindex="-1" autofocus>Swap</h2>
   <p class="hint" id="swapWho" style="margin-top:-6px"></p>
   <label>Coming back with<select id="swapTo"></select></label>
   <label id="swapDrvWrap" hidden>Who drives <span id="swapCar"></span> back?<select id="swapDrv"></select></label>
@@ -336,7 +337,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 </div></dialog>
 
 <dialog id="dlgRe"><div class="dlg">
-  <h2>Rearrange for the return</h2>
+  <h2 tabindex="-1" autofocus>Rearrange for the return</h2>
   <p class="hint" style="margin-top:-6px">Move people between trips and set roles. Nothing is saved until you press Confirm.</p>
   <div id="reCards"></div>
   <div id="reErrs"></div>
