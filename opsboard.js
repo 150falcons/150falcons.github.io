@@ -414,6 +414,7 @@ async function obChartUrl(key) {
 }
 async function obShowChart(key) {
   const c = OB_CHARTS.find(x => x.key === key); if (!c) return;
+  if (!obFile(key)) return ask(c.label, opsCanEdit() ? `No ${c.label} map has been uploaded yet. Use Upload next to it in the Charts card at the bottom of the Ops board.` : `No ${c.label} map has been uploaded yet. Ask ops to upload it.`, "OK");
   let d = document.getElementById("dlgChart");
   if (!d) { d = document.createElement("dialog"); d.id = "dlgChart"; document.body.appendChild(d); }
   d.innerHTML = `<div class="dlg"><div class="opshead"><h2 tabindex="-1" autofocus>${esc(c.label)}</h2><button class="btn small" data-x="close">Close</button></div><div class="obchartview"><p class="hint">Loading…</p></div></div>`;
