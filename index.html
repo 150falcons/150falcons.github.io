@@ -1407,8 +1407,27 @@ $("#btnSignOut").onclick = signOut;
 /* ---------- start ---------- */
 renderClock();
 setInterval(() => { renderClock(); if (S.ready && S.tab === "board" && !document.querySelector("dialog[open]")) render(); else if (S.ready) renderTally(); }, 30000);
+// The board only opens for phones in France: location must be shared, and inside metropolitan France
+// (rough box incl. Corsica). Runs in the browser, so it keeps casual outsiders out, not determined ones.
+const inFrance = l => l.lat >= 41.3 && l.lat <= 51.15 && l.lng >= -5.2 && l.lng <= 9.6;
+async function franceGate() {
+  const v = $("#view");
+  for (;;) {
+    v.innerHTML = `<div class="empty">Checking your location…</div>`;
+    const l = await getLoc();
+    if (!l.error && inFrance(l)) return;
+    const [title, body] = l.error === "denied"
+      ? ["Location needed", "This board is only for personnel stationed in France. Allow location access for this site in your browser settings, then tap Try again."]
+      : l.error ? ["Couldn't get your location", "Check that location is turned on for your phone and browser, then tap Try again."]
+      : ["You are not in France", "This board can only be used in France."];
+    v.innerHTML = `<div class="card authcard"><h2>${esc(title)}</h2><p class="hint">${esc(body)}</p>
+      <button class="btn primary" id="btnGate" style="width:100%">Try again</button></div>`;
+    await new Promise(res => $("#btnGate").onclick = res);
+  }
+}
 (async () => {
   if (SUPABASE_URL.startsWith("PASTE") || !window.supabase) return render();
+  await franceGate();
   S.sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   S.sb.auth.onAuthStateChange((event) => { if (event === "SIGNED_OUT" && S.session) { S.session = null; S.me = null; S.ready = false; render(); } });
   const { data: { session } } = await S.sb.auth.getSession();
