@@ -290,7 +290,7 @@ function obBoardView(tv) {
   const czx = b.czx || {};
   return `
     <div class="obhead"><span class="obeor">EOR: ${["NORMAL", "IN HSE"].map(e => q ? `<button class="obpill ${b.eor === e ? (e === "NORMAL" ? "obst-g" : "obst-a") : ""} obtap" data-obq="eor" data-v="${e}">${e}</button>` : b.eor === e ? obPill(e === "NORMAL" ? "g" : "a", e) : "").join(" ")}</span>
-      ${q ? `<select class="obsel ${bingo ? "obst-y" : ""}" data-obq="bingo" aria-label="Bingo"><option value="AUTO" ${bsel === "AUTO" ? "selected" : ""}>${esc(bg.auto || "No bingo")} (auto)</option>${[["NONE", "No bingo"], ["UPG BINGO", "UPG BINGO"], ["IFR BINGO", "IFR BINGO"]].map(([k2, l]) => `<option value="${k2}" ${bsel === k2 ? "selected" : ""}>${l}</option>`).join("")}</select>` : bingo ? obPill("y", bingo) : ""}
+      ${q ? `<select class="obsel ${bingo ? "obst-y" : ""}" data-obq="bingo" aria-label="Bingo"><option value="AUTO" ${bsel === "AUTO" ? "selected" : ""}>${esc(bg.auto || "—")} (auto)</option>${[["NONE", "— (blank)"], ["BINGO", "BINGO"], ["UPG BINGO", "UPG BINGO"], ["IFR BINGO", "IFR BINGO"]].map(([k2, l]) => `<option value="${k2}" ${bsel === k2 ? "selected" : ""}>${l}</option>`).join("")}</select>` : bingo ? obPill("y", bingo) : ""}
       <b>Airfield status${asOf ? " as of " + esc(asOf) : ""}</b>${wxAge ? ` <span class="hint">METAR ${esc(wxAge)}</span>` : ""}</div>
     ${b.banner ? `<div class="obbanner">${esc(b.banner)}</div>` : ""}
     <div class="obgrid ${tv ? "tv" : ""}">
@@ -560,7 +560,7 @@ function obEditor(k) {
         <label>Runway surface${bS("czx.rwySurface", d.czx.rwySurface, ["", "DRY", "DAMP", "WET", "FLOODED"].map(v => [v, v || "-"]))}</label>
         <label>Bird hazard state${bS("czx.bird", d.czx.bird, ["", "LOW (1)", "LOW (2)", "MED (2)", "HIGH (3)"].map(v => [v, v || "-"]))}</label>
         <label>Wind hazard${bS("czx.windHazard", d.czx.windHazard, ["", "A", "B", "C", "D"].map(v => [v, v || "-"]))}</label>
-        <label>Bingo${bS("bingo", d.bingo, [["AUTO", "Auto (from CZX RSAF)"], ["NONE", "No bingo"], ["UPG BINGO", "UPG BINGO"], ["IFR BINGO", "IFR BINGO"]])}</label></div>
+        <label>Bingo${bS("bingo", d.bingo, [["AUTO", "Auto (from CZX RSAF)"], ["NONE", "— (blank)"], ["BINGO", "BINGO"], ["UPG BINGO", "UPG BINGO"], ["IFR BINGO", "IFR BINGO"]])}</label></div>
       <h3 class="opssub">Canopy / equipment</h3><div class="grid"><label>Canopy${bS("equip.canopy", d.equip.canopy, OB_AUTO)}</label><label>APU (A11–15)${bS("equip.apu1", d.equip.apu1, OB_AUTO)}</label><label>APU (A16–23)${bS("equip.apu2", d.equip.apu2, OB_AUTO)}</label>
         <label>Parachute (0 = green)${bI("equip.parachute", d.equip.parachute)}</label><label>SAMAR (G… / Y… / R…)${bI("equip.samar", d.equip.samar)}</label></div>
       <h3 class="opssub">Restricted areas</h3><div class="tablewrap"><table><thead><tr><th>R115 (CAPTIEUX)</th><th>TGT</th><th>WX</th><th>Before</th><th>After</th><th>Restrictions (G1–G7, RADAR)</th></tr></thead><tbody><tr><td></td>
