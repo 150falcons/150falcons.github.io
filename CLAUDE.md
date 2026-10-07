@@ -14,6 +14,12 @@ A book-in / book-out board for RSAF trainees at 150 Squadron (BA 120 Cazaux, Fra
 - **Telegram:** a Postgres function `tg_send(msg)` posts to the bot using `pg_net`. The bot token and chat id are in Supabase Vault (`telegram_bot_token`, `telegram_chat_id`). Messages use HTML parse mode.
 - **Nightly check:** pg_cron job `nightly-movement-check` runs at `40 19-22 * * *` UTC, calling `nightly_check(false)`. The function itself only sends at **2140L Sun–Thu** and **2340L Fri–Sat** (Europe/Paris), so this one schedule works across summer and winter time.
 
+## 2b. Name and navigation (7 Oct 2026)
+- **Name:** the site is **150 Falcon Det** (page title and top bar). Tapping the name goes to the home screen.
+- **Home** (after sign-in): two cards, **Trainee movement** (in base / out / on leave / overdue, pending approvals) and **Operations** (today's sorties and first takeoff).
+- **Top bar areas:** Movement · Operations · Admin (Roster for trainees). Sub-tabs: Movement → Board / Log / Vehicles; Operations → Flying program. The movement counts strip only shows inside Movement. Ops assistants open on Operations.
+- **Code:** `AREA` (tab → area) and `SUBTABS` (area → pages) in `index.html`; tabs are `home`, `board`, `log`, `vehicles`, `ops`, `roster`.
+
 ## 3. Business rules (agreed with Gordon)
 - **Accounts:**
   - **No emails.** Usernames are stored in Supabase Auth as `<username>@150sqn.local`, and the page adds or strips that suffix.
@@ -50,7 +56,7 @@ A book-in / book-out board for RSAF trainees at 150 Squadron (BA 120 Cazaux, Fra
 - **Phone numbers:** optional. Shown as tap-to-call on out-of-base strips, Roster and Admin; editable by admins under Edit.
 
 ## 3b. Ops board (added 7 Oct 2026)
-- **What:** the **Ops** tab replaces the daily Excel flying programme (the sheet is marked RESTRICTED; Gordon confirmed it may be put on the board). Code is in `ops.js` (loaded before the main script with a `?v=` cache-buster: bump it on every change) and uses the main script's helpers.
+- **What:** Operations → **Flying program** replaces the daily Excel flying programme (the sheet is marked RESTRICTED; Gordon confirmed it may be put on the board). Code is in `ops.js` (loaded before the main script with a `?v=` cache-buster: bump it on every change) and uses the main script's helpers.
 - **Data:** table `ops_sections` (day, section, data jsonb, version, updated_at/by), one row per day per section: `header`, `flying` (waves → flights → aircraft lines; each wave has its own SXO, OPS O and remarks), `sim`, `ground` (named groups), `airfield` (+ sunset), `notes` (currencies, aircraft restrictions), `duties` (named groups of people; QFI group has in/out times).
 - **Who:** everyone signed in can view (RLS). Editing is via `ops_save(day, section, data, version)`, allowed for `can_edit_ops()`: CO, DYCO, OC A, OC B, plus any profile with `profiles.ops_editor` (ticked per instructor under Admin → Edit, and the ops assistant account). `ops_save` refuses if someone else saved that section in between (optimistic `version`). `set_ops_editor(user, on)` is admin only.
 - **Ops assistant account:** a `role = 'user'` login with no trainee and `ops_editor = true`, made under Admin → Ops assistants. It opens on the Ops tab and can't book movements.

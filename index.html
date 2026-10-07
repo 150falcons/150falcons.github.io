@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Movement board</title>
+<title>150 Falcon Det</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -152,7 +152,18 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 /* Slim top bar with the tabs, same palette as the page */
 .topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--paper);color:var(--ink);border-bottom:1px solid var(--line)}
 .topbar-in{max-width:1040px;margin:0 auto;padding:0 16px;display:flex;align-items:stretch;gap:24px;min-height:48px}
-.brand{font:700 1.15rem/1 var(--cond);white-space:nowrap;display:flex;align-items:center}
+.brand{font:700 1.15rem/1 var(--cond);white-space:nowrap;display:flex;align-items:center;background:none;border:0;padding:0;color:inherit;cursor:pointer}
+.subtabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:-4px 0 14px;overflow-x:auto}
+.subtabs button{background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:8px 12px;font:600 1rem var(--cond);color:var(--muted);cursor:pointer;white-space:nowrap}
+.subtabs button[aria-selected="true"]{color:var(--ink);border-color:var(--ink)}
+.homegrid{display:grid;grid-template-columns:1fr;gap:14px;margin-top:8px}
+@media (min-width:700px){.homegrid{grid-template-columns:1fr 1fr}}
+.homecard{display:block;width:100%;text-align:left;background:var(--paper);border:1px solid var(--line);border-left:6px solid var(--in);border-radius:6px;padding:18px;cursor:pointer;color:var(--ink)}
+.homecard.ops{border-left-color:var(--out)}
+.homecard:hover{border-color:var(--accent)}
+.homecard h2{font:700 1.6rem/1.1 var(--cond);margin:0 0 6px;text-transform:uppercase}
+.homecard p{margin:0 0 4px;font-size:1rem}
+.homecard span{color:var(--muted);font-size:.88rem}
 .topbar nav.tabs{border:0;margin:0;gap:0;flex:1;overflow-x:auto}
 .topbar nav.tabs button{color:var(--muted);border-bottom:2px solid transparent;margin:0;padding:0 12px;font:600 1rem var(--cond);min-height:48px}
 .topbar nav.tabs button:hover{color:var(--ink)}
@@ -200,18 +211,17 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 <body>
 <header class="topbar">
   <div class="topbar-in">
-    <div class="brand">Movement board</div>
+    <button class="brand" data-tab="home">150 Falcon Det</button>
     <nav class="tabs" role="tablist" id="tabs" hidden>
-      <button role="tab" data-tab="board" aria-selected="true">Board</button>
-      <button role="tab" data-tab="ops" aria-selected="false">Ops</button>
-      <button role="tab" data-tab="log" aria-selected="false">Log</button>
-      <button role="tab" data-tab="vehicles" aria-selected="false">Vehicles</button>
-      <button role="tab" data-tab="roster" aria-selected="false">Roster</button>
+      <button role="tab" data-tab="board" data-area="move" aria-selected="false">Movement</button>
+      <button role="tab" data-tab="ops" data-area="ops" aria-selected="false">Operations</button>
+      <button role="tab" data-tab="roster" data-area="admin" aria-selected="false">Roster</button>
     </nav>
     <div class="clock"><span id="clock"></span><button class="signout" id="btnSignOut" hidden>Sign out</button></div>
   </div>
 </header>
 <div class="wrap">
+  <nav class="subtabs" id="subtabs" role="tablist" hidden></nav>
   <section class="tally" id="tally" aria-label="Current status" hidden></section>
   <main id="view"></main>
 </div>
@@ -378,7 +388,7 @@ const BASE = { lat: 44.533, lng: -1.125 }, BASE_KM = 3;
 const S = {
   sb: null, session: null, me: null, ready: false, chan: null,
   roster: [], profiles: [], vehicles: [], open: [], log: [],
-  tab: "board", logFilter: "", etaTarget: null
+  tab: "home", logFilter: "", etaTarget: null
 };
 
 /* ---------- helpers ---------- */
@@ -514,7 +524,7 @@ function subscribe() {
   S.chan = S.sb.channel("board");
   for (const t of ["trainees", "profiles", "vehicles", "movements", "leaves"])
     S.chan.on("postgres_changes", { event: "*", schema: "public", table: t }, refetchSoon);
-  S.chan.on("postgres_changes", { event: "*", schema: "public", table: "ops_sections" }, p => opsRealtime(p));
+  S.chan.on("postgres_changes", { event: "*", schema: "public", table: "ops_sections" }, p => { S.homeOps = null; opsRealtime(p); if (S.tab === "home") render(); });
   S.chan.subscribe();
 }
 async function adminApi(body) {
@@ -543,7 +553,7 @@ async function startSession(session) {
 async function signOut() {
   if (S.chan) { await S.sb.removeChannel(S.chan); S.chan = null; }
   await S.sb.auth.signOut();
-  Object.assign(S, { session: null, me: null, ready: false, roster: [], profiles: [], vehicles: [], open: [], log: [], tab: "board" });
+  Object.assign(S, { session: null, me: null, ready: false, roster: [], profiles: [], vehicles: [], open: [], log: [], tab: "home", homeOps: null });
   Object.assign(OPS, { day: null, rowsDay: null, rows: {}, edit: null });
   render();
 }
@@ -564,7 +574,10 @@ function render() {
   const v = $("#view");
   const signedIn = !!S.session && !!S.me && !S.me.must_change_password;
   $("#tabs").hidden = !signedIn || !S.ready;
-  $("#tally").hidden = !signedIn || !S.ready || S.tab === "ops";
+  const area = AREA[S.tab] || "admin", shown = signedIn && S.ready;
+  $("#tally").hidden = !shown || area !== "move";
+  $("#subtabs").hidden = !shown || !SUBTABS[area];
+  if (shown && SUBTABS[area]) $("#subtabs").innerHTML = SUBTABS[area].map(([t, label]) => `<button role="tab" data-tab="${t}" aria-selected="${t === S.tab}">${label}</button>`).join("");
   $("#btnSignOut").hidden = !S.session;
   if (SUPABASE_URL.startsWith("PASTE")) {
     v.innerHTML = `<div class="empty"><strong>Almost there</strong>Paste your Supabase Project URL and anon key at the top of the script in index.html.</div>`; return;
@@ -573,14 +586,36 @@ function render() {
   if (!S.me) { v.innerHTML = `<div class="empty">Loading…</div>`; return; }
   if (S.me.must_change_password) return renderChangePw(v);
   if (!S.ready) { v.innerHTML = `<div class="empty">Loading the board…</div>`; return; }
-  document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === S.tab));
+  document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.area === area));
   document.querySelector('#tabs [data-tab="roster"]').textContent = isAdmin() ? "Admin" : "Roster";
   renderTally();
-  if (S.tab === "board") renderBoard(v);
+  if (S.tab === "home") renderHome(v);
+  else if (S.tab === "board") renderBoard(v);
   else if (S.tab === "log") renderLog(v);
   else if (S.tab === "vehicles") renderVehicles(v);
   else if (S.tab === "ops") renderOps(v);
   else if (isAdmin()) renderAdmin(v); else renderRoster(v);
+}
+
+// Top-level areas (top bar) and their pages (sub-tabs).
+const AREA = { home: "home", board: "move", log: "move", vehicles: "move", ops: "ops", roster: "admin" };
+const SUBTABS = { move: [["board", "Board"], ["log", "Log"], ["vehicles", "Vehicles"]], ops: [["ops", "Flying program"]] };
+function renderHome(v) {
+  const now = Date.now(), ob = openByTrainee(); let i = 0, o = 0, l = 0, lv = 0;
+  for (const t of active()) { const m = ob[t.id]; if (leaveOf(t.id)) lv++; else if (!m || isPend(m)) i++; else if (isLate(m, now)) l++; else o++; }
+  const pend = S.open.filter(isPend).length, day = todayStr();
+  const mv = [`${i} in base`, `${o + l} out`, lv && `${lv} on leave`, l && `${l} overdue`].filter(Boolean).join(" · ");
+  const hs = S.homeOps && S.homeOps.day === day ? S.homeOps : null;
+  const opsLine = !hs ? "Loading today's programme…" : !hs.any ? "No programme for today yet"
+    : `Today: ${hs.st.sorties} sortie${hs.st.sorties === 1 ? "" : "s"}${hs.st.first != null ? ` · first takeoff ${opsHM(hs.st.first)}` : ""}`;
+  v.innerHTML = `<div class="homegrid">
+    <button class="homecard" data-tab="board"><h2>Trainee movement</h2><p>${esc(mv)}</p>${pend ? `<p>${pend} awaiting approval</p>` : ""}<span>Board, log and vehicles</span></button>
+    <button class="homecard ops" data-tab="ops"><h2>Operations</h2><p>${esc(opsLine)}</p><span>Flying program</span></button></div>`;
+  if (!hs) S.sb.from("ops_sections").select("section,data").eq("day", day).then(({ data }) => {
+    const fl = (data || []).find(r => r.section === "flying");
+    S.homeOps = { day, any: (data || []).some(r => r.data && Object.keys(r.data).length), st: opsStats(fl ? fl.data : { waves: [] }) };
+    if (S.tab === "home") render();
+  });
 }
 
 function renderLogin(v) {
@@ -1444,7 +1479,7 @@ $("#btnSignOut").onclick = signOut;
 
 /* ---------- start ---------- */
 renderClock();
-setInterval(() => { renderClock(); if (S.ready && S.tab === "board" && !document.querySelector("dialog[open]")) render(); else if (S.ready) renderTally(); }, 30000);
+setInterval(() => { renderClock(); if (S.ready && (S.tab === "board" || S.tab === "home") && !document.querySelector("dialog[open]")) render(); else if (S.ready) renderTally(); }, 30000);
 // After sign-in, the board only opens for phones in France: location must be shared, and inside metropolitan France
 // (rough box incl. Corsica). Runs in the browser, so it keeps casual outsiders out, not determined ones.
 const inFrance = l => l.lat >= 41.3 && l.lat <= 51.15 && l.lng >= -5.2 && l.lng <= 9.6;
