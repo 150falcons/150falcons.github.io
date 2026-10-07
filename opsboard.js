@@ -19,17 +19,23 @@ const CZX = { lat: 44.533, lng: -1.125 };
 
 /* ---------- defaults (first use) ---------- */
 const obAid = (name, s) => ({ name, s: s || "g" });
+// Runway choices per airfield (from the Excel dropdowns) and where FASF is worked out automatically.
+const OB_RWYS = { LFBC: ["06", "24"], LFBM: ["09", "27"], LFBD: ["05", "23", "11", "29"], LFBZ: ["09", "27"], LFBG: ["05", "23", "08", "26"], LFSL: ["11", "29"], LFBE: ["09", "27"] };
+const OB_FASF_AUTO = ["LFBZ", "LFSL", "LFBE"];
+const OB_FASF = ["B", "W", "G VFR", "G IFR", "Y", "A", "R", "BLACK", "CLSD"];
+const OB_RSAF = ["B", "Y1", "Y2", "A1", "A2", "R", "BLACK", "CLSD"];
+const obAf = (icao, grp, p, rwy, aids) => ({ icao, grp, p, rwy, fasf: OB_FASF_AUTO.includes(icao) ? "AUTO" : "B", rsaf: "AUTO", wx: "", restr: "", aids });
 const obBlank = {
   board: () => ({
-    eor: "NORMAL", inHse: "", banner: "", zrt: "",
+    eor: "NORMAL", banner: "", zrt: "", cs2: true,
     airfields: [
-      { icao: "LFBC", grp: "main", p: false, rwy: "24", fasf: "B", rsaf: "B", wx: "", restr: "", aids: [obAid("ILS (24)"), obAid("PAR"), obAid("TACAN"), obAid("CENTAURE"), obAid("CAT 1 LINE")] },
-      { icao: "LFBM", grp: "main", p: true, rwy: "09", fasf: "B", rsaf: "B", wx: "", restr: "", aids: [obAid("ILS (27)"), obAid("PAR"), obAid("TACAN"), obAid("ALADIN"), obAid("VOR/DME")] },
-      { icao: "LFBD", grp: "main", p: false, rwy: "11", fasf: "B", rsaf: "B", wx: "", restr: "", aids: [obAid("ILS (23)"), obAid("VOR/DME")] },
-      { icao: "LFBZ", grp: "main", p: false, rwy: "09", fasf: "B", rsaf: "B", wx: "", restr: "", aids: [obAid("ILS (27)"), obAid("VOR/DME")] },
-      { icao: "LFBG", grp: "alt", p: false, rwy: "05", fasf: "B", rsaf: "B", wx: "", restr: "", aids: [] },
-      { icao: "LFSL", grp: "alt", p: false, rwy: "11", fasf: "B", rsaf: "B", wx: "", restr: "", aids: [] },
-      { icao: "LFBE", grp: "alt", p: false, rwy: "09", fasf: "B", rsaf: "B", wx: "", restr: "", aids: [] },
+      obAf("LFBC", "main", false, "24", [obAid("ILS (24)"), obAid("PAR"), obAid("TACAN"), obAid("CENTAURE"), obAid("CAT 1 LINE", "auto")]),
+      obAf("LFBM", "main", true, "09", [obAid("ILS (27)"), obAid("PAR"), obAid("TACAN"), obAid("ALADIN"), obAid("VOR/DME")]),
+      obAf("LFBD", "main", false, "11", [obAid("ILS (23)"), obAid("VOR/DME")]),
+      obAf("LFBZ", "main", false, "09", [obAid("ILS (27)"), obAid("VOR/DME")]),
+      obAf("LFBG", "alt", false, "05", []),
+      obAf("LFSL", "alt", false, "11", []),
+      obAf("LFBE", "alt", false, "09", []),
     ],
     czx: { sun: "", icingBand: "", rwySurface: "DRY", seaTemp: "", swell: "", bird: "", windHazard: "", firing: "", calamar: "" },
     equip: { parachute: "g", samar: "G3", canopy: "", apu1: "", apu2: "" },
@@ -38,7 +44,18 @@ const obBlank = {
   aircraft: () => ({ tails: [], callsigns: [], vehicleCap: "" }),
   gonogo: () => ({ miac: "", legend: OB_LEGEND.map(([code, label]) => ({ code, label })) }),
 };
-const obDoc = k => { const r = OB.state[k], b = obBlank[k](); return r && r.data && Object.keys(r.data).length ? { ...b, ...r.data, ...(k === "board" ? { czx: { ...b.czx, ...(r.data.czx || {}) }, equip: { ...b.equip, ...(r.data.equip || {}) } } : {}) } : b; };
+const obDoc = k => {
+  const r = OB.state[k], b = obBlank[k]();
+  if (!(r && r.data && Object.keys(r.data).length)) return b;
+  const d = { ...b, ...r.data, ...(k === "board" ? { czx: { ...b.czx, ...(r.data.czx || {}) }, equip: { ...b.equip, ...(r.data.equip || {}) } } : {}) };
+  if (k === "board" && !d.cs2) { // older board: switch colour states to automatic like the Excel
+    d.airfields = (d.airfields || []).map(a => ({ ...a, rsaf: "AUTO", fasf: OB_FASF_AUTO.includes(a.icao) ? "AUTO" : a.fasf,
+      aids: (a.aids || []).map(x => a.icao === "LFBC" && /CAT\s*1/i.test(x.name) ? { ...x, s: "auto" } : x) }));
+    if (d.eor !== "IN HSE") d.eor = "NORMAL";
+    d.cs2 = true;
+  }
+  return d;
+};
 const obGet = k => (OB.edit && OB.edit.key === k) ? OB.edit.data : obDoc(k);
 const obCanEditAc = () => opsCanEdit() || !!(S.me && S.me.eng_editor);
 const obMyCrew = () => OB.crew.filter(c => c.active && S.me && c.profile_id === S.me.id);
@@ -90,6 +107,58 @@ function obWxText(m) {
   return [vis, m.wxString || "", cl].filter(Boolean).join(" ");
 }
 const obObsZ = m => m && m.obsTime ? new Date(m.obsTime * 1000).toISOString().slice(11, 16).replace(":", "") + "Z" : "";
+// Visibility (km) and governing cloud base (ft): lowest BKN / OVC / VV. Same rules as the Excel macros.
+function obVisCeil(a) {
+  const m = OB.wx[a.icao] && OB.wx[a.icao].data;
+  if (a.wx) { // manual WX/VIS override: read it like the Excel does
+    const t = a.wx.toUpperCase().replace(/\s+/g, " ").trim();
+    if (t === "CAVOK") return { vis: 10, ceil: 99999 };
+    let vis = 10, ceil = 99999;
+    for (const k of t.split(" ")) {
+      if (/KM/.test(k)) vis = /^10KM\+?$/.test(k) ? 10 : (+k.replace(/KM|\+/g, "") || vis);
+      else if (/^\d+(\.\d+)?M$/.test(k)) vis = +k.slice(0, -1) / 1000;
+      else if (/^\d+$/.test(k)) vis = +k / 1000;
+      const c = /^(BKN|OVC)(\d{3})/.exec(k) || /^VV(\d{3})/.exec(k);
+      if (c) ceil = Math.min(ceil, +(c[2] ?? c[1]) * 100);
+    }
+    return { vis, ceil };
+  }
+  if (!m) return null;
+  const raw = String(m.rawOb || "").split(/\s+(?:TEMPO|BECMG|NOSIG)\b/)[0];
+  if (/\bCAVOK\b/.test(raw)) return { vis: 10, ceil: 99999 };
+  const v = raw.split(/\s+/).slice(3).find(t => /^\d{4}$/.test(t));
+  const vis = v ? (v === "9999" ? 10 : +v / 1000) : 10;
+  const bases = (m.clouds || []).filter(c => /BKN|OVC|OVX|VV/.test(c.cover) && c.base != null).map(c => +c.base);
+  return { vis, ceil: bases.length ? Math.min(...bases) : 99999 };
+}
+function obRsafAuto(vc) {
+  if (!vc) return "";
+  const v = vc.vis >= 10 ? 1 : vc.vis >= 8 ? 2 : vc.vis >= 6 ? 3 : vc.vis >= 3 ? 4 : vc.vis >= 1 ? 5 : 6;
+  const c = vc.ceil >= 2500 ? 1 : vc.ceil >= 1500 ? 2 : vc.ceil >= 1000 ? 3 : vc.ceil >= 500 ? 4 : vc.ceil >= 300 ? 5 : 6;
+  return ["B", "Y1", "Y2", "A1", "A2", "R"][Math.max(v, c) - 1];
+}
+function obFasfAuto(vc) {
+  if (!vc) return "";
+  const v = vc.vis >= 8 ? 1 : vc.vis >= 5 ? 2 : vc.vis >= 3 ? 4 : vc.vis >= 1.6 ? 5 : vc.vis >= 0.8 ? 6 : 7;
+  const c = vc.ceil >= 2500 ? 1 : vc.ceil >= 1500 ? 2 : vc.ceil >= 1000 ? 3 : vc.ceil >= 700 ? 4 : vc.ceil >= 300 ? 5 : vc.ceil >= 200 ? 6 : 7;
+  return ["B", "W", "G VFR", "G IFR", "Y", "A", "R"][Math.max(v, c) - 1];
+}
+// The colour state shown for an airfield: the chosen one, or the worked-out one when set to AUTO.
+function obState(a, kind) {
+  const set = a[kind] || "";
+  if (set !== "AUTO") return { v: set, auto: false };
+  return { v: (kind === "rsaf" ? obRsafAuto : obFasfAuto)(obVisCeil(a)), auto: true };
+}
+// Colour of a colour-state value.
+const obCsCls = v => ({ B: "cs-b", W: "cs-w", "G VFR": "cs-gv", "G IFR": "cs-gi", Y: "cs-y", Y1: "cs-y1", Y2: "cs-y2", A: "cs-a", A1: "cs-a1", A2: "cs-a2", R: "cs-r", BLACK: "cs-k", CLSD: "cs-c" }[v] || "cs-n");
+// Aid status, with the LFBC CAT 1 line following CZX FASF when set to auto (B/W green, else yellow).
+function obAidS(a, x) {
+  if (x.s !== "auto") return x.s;
+  const f = obState(a, "fasf").v;
+  return !f ? "" : ["B", "W"].includes(f) ? "g" : "a";
+}
+// Extra restrictions the Excel adds by itself.
+const obRestr = a => [a.restr, a.icao === "LFBD" && /^0?5$/.test(String(a.rwy || "").trim()) && !/ZONE TAMPON ACTIVE/i.test(a.restr || "") ? "ZONE TAMPON ACTIVE" : ""].filter(Boolean).join(" / ");
 // Sunrise / sunset (UTC minutes) for a date at Cazaux (NOAA approximation, ±1 min).
 function obSun(day) {
   const r = Math.PI / 180, d = new Date(day + "T12:00:00Z"), n = Math.round((d - Date.UTC(d.getUTCFullYear(), 0, 0)) / 864e5);
@@ -158,32 +227,44 @@ function renderOpsBoard(v) {
 function obBoardView(tv) {
   const b = obGet("board"), z = obCzx();
   const wxAge = OB.wx.LFBC ? obObsZ(OB.wx.LFBC.data) : "";
-  const afRow = a => {
-    const m = OB.wx[a.icao] && OB.wx[a.icao].data;
-    const wx = a.wx || obWxText(m);
-    return `<tr><td><b>${esc(a.icao)}</b></td>${a.grp === "main" ? `<td>${a.p ? obPill("g", "P") : ""}</td>` : ""}<td>${esc(a.rwy)}</td>
-      <td>${obPill(obCol(a.fasf), a.fasf || "-")}</td><td>${obPill(obCol(a.rsaf), a.rsaf || "-")}</td><td>${esc(wx)}${a.wx && m ? ` <span class="hint">(override)</span>` : ""}</td><td>${esc(a.restr)}</td>
-      ${a.grp === "main" ? `<td class="obaids">${(a.aids || []).map(x => obPill(x.s, x.name)).join(" ")}</td>` : ""}</tr>`;
+  const q = !tv && opsCanEdit(); // ops editors change these straight on the board
+  const csCell = (a, i, kind) => {
+    const st = obState(a, kind), list = kind === "fasf" ? OB_FASF : OB_RSAF;
+    if (!q) return `<span class="obcs ${obCsCls(st.v)}" title="${st.auto ? "Worked out from the METAR" : "Set by ops"}">${esc(st.v || "-")}${st.auto ? "" : " ✎"}</span>`;
+    const autoV = (kind === "rsaf" ? obRsafAuto : obFasfAuto)(obVisCeil(a));
+    return `<select class="obcs ${obCsCls(st.v)}" data-obq="${kind}" data-af="${i}" aria-label="${kind.toUpperCase()} colour state ${esc(a.icao)}">
+      <option value="AUTO" ${a[kind] === "AUTO" ? "selected" : ""}>${esc(autoV || "-")} (auto)</option>${list.map(v => `<option ${a[kind] === v ? "selected" : ""}>${v}</option>`).join("")}</select>`;
   };
-  const main = (b.airfields || []).filter(a => a.grp === "main"), alt = (b.airfields || []).filter(a => a.grp !== "main");
+  const afRow = (a, i) => {
+    const m = OB.wx[a.icao] && OB.wx[a.icao].data;
+    const wx = a.wx || obWxText(m), opts = OB_RWYS[a.icao] || [];
+    const rwy = q && opts.length ? `<select class="obsel" data-obq="rwy" data-af="${i}" aria-label="Runway ${esc(a.icao)}">${[...new Set([...opts, a.rwy].filter(Boolean))].map(r => `<option ${r === a.rwy ? "selected" : ""}>${esc(r)}</option>`).join("")}</select>` : esc(a.rwy);
+    const p = a.grp === "main" ? `<td>${q ? `<button class="obpbtn ${a.p ? "on" : ""}" data-obq="p" data-af="${i}" aria-label="Make ${esc(a.icao)} the primary divert">${a.p ? "P" : ""}</button>` : a.p ? obPill("g", "P") : ""}</td>` : "";
+    const aids = (a.aids || []).map((x, j) => q ? `<button class="obpill obst-${obAidS(a, x) || "n"} obtap" data-obq="aid" data-af="${i}" data-j="${j}" title="Tap to change">${esc(x.name)}${x.s === "auto" ? " ·A" : ""}</button>` : obPill(obAidS(a, x), x.name)).join(" ");
+    return `<tr><td><b>${esc(a.icao)}</b></td>${p}<td>${rwy}</td><td>${csCell(a, i, "fasf")}</td><td>${csCell(a, i, "rsaf")}</td>
+      <td>${esc(wx)}${a.wx && m ? ` <span class="hint">(override)</span>` : ""}</td><td>${esc(obRestr(a))}</td>${a.grp === "main" ? `<td class="obaids">${aids}</td>` : ""}</tr>`;
+  };
+  const all = (b.airfields || []).map((a, i) => [a, i]), main = all.filter(([a]) => a.grp === "main"), alt = all.filter(([a]) => a.grp !== "main");
+  const lfbc = (b.airfields || []).find(a => a.icao === "LFBC"), czxR = lfbc ? obState(lfbc, "rsaf").v : "";
+  const bingo = czxR === "Y2" ? "UPG BINGO" : czxR === "A1" ? "IFR BINGO" : "";
   const w = z.w, comp = z.c;
   const windTxt = !w ? "-" : w.vrb ? `VRB / ${w.spd} KT` : `${String(w.dir).padStart(3, "0")}° / ${w.spd}${w.gst ? "G" + w.gst : ""} KT`;
   const yn = (v2, bad) => v2 ? obPill(v2 === bad ? "r" : "g", v2) : "-";
   const czx = b.czx || {};
   return `
-    <div class="obhead"><span>EOR: ${obPill(b.eor === "NORMAL" ? "g" : "a", b.eor || "-")}</span>${b.inHse ? `<span>${esc(b.inHse)}</span>` : ""}
-      <b>Airfield status${wxAge ? " as of " + esc(wxAge) : ""}</b></div>
+    <div class="obhead"><span class="obeor">EOR: ${["NORMAL", "IN HSE"].map(e => q ? `<button class="obpill ${b.eor === e ? (e === "NORMAL" ? "obst-g" : "obst-a") : ""} obtap" data-obq="eor" data-v="${e}">${e}</button>` : b.eor === e ? obPill(e === "NORMAL" ? "g" : "a", e) : "").join(" ")}</span>
+      ${bingo ? obPill("r", bingo) : ""}<b>Airfield status${wxAge ? " as of " + esc(wxAge) : ""}</b></div>
     ${b.banner ? `<div class="obbanner">${esc(b.banner)}</div>` : ""}
     <div class="obgrid ${tv ? "tv" : ""}">
-      <section class="card opscard obwide"><div class="tablewrap"><table class="opst obt"><thead><tr><th>Airfield</th><th>P</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS</th><th>Restrictions</th><th>Aids</th></tr></thead><tbody>${main.map(afRow).join("")}</tbody></table></div>
-        ${alt.length ? `<div class="tablewrap" style="margin-top:8px"><table class="opst obt"><thead><tr><th>Airfield</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS</th><th>Restrictions</th></tr></thead><tbody>${alt.map(afRow).join("")}</tbody></table></div>` : ""}
+      <section class="card opscard obwide"><div class="tablewrap"><table class="opst obt"><thead><tr><th>Airfield</th><th>P</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS</th><th>Restrictions</th><th>Aids</th></tr></thead><tbody>${main.map(([a, i]) => afRow(a, i)).join("")}</tbody></table></div>
+        ${alt.length ? `<div class="tablewrap" style="margin-top:8px"><table class="opst obt"><thead><tr><th>Airfield</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS</th><th>Restrictions</th></tr></thead><tbody>${alt.map(([a, i]) => afRow(a, i)).join("")}</tbody></table></div>` : ""}
         ${b.zrt ? `<p class="obnote">${esc(b.zrt)}</p>` : ""}</section>
       <section class="card opscard"><h2>Cazaux weather</h2><dl class="opsdl">
         <dt>Sunrise / sunset</dt><dd>${czx.sun ? esc(czx.sun) : `${esc(z.sun.rise)} / ${esc(z.sun.set)}`}</dd>
         ${czx.icingBand ? `<dt>Icing band</dt><dd>${esc(czx.icingBand)}</dd>` : ""}
         <dt>Temperature</dt><dd>${z.t ?? "-"}°C</dd><dt>Humidity</dt><dd>${z.rh ?? "-"}%</dd><dt>QNH</dt><dd>${z.qnh ?? "-"}</dd>
-        <dt>Runway surface</dt><dd>${esc(czx.rwySurface || "-")}</dd><dt>Sea surface</dt><dd>${esc(czx.seaTemp ? czx.seaTemp + "°C" : "-")}</dd>
-        ${czx.swell ? `<dt>Sea swell</dt><dd>${esc(czx.swell)}</dd>` : ""}${czx.bird ? `<dt>Bird hazard</dt><dd>${esc(czx.bird)}</dd>` : ""}
+        <dt>Runway surface</dt><dd>${q ? obQSel("rwySurface", czx.rwySurface, ["DRY", "DAMP", "WET", "FLOODED"]) : obPill(/FLOOD/i.test(czx.rwySurface) ? "r" : /WET|DAMP/i.test(czx.rwySurface) ? "a" : czx.rwySurface ? "g" : "", czx.rwySurface || "-")}</dd><dt>Sea surface</dt><dd>${esc(czx.seaTemp ? czx.seaTemp + "°C" : "-")}</dd>
+        ${czx.swell ? `<dt>Sea swell</dt><dd>${esc(czx.swell)}</dd>` : ""}<dt>Bird hazard</dt><dd>${q ? obQSel("bird", czx.bird, ["LOW (1)", "LOW (2)", "MED (2)", "HIGH (3)"]) : obPill(/HIGH/i.test(czx.bird) ? "r" : /MED/i.test(czx.bird) ? "a" : czx.bird ? "g" : "", czx.bird || "-")}</dd>
         <dt>Icing conditions</dt><dd>${yn(z.icing, "YES")}</dd><dt>Immersion suit</dt><dd>${yn(z.immersion, "YES")}</dd></dl>
         ${z.m ? `<p class="obraw">${esc(z.m.rawOb)}</p>` : `<p class="hint">No METAR yet.</p>`}</section>
       <section class="card opscard"><h2>Wind (CZX)</h2><div class="obwind">${obRose(w, z.rwy)}<div><div class="obbig">${esc(windTxt)}</div>
@@ -191,15 +272,15 @@ function obBoardView(tv) {
         ${czx.windHazard ? `<div>Wind hazard: ${esc(czx.windHazard)}</div>` : ""}</div></div></section>
       <section class="card opscard"><h2>Canopy / equipment</h2><div class="obeq">
         <div>Canopy ${obDot(z.canopy)}</div><div>APU (A11–15) ${obDot(z.apu1)}</div><div>APU (A16–23) ${obDot(z.apu2)}</div>
-        <div>Parachute ${obDot(b.equip.parachute)}</div><div>SAMAR ${obPill(/^G/i.test(b.equip.samar || "") ? "g" : b.equip.samar ? "a" : "", b.equip.samar || "-")}</div></div>
-        <p class="hint" style="margin:6px 0 0">Canopy and APU are worked out from the Cazaux wind and temperature unless ops sets them.</p></section>
+        <div>Parachute ${q ? `<button class="obst obst-${b.equip.parachute || "n"} obtap" data-obq="equip" data-f="parachute">${esc(OB_STATUS[b.equip.parachute] ?? "-")}</button>` : obDot(b.equip.parachute)}</div><div>SAMAR ${obPill(/^G/i.test(b.equip.samar || "") ? "g" : b.equip.samar ? "a" : "", b.equip.samar || "-")}</div></div>
+        <p class="hint" style="margin:6px 0 0">Canopy and APU are worked out from the Cazaux wind and temperature unless ops sets them.${q ? " Tap coloured items to change them." : ""}</p></section>
       <section class="card opscard obwide"><h2>Restricted areas</h2>${(b.restricted || []).length ? `<div class="tablewrap"><table class="opst obt"><thead><tr><th>Item</th><th>TGT</th><th>WX</th><th>Before</th><th>After</th><th>Restrictions</th></tr></thead><tbody>${b.restricted.map(r =>
-          `<tr><td>${esc(r.item)}</td><td>${esc(r.tgt)}</td><td>${esc(r.wx)}</td><td>${esc(r.before)}</td><td>${esc(r.after)}</td><td>${r.hot ? obPill("r", r.restr || "ACTIVE") : esc(r.restr)}</td></tr>`).join("")}</tbody></table></div>` : `<p class="hint">None entered.</p>`}
+          `<tr><td>${esc(r.item)}</td><td>${esc(r.tgt)}</td><td>${esc(r.wx)}</td><td>${esc(r.before)}</td><td>${esc(r.after)}</td><td>${q ? `<button class="obpill ${r.hot ? "obst-r" : ""} obtap" data-obq="hot" data-j="${b.restricted.indexOf(r)}" title="Tap to mark active / inactive">${esc(r.restr || (r.hot ? "ACTIVE" : "inactive"))}</button>` : r.hot ? obPill("r", r.restr || "ACTIVE") : esc(r.restr)}</td></tr>`).join("")}</tbody></table></div>` : `<p class="hint">None entered.</p>`}
         ${czx.firing ? `<p><b>Firing sch:</b> ${esc(czx.firing)}</p>` : ""}${czx.calamar ? `<p><b>CALAMAR:</b> ${esc(czx.calamar)}</p>` : ""}</section>
     </div>`;
 }
 // Colour state letter → pill colour.
-const obCol = c => /^(B|W|BLU|WHT)/i.test(c || "") ? "b" : /^(G|GRN)/i.test(c || "") ? "g" : /^(Y|A|YLO|AMB)/i.test(c || "") ? "a" : /^R/i.test(c || "") ? "r" : "";
+const obQSel = (f, v, opts) => `<select class="obsel" data-obq="czx" data-f="${f}">${["", ...opts].map(o => `<option value="${esc(o)}" ${o === (v || "") ? "selected" : ""}>${esc(o || "-")}</option>`).join("")}</select>`;
 // Small wind rose: runway line and an arrow from the wind direction.
 function obRose(w, rwy) {
   const R = 46, cx = 55, cy = 55, p = (deg, r) => [cx + r * Math.sin(deg * Math.PI / 180), cy - r * Math.cos(deg * Math.PI / 180)];
@@ -316,10 +397,10 @@ const bC = (p, v, label) => `<label class="opschk"><input type="checkbox" data-b
 const bS = (p, v, opts) => `<select data-bp="${p}">${opts.map(([k, l]) => `<option value="${esc(k)}" ${String(v ?? "") === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
 const bB = (op, p, i, label, tpl) => `<button type="button" class="btn small" data-bop="${op}" data-p="${p}" data-i="${i ?? ""}" data-tpl="${tpl || ""}">${label}</button>`;
 const bTools = (p, i) => `<span class="tools">${bB("up", p, i, "↑")}${bB("down", p, i, "↓")}${bB("del", p, i, "✕")}</span>`;
-const OB_ST = [["g", "Available"], ["a", "Limited"], ["r", "U/S"], ["", "-"]];
+const OB_ST = [["g", "Available"], ["a", "Limited"], ["r", "U/S"], ["auto", "Auto (CAT 1)"], ["", "-"]];
 const OB_AUTO = [["", "Auto"], ["g", "Green"], ["r", "Red"]];
 const obTpl = {
-  af: () => ({ icao: "", grp: "alt", p: false, rwy: "", fasf: "B", rsaf: "B", wx: "", restr: "", aids: [] }),
+  af: () => obAf("", "alt", false, "", []),
   aid: () => obAid("", "g"),
   ra: () => ({ item: "", tgt: "", wx: "", before: "", after: "", restr: "", hot: false }),
   tail: () => ({ tail: "", status: "S", npc: false, nts: false, ojt: false, notes: "" }),
@@ -330,11 +411,11 @@ function obEditor(k) {
   const d = OB.edit.data;
   let body = "";
   if (k === "board") {
-    body = `<div class="opsed"><div class="grid"><label>EOR${bS("eor", d.eor, [["NORMAL", "NORMAL"], ["LIMITED", "LIMITED"], ["CLOSED", "CLOSED"]])}</label><label>In hse${bI("inHse", d.inHse)}</label>
+    body = `<div class="opsed"><div class="grid"><label>EOR${bS("eor", d.eor, [["NORMAL", "NORMAL"], ["IN HSE", "IN HSE"]])}</label>
         <label>Banner${bI("banner", d.banner, "", "e.g. BIRD MIGRATORY SEASON (OCT - NOV)")}</label><label>Airspace note${bI("zrt", d.zrt, "", "e.g. ZRT ARCACHON SFC - FL130")}</label></div>
       <h3 class="opssub">Airfields</h3>${(d.airfields || []).map((a, i) => `<div class="blk"><div class="tablewrap"><table><thead><tr><th>ICAO</th><th>Table</th><th>P</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS override</th><th>Restrictions</th><th></th></tr></thead><tbody><tr>
           <td>${bI(`airfields.${i}.icao`, a.icao, "60px")}</td><td>${bS(`airfields.${i}.grp`, a.grp, [["main", "Main"], ["alt", "Other"]])}</td><td>${bC(`airfields.${i}.p`, a.p, "")}</td><td>${bI(`airfields.${i}.rwy`, a.rwy, "46px")}</td>
-          <td>${bI(`airfields.${i}.fasf`, a.fasf, "46px")}</td><td>${bI(`airfields.${i}.rsaf`, a.rsaf, "46px")}</td><td>${bI(`airfields.${i}.wx`, a.wx, "130px", "blank = from METAR")}</td><td>${bI(`airfields.${i}.restr`, a.restr, "200px")}</td><td>${bTools("airfields", i)}</td></tr></tbody></table>
+          <td>${bS(`airfields.${i}.fasf`, a.fasf, [["AUTO", "Auto"], ...OB_FASF.map(v => [v, v])])}</td><td>${bS(`airfields.${i}.rsaf`, a.rsaf, [["AUTO", "Auto"], ...OB_RSAF.map(v => [v, v])])}</td><td>${bI(`airfields.${i}.wx`, a.wx, "130px", "blank = from METAR")}</td><td>${bI(`airfields.${i}.restr`, a.restr, "200px")}</td><td>${bTools("airfields", i)}</td></tr></tbody></table>
         ${a.grp === "main" ? `<table><tbody><tr><td class="hint">Aids</td>${(a.aids || []).map((x, j) => `<td>${bI(`airfields.${i}.aids.${j}.name`, x.name, "90px")}${bS(`airfields.${i}.aids.${j}.s`, x.s, OB_ST)}${bB("del", `airfields.${i}.aids`, j, "✕")}</td>`).join("")}<td>${bB("add", `airfields.${i}.aids`, "", "+ Aid", "aid")}</td></tr></tbody></table>` : ""}</div></div>`).join("")}
       ${bB("add", "airfields", "", "+ Airfield", "af")}
       <h3 class="opssub">Cazaux</h3><div class="grid">${[["sun", "Sunrise / sunset (blank = auto)"], ["icingBand", "Icing band"], ["rwySurface", "Runway surface"], ["seaTemp", "Sea surface (°C)"], ["swell", "Sea swell"], ["bird", "Bird hazard state"], ["windHazard", "Wind hazard"], ["firing", "Firing schedule"], ["calamar", "CALAMAR"]].map(([f, l]) => `<label>${l}${bI("czx." + f, d.czx[f])}</label>`).join("")}</div>
@@ -343,7 +424,7 @@ function obEditor(k) {
       <h3 class="opssub">Restricted areas</h3><div class="tablewrap"><table><thead><tr><th>Item</th><th>TGT</th><th>WX</th><th>Before</th><th>After</th><th>Restrictions</th><th>Active</th><th></th></tr></thead><tbody>${(d.restricted || []).map((r, i) => `<tr>
         <td>${bI(`restricted.${i}.item`, r.item, "140px")}</td><td>${bI(`restricted.${i}.tgt`, r.tgt, "70px")}</td><td>${bI(`restricted.${i}.wx`, r.wx, "70px")}</td><td>${bI(`restricted.${i}.before`, r.before, "80px")}</td><td>${bI(`restricted.${i}.after`, r.after, "80px")}</td>
         <td>${bI(`restricted.${i}.restr`, r.restr, "150px")}</td><td>${bC(`restricted.${i}.hot`, r.hot, "")}</td><td>${bTools("restricted", i)}</td></tr>`).join("")}</tbody></table></div>${bB("add", "restricted", "", "+ Area", "ra")}
-      <p class="hint">FASF / RSAF: colour state letter (B, W, G, Y, A, R). Weather, wind, temperature, QNH and sunrise/sunset come in automatically.</p></div>`;
+      <p class="hint">FASF / RSAF "Auto" works the colour state out from the METAR (or your WX/VIS override) using the Excel's criteria. Aid status "auto" (CAT 1 line) follows CZX FASF. Weather, wind, temperature, QNH and sunrise/sunset come in automatically.</p></div>`;
   } else if (k === "aircraft") {
     body = `<div class="opsed"><div class="tablewrap"><table><thead><tr><th>Tail</th><th>Status</th><th>Flags</th><th>Significant ADDL / NPC / AMC (one per line)</th><th></th></tr></thead><tbody>${(d.tails || []).map((t, i) => `<tr>
         <td>${bI(`tails.${i}.tail`, t.tail, "80px", "e.g. 327#(W)")}</td><td>${bS(`tails.${i}.status`, t.status, [["S", "Serviceable"], ["US", "U/S"], ["MX", "Maintenance"]])}</td>
@@ -359,6 +440,37 @@ function obEditor(k) {
   return `<div id="obEdit">${body}<div class="err" id="obErr"></div><div class="row" style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px"><button class="btn" data-ob="cancel">Cancel</button><button class="btn primary" data-ob="save">Save</button></div></div>`;
 }
 const obRerender = () => { const y = window.scrollY; render(); window.scrollTo(0, y); };
+// Change one thing on the board and save straight away (retries once if someone else saved in between).
+async function obQuick(mutate) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const r = OB.state.board, d = opsClone(obDoc("board"));
+    mutate(d);
+    const { data, error } = await S.sb.rpc("ops_state_save", { p_key: "board", p_data: d, p_version: r ? r.version : 0 });
+    if (!error) { OB.state.board = { key: "board", data: d, version: data, updated_at: new Date().toISOString(), updated_by: S.me.id }; return obRerender(); }
+    if (!/someone else/i.test(error.message) || attempt) { toast(errMsg(error)); return obRerender(); }
+    const { data: fresh } = await S.sb.from("ops_state").select("*").eq("key", "board").maybeSingle();
+    if (fresh) OB.state.board = fresh;
+  }
+}
+const OB_CYCLE = { g: "a", a: "r", r: "g", "": "g" };
+document.addEventListener("click", e => {
+  const el = e.target.closest("button[data-obq]"); if (!el || OB.edit) return;
+  const i = +el.dataset.af, j = +el.dataset.j, k = el.dataset.obq;
+  el.disabled = true;
+  if (k === "p") obQuick(d => d.airfields.forEach((a, n) => { if (a.grp === "main") a.p = n === i ? !a.p : false; }));
+  else if (k === "aid") obQuick(d => { const a = d.airfields[i], x = a.aids[j], cur = obAidS(a, x);
+    x.s = x.s === "auto" ? OB_CYCLE[cur] || "g" : (a.icao === "LFBC" && /CAT\s*1/i.test(x.name) && x.s === "r") ? "auto" : OB_CYCLE[x.s] || "g"; });
+  else if (k === "eor") obQuick(d => { d.eor = el.dataset.v; });
+  else if (k === "hot") obQuick(d => { d.restricted[j].hot = !d.restricted[j].hot; });
+  else if (k === "equip") obQuick(d => { d.equip[el.dataset.f] = OB_CYCLE[d.equip[el.dataset.f] || ""]; });
+});
+document.addEventListener("change", e => {
+  const el = e.target; if (el.tagName !== "SELECT" || !el.dataset.obq || OB.edit) return;
+  const i = +el.dataset.af, k = el.dataset.obq, v = el.value;
+  el.disabled = true;
+  if (k === "fasf" || k === "rsaf" || k === "rwy") obQuick(d => { d.airfields[i][k] = v; });
+  else if (k === "czx") obQuick(d => { d.czx[el.dataset.f] = v; });
+});
 document.addEventListener("input", e => {
   const el = e.target; if (!OB.edit || !el.dataset || !el.dataset.bp || !el.closest("#obEdit")) return;
   opsSetPath(OB.edit.data, el.dataset.bp, el.type === "checkbox" ? el.checked : el.value);
@@ -519,6 +631,17 @@ function obAssign(itemId) {
 .obst{display:inline-block;padding:1px 7px;border-radius:3px;font-size:.8rem;font-weight:600;background:color-mix(in srgb,var(--muted) 18%,transparent)}
 .obst-g{background:#1f9d55;color:#fff}.obst-a{background:#e0a800;color:#1a1200}.obst-r{background:#d63c3c;color:#fff}.obst-b{background:#2563eb;color:#fff}.obst-n{opacity:.7}
 .obaids{display:flex;flex-wrap:wrap;gap:3px}
+.obtap{border:0;cursor:pointer;font:600 .8rem var(--body)}
+.obcs{display:inline-block;min-width:44px;text-align:center;padding:2px 6px;border-radius:3px;font:700 .82rem var(--body);border:1px solid transparent}
+select.obcs{width:auto;padding:3px 4px;margin:0;cursor:pointer}
+select.obsel{width:auto;padding:3px 6px;margin:0;font-size:.85rem}
+.cs-b{background:#2563eb;color:#fff}.cs-w{background:#fff;color:#000;border-color:#999}.cs-gv{background:#22c55e;color:#000}.cs-gi{background:#15803d;color:#fff}
+.cs-y{background:#facc15;color:#000}.cs-y1{background:#fde047;color:#000}.cs-y2{background:#eab308;color:#000}.cs-a{background:#f59e0b;color:#000}.cs-a1{background:#f59e0b;color:#000}.cs-a2{background:#c2410c;color:#fff}
+.cs-r{background:#dc2626;color:#fff}.cs-k{background:#000;color:#fff;border-color:#666}.cs-c{background:#6b7280;color:#fff}.cs-n{background:color-mix(in srgb,var(--muted) 18%,transparent);color:var(--ink)}
+select.obcs option{background:var(--paper);color:var(--ink)}
+.obpbtn{width:28px;height:24px;border:1px dashed var(--line);border-radius:3px;background:none;cursor:pointer;font:700 .85rem var(--body);color:var(--muted)}
+.obpbtn.on{background:#1f9d55;border:0;color:#fff}
+.obeor{display:inline-flex;gap:4px;align-items:center}
 table.obt{min-width:0}
 .obnote{margin:8px 0 0;font-weight:600}
 .obraw{font:500 .78rem ui-monospace,Menlo,Consolas,monospace;color:var(--muted);margin:8px 0 0;word-break:break-word}
