@@ -40,7 +40,7 @@ const obBlank = {
       obAf("LFBE", "alt", false, "09", []),
     ],
     czx: { sun: "", icingBand: "", rwySurface: "DRY", seaTemp: "", swell: "", bird: "", windHazard: "", firing: "", calamar: "", firingS: "", calamarS: "" },
-    equip: { parachute: "0", samar: "G3", canopy: "", apu1: "", apu2: "" },
+    equip: { parachute: "0", samar: "G3", canopy: "", apu1: "", apu2: "", apu1Mode: "APU", apu2Mode: "APU" },
     r115: { tgt: "", wx: "", before: "", after: "", restr: "" },
     areas: OB_AREAS.map(item => ({ item, val: "", s: "" })),
   }),
@@ -318,10 +318,10 @@ function obBoardView(tv) {
         ${comp ? `<div>${comp.head < 0 ? "Tailwind" : "Headwind"} <b>${Math.abs(comp.head).toFixed(1)}</b> KT</div><div>Crosswind <b>${comp.cross.toFixed(1)}</b> KT</div><div class="hint">RWY ${esc(String(z.rwy / 10).padStart(2, "0"))} · governing wind ${w.gov} KT</div>` : ""}
         <div>Wind hazard ${q ? `<select class="obsel ${obHazS(czx.windHazard) ? "obst-" + obHazS(czx.windHazard) : ""}" data-obq="czx" data-f="windHazard" aria-label="Wind hazard">${["", "A", "B", "C", "D"].map(o => `<option value="${o}" ${o === (czx.windHazard || "") ? "selected" : ""}>${o || "-"}</option>`).join("")}</select>` : czx.windHazard ? obPill(obHazS(czx.windHazard), czx.windHazard) : "-"}</div></div></div></section>
       <section class="card opscard"><h2>Canopy / equipment</h2><div class="obeq">
-        <div>Canopy ${obDot(z.canopy)}</div><div>APU (A11–15) ${obDot(z.apu1)}</div><div>APU (A16–23) ${obDot(z.apu2)}</div>
+        <div>Canopy ${obDot(z.canopy)}</div>${[["apu1", "A11–15"], ["apu2", "A16–23"]].map(([f, park]) => obApuCell(b, z, f, park, q)).join("")}
         <div>Parachute ${q ? `<select class="obsel obst-${obParaS(b.equip.parachute) || "n"}" data-obq="eqv" data-f="parachute" aria-label="Parachute">${[...new Set(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", String(b.equip.parachute ?? "")])].filter(x => x !== "").map(o => `<option ${o === String(b.equip.parachute) ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>` : obPill(obParaS(b.equip.parachute), b.equip.parachute ?? "-")}</div>
         <div>SAMAR ${q ? `<input class="obval obst-${obSamarS(b.equip.samar) || "n"}" style="width:64px" data-obq="eqv" data-f="samar" value="${esc(b.equip.samar || "")}" aria-label="SAMAR">` : obPill(obSamarS(b.equip.samar), b.equip.samar || "-")}</div></div>
-        <p class="hint" style="margin:6px 0 0">Canopy and APU are worked out from the Cazaux wind and temperature unless ops sets them.${q ? " Tap coloured items to change them." : ""}</p></section>
+        <p class="hint" style="margin:6px 0 0">Canopy and APU colours are worked out from the Cazaux wind and temperature unless ops sets them.${q ? " Tap APU / ASU to switch a parking set." : ""}</p></section>
       <section class="card opscard obwide"><h2>Restricted areas</h2>${obAreasView(b, q, z)}</section>
       ${tv ? "" : obCallsignsCard()}
     </div>`;
@@ -348,6 +348,12 @@ function obCallsignsCard() {
 }
 // A Cazaux field ops types straight onto the board (from the FASF forecast); saved when they leave the box.
 const obQIn = (f, v, ph, w, st) => `<input class="obval ${st ? "obst-" + st : ""}" style="width:${w}" data-obq="czxu" data-f="${f}" value="${esc(v || "")}" placeholder="${esc(ph)}" aria-label="${esc(f)}">`;
+// Start power per parking set: APU (coloured by the Excel rule: red if T < 1 °C or crosswind > 14.9 kt) or ASU (ground start unit, rule doesn't apply).
+function obApuCell(b, z, f, park, q) {
+  const mode = b.equip[f + "Mode"] === "ASU" ? "ASU" : "APU", st = mode === "ASU" ? "b" : z[f];
+  const tag = q ? `<button class="obst obst-${st || "n"} obtap" data-obq="apumode" data-f="${f}" title="Tap to switch APU / ASU">${mode}</button>` : `<span class="obst obst-${st || "n"}">${mode}</span>`;
+  return `<div>${park} ${tag}${mode === "APU" && z[f] === "r" ? ` <span class="hint">APU limits</span>` : ""}</div>`;
+}
 // Colour state letter → pill colour.
 const obQSel = (f, v, opts) => `<select class="obsel" data-obq="czx" data-f="${f}">${["", ...opts].map(o => `<option value="${esc(o)}" ${o === (v || "") ? "selected" : ""}>${esc(o || "-")}</option>`).join("")}</select>`;
 // Small wind rose: runway line and an arrow from the wind direction.
@@ -572,7 +578,7 @@ function obEditor(k) {
         <label>Bird hazard state${bS("czx.bird", d.czx.bird, ["", "LOW (1)", "LOW (2)", "MED (2)", "HIGH (3)"].map(v => [v, v || "-"]))}</label>
         <label>Wind hazard${bS("czx.windHazard", d.czx.windHazard, ["", "A", "B", "C", "D"].map(v => [v, v || "-"]))}</label>
         <label>Bingo${bS("bingo", d.bingo, [["AUTO", "Auto (from CZX RSAF)"], ["NONE", "— (blank)"], ["BINGO", "BINGO"], ["UPG BINGO", "UPG BINGO"], ["IFR BINGO", "IFR BINGO"]])}</label></div>
-      <h3 class="opssub">Canopy / equipment</h3><div class="grid"><label>Canopy${bS("equip.canopy", d.equip.canopy, OB_AUTO)}</label><label>APU (A11–15)${bS("equip.apu1", d.equip.apu1, OB_AUTO)}</label><label>APU (A16–23)${bS("equip.apu2", d.equip.apu2, OB_AUTO)}</label>
+      <h3 class="opssub">Canopy / equipment</h3><div class="grid"><label>Canopy${bS("equip.canopy", d.equip.canopy, OB_AUTO)}</label><label>A11–15${bS("equip.apu1Mode", d.equip.apu1Mode, [["APU", "APU"], ["ASU", "ASU"]])}</label><label>A11–15 APU colour${bS("equip.apu1", d.equip.apu1, OB_AUTO)}</label><label>A16–23${bS("equip.apu2Mode", d.equip.apu2Mode, [["APU", "APU"], ["ASU", "ASU"]])}</label><label>A16–23 APU colour${bS("equip.apu2", d.equip.apu2, OB_AUTO)}</label>
         <label>Parachute (0 = green)${bI("equip.parachute", d.equip.parachute)}</label><label>SAMAR (G… / Y… / R…)${bI("equip.samar", d.equip.samar)}</label></div>
       <h3 class="opssub">Restricted areas</h3><div class="tablewrap"><table><thead><tr><th>R115 (CAPTIEUX)</th><th>TGT</th><th>WX</th><th>Before</th><th>After</th><th>Restrictions (G1–G7, RADAR)</th></tr></thead><tbody><tr><td></td>
         <td>${bI("r115.tgt", d.r115.tgt, "70px")}</td><td>${bS("r115.wx", d.r115.wx, ["", ...OB_FASF].map(v => [v, v || "-"]))}</td><td>${bI("r115.before", d.r115.before, "80px")}</td><td>${bI("r115.after", d.r115.after, "80px")}</td><td>${bI("r115.restr", d.r115.restr, "180px")}</td></tr></tbody></table></div>
@@ -619,6 +625,7 @@ document.addEventListener("click", e => {
   else if (k === "eor") obQuick(d => { d.eor = el.dataset.v; });
   else if (k === "avalc") obQuick(d => { d.areas[j].s = OB_COLCYCLE[d.areas[j].s || ""]; });
   else if (k === "czxvc") obQuick(d => { const f = el.dataset.f + "S"; d.czx[f] = OB_COLCYCLE[d.czx[f] || ""]; });
+  else if (k === "apumode") obQuick(d => { const m = el.dataset.f + "Mode"; d.equip[m] = d.equip[m] === "ASU" ? "APU" : "ASU"; });
   else if (k === "equip") obQuick(d => { d.equip[el.dataset.f] = OB_CYCLE[d.equip[el.dataset.f] || ""]; });
 });
 document.addEventListener("change", e => {
