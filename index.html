@@ -374,7 +374,7 @@ const BASE = { lat: 44.533, lng: -1.125 }, BASE_KM = 3;
 const S = {
   sb: null, session: null, me: null, ready: false, chan: null,
   roster: [], profiles: [], vehicles: [], open: [], log: [],
-  tab: "board", q: "", logFilter: "", etaTarget: null
+  tab: "board", logFilter: "", etaTarget: null
 };
 
 /* ---------- helpers ---------- */
@@ -620,8 +620,7 @@ function renderChangePw(v) {
 
 /* ---------- board ---------- */
 function renderBoard(v) {
-  const now = Date.now(), ob = openByTrainee(), q = S.q.trim().toLowerCase();
-  const match = txt => !q || txt.toLowerCase().includes(q);
+  const now = Date.now(), ob = openByTrainee();
   const mine = me();
   if (!active().length) {
     v.innerHTML = `<div class="empty"><strong>No trainees on the roster yet</strong>${isAdmin() ? `Post in your course on the <a href="#" data-tab="roster">Admin</a> tab.` : "Ask an instructor to add the course."}</div>`;
@@ -631,7 +630,7 @@ function renderBoard(v) {
   if (mine) idCard = `<p class="hint idline">Signed in as <strong>${esc(mine.name)}</strong>${mine.can_drive === false ? " (non-driver)" : ""}.</p>`;
   else if (!isAdmin()) idCard = `<div class="card idcard"><h2>Account not linked</h2><p class="hint">Your login isn't linked to a name on the roster yet. Ask an instructor to fix it.</p></div>`;
 
-  const pend = S.open.filter(m => isPend(m) && match(crewText(m) + " " + m.destination)).sort((a, b) => ms(a.etd) - ms(b.etd));
+  const pend = S.open.filter(isPend).sort((a, b) => ms(a.etd) - ms(b.etd));
   const pendHtml = pend.map(m => {
     const crew = members(m).map(p => `<div class="crew"><em>${esc(ROLE[p.role])}</em>${esc(p.name)}</div>`).join("");
     const btns = (canApprove() ? `<button class="btn small" data-act="reject" data-id="${esc(m.id)}">Reject</button><button class="btn small primary" data-act="approve" data-id="${esc(m.id)}">Approve</button>` : "")
@@ -643,7 +642,7 @@ function renderBoard(v) {
         <span class="meta">${esc(m.vehicle_label)}. ${esc(m.reason)}. Requested by ${esc(who(m.out_by))}</span></div>
       <div class="act">${btns}</div></article>`;
   }).join("");
-  const groups = S.open.filter(m => !isPend(m) && match(crewText(m) + " " + m.destination))
+  const groups = S.open.filter(m => !isPend(m))
     .sort((a, b) => (isLate(b, now) - isLate(a, now)) || ms(a.expected_back) - ms(b.expected_back));
   const outHtml = groups.map(m => {
     const late = isLate(m, now);
@@ -657,9 +656,9 @@ function renderBoard(v) {
         <span class="meta">Out since ${esc(fmt(m.office_hours && m.etd ? m.etd : m.out_at))}. ${esc(m.vehicle_label)}. ${esc(m.reason)}${m.decided_as ? `. Approved by ${esc(m.decided_as)}` : ""}</span></div>
       <div class="act">${canAct(m) ? `<button class="btn small" data-act="eta" data-id="${esc(m.id)}">Change time</button><button class="btn small primary" data-act="in" data-id="${esc(m.id)}">Back in base</button>` : ""}</div></article>`;
   }).join("");
-  const inT = active().filter(t => !leaveOf(t.id) && (!ob[t.id] || isPend(ob[t.id])) && match(t.name + " " + (t.course || "")));
+  const inT = active().filter(t => !leaveOf(t.id) && (!ob[t.id] || isPend(ob[t.id])));
   const today = todayStr();
-  const lvT = active().filter(t => leaveOf(t.id) && match(t.name + " " + (t.course || ""))).sort((a, b) => leaveOf(a.id).until.localeCompare(leaveOf(b.id).until));
+  const lvT = active().filter(t => leaveOf(t.id)).sort((a, b) => leaveOf(a.id).until.localeCompare(leaveOf(b.id).until));
   const leaveHtml = lvT.map(t => { const l = leaveOf(t.id), late = l.until < today;
     return `<article class="strip s-leave"><div class="band"></div>
       <div class="who"><h3>${esc(t.name)}</h3><span>${esc(t.course || "")}</span></div>
@@ -674,14 +673,12 @@ function renderBoard(v) {
       <div class="strips">${ts.map(strip).join("")}</div>`).join("");
   const canBook = isAdmin() || (mine && !ob[mine.id]);
 
-  v.innerHTML = `${idCard}<div class="toolbar"><input id="q" type="search" placeholder="Find a trainee or destination" value="${esc(S.q)}">
-    ${canBook ? `<button class="btn primary" data-act="out">Book out</button>` : ""}</div>
+  v.innerHTML = `${idCard}${canBook ? `<div class="toolbar" style="justify-content:flex-end"><button class="btn primary" data-act="out">Book out</button></div>` : ""}
     ${pend.length ? `<div class="sec">Awaiting approval (${pend.length})</div><div class="strips">${pendHtml}</div>` : ""}
     ${groups.length ? `<div class="sec" style="display:flex;justify-content:space-between;align-items:center">Out of base (${groups.length} ${groups.length === 1 ? "trip" : "trips"})${outTrips().length > 1 && (isAdmin() || outTrips().some(canAct)) ? `<button class="btn small" data-act="rearrange">Rearrange for return</button>` : ""}</div><div class="strips">${outHtml}</div>` : ""}
     ${lvT.length ? `<div class="sec">On leave (${lvT.length})</div><div class="strips">${leaveHtml}</div>` : ""}
     <div class="sec">In base (${inT.length})</div>
-    ${inHtml || `<div class="empty">${q ? `No one in base matches “${esc(S.q)}”.` : "Everyone is out."}</div>`}`;
-  $("#q").oninput = e => { S.q = e.target.value; const pos = e.target.selectionStart; renderBoard(v); const n = $("#q"); n.focus(); n.setSelectionRange(pos, pos); };
+    ${inHtml || `<div class="empty">Everyone is out.</div>`}`;
 }
 
 /* ---------- book out ---------- */
@@ -1409,7 +1406,7 @@ $("#btnSignOut").onclick = signOut;
 
 /* ---------- start ---------- */
 renderClock();
-setInterval(() => { renderClock(); if (S.ready && S.tab === "board" && document.activeElement?.id !== "q" && !document.querySelector("dialog[open]")) render(); else if (S.ready) renderTally(); }, 30000);
+setInterval(() => { renderClock(); if (S.ready && S.tab === "board" && !document.querySelector("dialog[open]")) render(); else if (S.ready) renderTally(); }, 30000);
 (async () => {
   if (SUPABASE_URL.startsWith("PASTE") || !window.supabase) return render();
   S.sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
