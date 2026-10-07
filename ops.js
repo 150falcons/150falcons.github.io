@@ -14,7 +14,7 @@ const OPS_TITLES = {
 const OPS_ORDER = ["header", "flying", "sim", "ground", "airfield", "notes", "duties"];
 
 const opsTpl = {
-  wave: n => ({ name: n || "WAVE", sxo: "", opsO: "", rmks: "", flights: [] }),
+  wave: night => ({ name: "", night: !!night, sxo: "", opsO: "", rmks: "", flights: [] }),
   flight: () => ({ brief: "", step: "", etd: "", eta: "", callsign: "", area: "", areaTime: "", opsAdd: false, ac: [opsTpl.ac("1"), opsTpl.ac("2")] }),
   ac: n => ({ n: n || "", crew1: "", crew2: "", mission: "", tail: "", config: "", rmks: "" }),
   sim: () => ({ etd: "", eta: "", callsign: "", ac: [opsTpl.simac("")] }),
@@ -29,7 +29,7 @@ const opsTpl = {
 };
 const opsBlank = {
   header: () => ({ inTime: "", lateIn: "", wxBrief: "", modb: "", nightBrief: "", sqnSii: "", emer: "", dailyReq: "", tower: "", di: "", sdo: "", tdo: "", gym: "", plannedBy: "", vettedBy: "", currencyBy: "" }),
-  flying: () => ({ waves: ["WAVE 1", "WAVE 2", "WAVE 3", "NIGHT WAVE"].map(opsTpl.wave) }),
+  flying: () => ({ waves: [] }),
   sim: () => ({ rows: [] }),
   ground: () => ({ groups: ["GROUND PROGRAM", "QFI GROUND PROGRAM"].map(opsTpl.group) }),
   airfield: () => ({ rows: [], sunset: "" }),
@@ -46,7 +46,16 @@ const OPS_HEADER_FIELDS = [
 /* ---------- helpers ---------- */
 const opsClone = o => JSON.parse(JSON.stringify(o));
 const opsData = sec => { const r = OPS.rows[sec]; return r && r.data && Object.keys(r.data).length ? r.data : null; };
-const opsGet = sec => (OPS.edit && OPS.edit.section === sec) ? OPS.edit.data : (opsData(sec) || opsBlank[sec]());
+const opsGet = sec => { const d = (OPS.edit && OPS.edit.section === sec) ? OPS.edit.data : (opsData(sec) || opsBlank[sec]()); if (sec === "flying") opsNameWaves(d); return d; };
+// Waves are numbered by order: WAVE 1, WAVE 2… and NIGHT WAVE 1, NIGHT WAVE 2… (older data: "night" read from the name).
+function opsNameWaves(fl) {
+  let day = 0, night = 0;
+  for (const w of fl.waves || []) {
+    if (w.night === undefined) w.night = /NIGHT/i.test(w.name || "");
+    w.name = w.night ? `NIGHT WAVE ${++night}` : `WAVE ${++day}`;
+  }
+  return fl;
+}
 const opsCanEdit = () => !!S.me && ((S.me.role === "admin" && ["CO", "DYCO", "OC A", "OC B"].includes(S.me.appointment)) || !!S.me.ops_editor);
 const opsShift = (day, n) => { const d = new Date(day + "T12:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 const opsLongDay = day => new Date(day + "T12:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric", weekday: "long" });
@@ -63,6 +72,7 @@ const opsNorm = s => String(s ?? "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").t
 const opsHas = (text, name) => { const n = opsNorm(name); return !!n && (" " + opsNorm(text) + " ").includes(" " + n + " "); };
 const opsCrewHas = (a, n) => opsNorm(a.crew1) === n || opsNorm(a.crew2) === n;
 const opsLineUsed = a => !!(a.crew1 || a.crew2 || a.tail || a.mission);
+const opsSimUsed = s => !!(s.etd || s.eta || s.callsign || (s.ac || []).some(opsLineUsed));
 const opsMyNames = () => [me() && me().name, S.me && S.me.display_name, ...(typeof OB !== "undefined" ? obMyCrew().map(c => c.name) : [])].filter(Boolean).map(opsNorm).filter((n, i, a) => n && a.indexOf(n) === i);
 // Escape, and highlight the signed-in person's name.
 function opsX(v) {
@@ -173,6 +183,7 @@ function renderOps(v) {
     return;
   }
   const any = OPS_ORDER.some(opsData), canEdit = opsCanEdit();
+  opsGet("flying");
   let html = opsBar() + `<h2 class="opstitle">150 Squadron flying program<span>${esc(opsLongDay(OPS.day))}</span></h2>`;
   if (!any && !OPS.edit) {
     html += `<div class="empty"><strong>No programme for this day yet</strong>${canEdit
@@ -270,7 +281,8 @@ const opsView = {
     return out;
   },
   sim(sim) {
-    if (!(sim.rows || []).length) return "";
+    sim = { rows: (sim.rows || []).filter(opsSimUsed) };
+    if (!sim.rows.length) return "";
     let n = 0, out = `<div class="tablewrap"><table class="opst"><thead><tr><th>No</th><th>ETD</th><th>ETA</th><th>Callsign</th><th>Aircrew</th><th>Mission</th><th>FMS</th><th>Config</th><th>Rmks</th></tr></thead><tbody>`;
     for (const s of sim.rows) {
       const ac = (s.ac || []).length ? s.ac : [opsTpl.simac("")], span = ac.length;
@@ -321,6 +333,7 @@ const oTools = (p, i) => `<span class="tools">${oB("up", p, i, "↑", "", "Move 
 
 function opsEditor(sec) {
   const d = OPS.edit.data;
+  if (sec === "flying") opsNameWaves(d);
   const people = [...new Set([...active().map(t => t.name), ...S.profiles.filter(p => p.role === "admin").map(p => p.display_name)].filter(Boolean))];
   return `<div class="opsed" id="opsEdit"><datalist id="opsPeople">${people.map(n => `<option value="${esc(n)}">`).join("")}</datalist>
     ${opsEd[sec](d)}
@@ -334,7 +347,8 @@ const opsEd = {
   },
   flying(fl) {
     return (fl.waves || []).map((w, wi) => `<div class="blk">
-      <div class="grid"><label>Wave${oI(`waves.${wi}.name`, w.name)}</label><label>SXO${oP(`waves.${wi}.sxo`, w.sxo)}</label><label>OPS O${oI(`waves.${wi}.opsO`, w.opsO, "", "e.g. LIM Y / LEE L (TKOVER @ 1100Z)")}</label></div>
+      <div class="tools" style="margin-bottom:4px"><b class="opswavename">${esc(w.name)}</b>${oC(`waves.${wi}.night`, w.night, "Night wave")}<span class="grow"></span>${oTools("waves", wi)}</div>
+      <div class="grid"><label>SXO${oP(`waves.${wi}.sxo`, w.sxo)}</label><label>OPS O${oI(`waves.${wi}.opsO`, w.opsO, "", "e.g. LIM Y / LEE L (TKOVER @ 1100Z)")}</label></div>
       <label>Wave remarks (airfield notes for this wave)${oT(`waves.${wi}.rmks`, w.rmks)}</label>
       ${(w.flights || []).map((f, fi) => { const p = `waves.${wi}.flights.${fi}`; return `<div class="blk flt">
         <div class="tablewrap"><table><thead><tr><th>Brief</th><th>Step</th><th>ETD</th><th>ETA</th><th>Callsign</th><th>Area</th><th>Area time</th><th></th><th></th></tr></thead><tbody><tr>
@@ -344,8 +358,8 @@ const opsEd = {
         <table><thead><tr><th>#</th><th>Aircrew</th><th>Aircrew</th><th>Mission</th><th>A/C</th><th>Config</th><th>Rmks</th><th></th></tr></thead><tbody>
           ${(f.ac || []).map((a, ai) => { const q = `${p}.ac.${ai}`; return `<tr><td>${oI(q + ".n", a.n, "40px")}</td><td>${oP(q + ".crew1", a.crew1, "120px")}</td><td>${oP(q + ".crew2", a.crew2, "120px")}</td><td>${oI(q + ".mission", a.mission, "110px")}</td><td>${oI(q + ".tail", a.tail, "60px")}</td><td>${oI(q + ".config", a.config, "60px")}</td><td>${oI(q + ".rmks", a.rmks, "200px")}</td><td>${oB("del", p + ".ac", ai, "✕", "", "Remove aircraft")}</td></tr>`; }).join("")}
         </tbody></table></div>${oB("add", p + ".ac", "", "+ Aircraft", "ac")}</div>`; }).join("")}
-      <div class="tools">${oB("add", `waves.${wi}.flights`, "", "+ Flight", "flight")} <span class="grow"></span>${oTools("waves", wi)}</div></div>`).join("")
-      + oB("add", "waves", "", "+ Wave", "wave") + `<p class="hint">Times as 0725 (Zulu). Tick "Ops add" for standby / ops-add flights: they show as * and don't count in planned sorties or hours.</p>`;
+      <div class="tools">${oB("add", `waves.${wi}.flights`, "", "+ Flight", "flight")}</div></div>`).join("")
+      + `<div class="tools">${oB("add", "waves", "", "+ Wave", "wave")}${oB("add", "waves", "", "+ Night wave", "nwave")}</div>` + `<p class="hint">Times as 0725 (Zulu). Tick "Ops add" for standby / ops-add flights: they show as * and don't count in planned sorties or hours.</p>`;
   },
   sim(sim) {
     return (sim.rows || []).map((s, si) => { const p = `rows.${si}`; return `<div class="blk flt"><div class="tablewrap">
@@ -409,7 +423,7 @@ document.addEventListener("click", async e => {
     const p = op.dataset.p, i = +op.dataset.i, arr = opsPath(OPS.edit.data, p) || (opsSetPath(OPS.edit.data, p, []), opsPath(OPS.edit.data, p));
     if (op.dataset.op === "add") {
       const t = op.dataset.tpl;
-      arr.push(t === "ac" ? opsTpl.ac(String(arr.length + 1)) : t === "simac" ? opsTpl.simac(String(arr.length + 1)) : t === "wave" ? opsTpl.wave("WAVE " + (arr.length + 1)) : opsTpl[t]());
+      arr.push(t === "ac" ? opsTpl.ac(String(arr.length + 1)) : t === "simac" ? opsTpl.simac(String(arr.length + 1)) : t === "wave" ? opsTpl.wave(false) : t === "nwave" ? opsTpl.wave(true) : opsTpl[t]());
     } else if (op.dataset.op === "del") arr.splice(i, 1);
     else if (op.dataset.op === "up" && i > 0) [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]];
     else if (op.dataset.op === "down" && i < arr.length - 1) [arr[i + 1], arr[i]] = [arr[i], arr[i + 1]];
@@ -485,7 +499,7 @@ function opsPrint() {
     return rows;
   }).join("");
   let sn = 0;
-  const sims = (sim.rows || []).map(s => (s.ac || []).map((a, i) => `<tr${i === 0 ? ' class="f"' : ""}><td>${opsLineUsed(a) ? String(++sn).padStart(2, "0") : ""}</td><td>${i === 0 ? e(s.etd) : ""}</td><td>${i === 0 ? e(s.eta) : ""}</td><td>${e([i === 0 ? s.callsign : "", a.n].filter(Boolean).join(" "))}</td><td>${e(a.crew1)}</td><td>${e(a.crew2)}</td><td>${e(a.mission)}</td><td>${e(a.fms)}</td><td>${e(a.config)}</td><td>${nl(a.rmks)}</td></tr>`).join("")).join("");
+  const sims = (sim.rows || []).filter(opsSimUsed).map(s => (s.ac || []).map((a, i) => `<tr${i === 0 ? ' class="f"' : ""}><td>${opsLineUsed(a) ? String(++sn).padStart(2, "0") : ""}</td><td>${i === 0 ? e(s.etd) : ""}</td><td>${i === 0 ? e(s.eta) : ""}</td><td>${e([i === 0 ? s.callsign : "", a.n].filter(Boolean).join(" "))}</td><td>${e(a.crew1)}</td><td>${e(a.crew2)}</td><td>${e(a.mission)}</td><td>${e(a.fms)}</td><td>${e(a.config)}</td><td>${nl(a.rmks)}</td></tr>`).join("")).join("");
   const ground = (opsGet("ground").groups || []).filter(g => (g.rows || []).length).map(g => `<tr class="wv"><td colspan="4">${e(g.name)}</td></tr>${g.rows.map(r => `<tr><td>${e(r.time)}</td><td>${e(r.event)}</td><td>${e(r.personnel)}</td><td>${e(r.venue)}</td></tr>`).join("")}`).join("");
   const af = opsGet("airfield"), nt = opsGet("notes");
   const duties = (opsGet("duties").groups || []).filter(g => (g.rows || []).length).map(g => `<table><tr class="wv"><td colspan="${waves.length + 2 + (g.hours ? 5 : 0)}">${e(g.name)}</td></tr><tr><th></th><th>Name</th>${waves.map(w => `<th>${e(w.name)}</th>`).join("")}${g.hours ? "<th>Prev day out</th><th>In time</th><th>Rest</th><th>Out time</th><th>Duty</th>" : ""}</tr>${g.rows.map((r, i) => {
@@ -571,6 +585,7 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .opsed .opschk{display:flex;align-items:center;gap:4px;margin:0;color:var(--ink);white-space:nowrap}
 .opsed .opschk input{width:auto;margin:0}
 .opsauto{font-size:.7rem;color:var(--muted);margin-top:1px}
+.opswavename{font:700 1.1rem var(--cond);margin-right:8px}
 #opsPrint{display:none}
 @media print{
   @page{size:A4 portrait;margin:7mm}
