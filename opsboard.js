@@ -29,7 +29,7 @@ const OB_AREAS = ["R46 A/B", "R166", "R259 (4200FT)", "ZRT 598 (500AGL)", "R148 
 const obAf = (icao, grp, p, rwy, aids) => ({ icao, grp, p, rwy, fasf: OB_FASF_AUTO.includes(icao) ? "AUTO" : "B", rsaf: "AUTO", wx: "", restr: "", aids });
 const obBlank = {
   board: () => ({
-    eor: "NORMAL", banner: "", zrt: "", cs2: true, ra2: true, bingo: "AUTO", bingoAuto: "", chartsCleared: {},
+    eor: "NORMAL", banner: "", zrt: "", cs2: true, ra2: true, bingo: "AUTO", chartsCleared: {},
     airfields: [
       obAf("LFBC", "main", false, "24", [obAid("ILS (24)"), obAid("PAR"), obAid("TACAN"), obAid("CENTAURE"), obAid("CAT 1 LINE", "auto")]),
       obAf("LFBM", "main", true, "09", [obAid("ILS (27)"), obAid("PAR"), obAid("TACAN"), obAid("ALADIN"), obAid("VOR/DME")]),
@@ -251,10 +251,11 @@ const obHazS = v => ({ A: "y", B: "a", C: "r", D: "r" }[String(v || "").trim().t
 const obSamarS = v => ({ R: "r", Y: "a", G: "g" }[String(v || "").trim().charAt(0).toUpperCase()] || "");
 const obParaS = v => String(v ?? "").trim() === "" ? "" : +v > 0 ? "r" : "g";
 const obSeaS = v => obN(v) == null ? "" : obN(v) <= 15.5 ? "y" : "g";
-// Bingo: worked out from CZX RSAF (Y2 → UPG, A1 → IFR) unless ops picked one; their pick lasts until the CZX RSAF changes.
+// Bingo: worked out from CZX RSAF (Y2 → UPG BINGO, A1 → IFR BINGO, otherwise BINGO) unless ops picked one;
+// their pick stays until they change it or the next METAR Refresh puts it back to auto.
 function obBingo(b, czxR) {
-  const auto = czxR === "Y2" ? "UPG BINGO" : czxR === "A1" ? "IFR BINGO" : "";
-  return { auto, v: !b.bingo || b.bingo === "AUTO" || (b.bingoAuto || "") !== auto ? auto : b.bingo === "NONE" ? "" : b.bingo };
+  const auto = czxR === "Y2" ? "UPG BINGO" : czxR === "A1" ? "IFR BINGO" : "BINGO";
+  return { auto, v: !b.bingo || b.bingo === "AUTO" ? auto : b.bingo === "NONE" ? "" : b.bingo };
 }
 // "AIRFIELD STATUS AS OF hhmm Z": the later of the last board change and the last METAR refresh.
 function obAsOf() {
@@ -291,14 +292,14 @@ function obBoardView(tv) {
   const all = (b.airfields || []).map((a, i) => [a, i]), main = all.filter(([a]) => a.grp === "main"), alt = all.filter(([a]) => a.grp !== "main");
   const lfbc = (b.airfields || []).find(a => a.icao === "LFBC"), czxR = lfbc ? obState(lfbc, "rsaf").v : "";
   const bg = obBingo(b, czxR), bingo = bg.v, asOf = obAsOf();
-  const bsel = !b.bingo || b.bingo === "AUTO" || (b.bingoAuto || "") !== bg.auto ? "AUTO" : b.bingo;
+  const bsel = !b.bingo || b.bingo === "AUTO" ? "AUTO" : b.bingo;
   const w = z.w, comp = z.c;
   const windTxt = !w ? "-" : w.vrb ? `VRB / ${w.spd} KT` : `${String(w.dir).padStart(3, "0")}° / ${w.spd}${w.gst ? "G" + w.gst : ""} KT`;
   const yn = (v2, bad) => v2 ? obPill(v2 === bad ? "r" : "g", v2) : "-";
   const czx = b.czx || {};
   return `
     <div class="obhead"><span class="obeor">EOR: ${["NORMAL", "IN HSE"].map(e => q ? `<button class="obpill ${b.eor === e ? (e === "NORMAL" ? "obst-g" : "obst-a") : ""} obtap" data-obq="eor" data-v="${e}">${e}</button>` : b.eor === e ? obPill(e === "NORMAL" ? "g" : "a", e) : "").join(" ")}</span>
-      ${q ? `<select class="obsel ${bingo ? "obst-y" : ""}" data-obq="bingo" aria-label="Bingo"><option value="AUTO" ${bsel === "AUTO" ? "selected" : ""}>${esc(bg.auto || "—")} (auto)</option>${[["NONE", "— (blank)"], ["BINGO", "BINGO"], ["UPG BINGO", "UPG BINGO"], ["IFR BINGO", "IFR BINGO"]].map(([k2, l]) => `<option value="${k2}" ${bsel === k2 ? "selected" : ""}>${l}</option>`).join("")}</select>` : bingo ? obPill("y", bingo) : ""}
+      ${q ? `<select class="obsel ${bingo ? "obst-y" : ""}" data-obq="bingo" aria-label="Bingo"><option value="AUTO" ${bsel === "AUTO" ? "selected" : ""}>${esc(bg.auto)} (auto)</option>${[["NONE", "— (blank)"], ["BINGO", "BINGO"], ["UPG BINGO", "UPG BINGO"], ["IFR BINGO", "IFR BINGO"]].map(([k2, l]) => `<option value="${k2}" ${bsel === k2 ? "selected" : ""}>${l}</option>`).join("")}</select>` : bingo ? obPill("y", bingo) : ""}
       ${obNewMetar() ? `<span class="obpill obst-a obpulse">New METAR waiting${q ? "" : " for ops"}</span>` : ""}<b>Airfield status${asOf ? " as of " + esc(asOf) : ""}</b>${wxAge ? ` <span class="hint">METAR ${esc(wxAge)}</span>` : ""}</div>
     ${b.banner ? `<div class="obbanner">${esc(b.banner)}</div>` : ""}
     <div class="obgrid ${tv ? "tv" : ""}">
@@ -627,7 +628,7 @@ document.addEventListener("change", e => {
   else if (k === "eqv") obQuick(d => { d.equip[el.dataset.f] = v.trim().toUpperCase(); });
   else if (k === "r115") obQuick(d => { d.r115 = { ...(d.r115 || {}), [el.dataset.f]: v.trim().toUpperCase() }; });
   else if (k === "aval") obQuick(d => { d.areas[+el.dataset.j].val = v.trim(); });
-  else if (k === "bingo") obQuick(d => { d.bingo = v; d.bingoAuto = obBingo({}, obState(d.airfields.find(a => a.icao === "LFBC") || {}, "rsaf").v).auto; });
+  else if (k === "bingo") obQuick(d => { d.bingo = v; });
 });
 document.addEventListener("input", e => {
   const el = e.target; if (!OB.edit || !el.dataset || !el.dataset.bp || !el.closest("#obEdit")) return;
@@ -676,7 +677,6 @@ document.addEventListener("click", async e => {
   else if (a === "cancel") { OB.edit = null; render(); }
   else if (a === "save") {
     const ed = OB.edit; el.disabled = true;
-    if (ed.key === "board") ed.data.bingoAuto = obBingo({}, obState((ed.data.airfields || []).find(x => x.icao === "LFBC") || {}, "rsaf").v).auto;
     const { data, error } = await S.sb.rpc("ops_state_save", { p_key: ed.key, p_data: ed.data, p_version: ed.version });
     el.disabled = false;
     if (error) {
