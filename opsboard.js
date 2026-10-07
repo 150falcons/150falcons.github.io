@@ -308,10 +308,10 @@ function obBoardView(tv) {
         ${b.zrt ? `<p class="obnote">${esc(b.zrt)}</p>` : ""}</section>
       <section class="card opscard"><h2>Cazaux weather</h2><dl class="opsdl">
         <dt>Sunrise / sunset</dt><dd>${czx.sun ? esc(czx.sun) : `${esc(z.sun.rise)} / ${esc(z.sun.set)}`}</dd>
-        <dt>Icing band</dt><dd>${esc(czx.icingBand || "-")}</dd>
+        <dt>Icing band</dt><dd>${q ? obQIn("icingBand", czx.icingBand, "e.g. FL120 - FL170", "130px") : esc(czx.icingBand || "-")}</dd>
         <dt>Temperature</dt><dd>${z.t ?? "-"}°C</dd><dt>Humidity</dt><dd>${z.rh ?? "-"}%</dd><dt>QNH</dt><dd>${z.qnh ?? "-"}</dd>
-        <dt>Runway surface</dt><dd>${q ? obQSel("rwySurface", czx.rwySurface, ["DRY", "DAMP", "WET", "FLOODED"]) : obPill(/FLOOD/i.test(czx.rwySurface) ? "r" : /WET|DAMP/i.test(czx.rwySurface) ? "a" : czx.rwySurface ? "g" : "", czx.rwySurface || "-")}</dd><dt>Sea surface</dt><dd>${czx.seaTemp ? obPill(obSeaS(czx.seaTemp), czx.seaTemp + "°C") : "-"}</dd>
-        <dt>Sea swell</dt><dd>${esc(czx.swell || "-")}</dd><dt>Bird hazard</dt><dd>${q ? obQSel("bird", czx.bird, ["LOW (1)", "LOW (2)", "MED (2)", "HIGH (3)"]) : obPill(/HIGH/i.test(czx.bird) ? "r" : /MED/i.test(czx.bird) ? "a" : czx.bird ? "g" : "", czx.bird || "-")}</dd>
+        <dt>Runway surface</dt><dd>${q ? obQSel("rwySurface", czx.rwySurface, ["DRY", "DAMP", "WET", "FLOODED"]) : obPill(/FLOOD/i.test(czx.rwySurface) ? "r" : /WET|DAMP/i.test(czx.rwySurface) ? "a" : czx.rwySurface ? "g" : "", czx.rwySurface || "-")}</dd><dt>Sea surface</dt><dd>${q ? obQIn("seaTemp", czx.seaTemp, "°C", "64px", obSeaS(czx.seaTemp)) + " °C" : czx.seaTemp ? obPill(obSeaS(czx.seaTemp), czx.seaTemp + "°C") : "-"}</dd>
+        <dt>Sea swell</dt><dd>${q ? obQIn("swell", czx.swell, "e.g. 1.6-1.9M", "110px") : esc(czx.swell || "-")}</dd><dt>Bird hazard</dt><dd>${q ? obQSel("bird", czx.bird, ["LOW (1)", "LOW (2)", "MED (2)", "HIGH (3)"]) : obPill(/HIGH/i.test(czx.bird) ? "r" : /MED/i.test(czx.bird) ? "a" : czx.bird ? "g" : "", czx.bird || "-")}</dd>
         <dt>Icing conditions</dt><dd>${yn(z.icing, "YES")}</dd></dl>
         ${z.m ? `<p class="obraw">${esc(z.m.rawOb)}</p>` : `<p class="hint">No METAR yet.</p>`}</section>
       <section class="card opscard"><h2>Wind (CZX)</h2><div class="obwind">${obRose(w, z.rwy)}<div><div class="obbig">${esc(windTxt)}</div>
@@ -346,6 +346,8 @@ function obCallsignsCard() {
   if (!cs.length && !a.vehicleCap) return "";
   return obCard("ob-bcs", "Callsign / ETTS / vehicle", "", `${cs.length ? `<table class="opst obt"><thead><tr><th>Callsign</th><th>ETTS</th><th>Vehicle</th></tr></thead><tbody>${cs.map(c => `<tr><td>${esc(c.callsign)}</td><td>${esc(c.etts)}</td><td>${esc(c.vehicle)}</td></tr>`).join("")}</tbody></table>` : ""}${a.vehicleCap ? `<p class="hint">Vehicle cap: ${esc(a.vehicleCap)}</p>` : ""}`);
 }
+// A Cazaux field ops types straight onto the board (from the FASF forecast); saved when they leave the box.
+const obQIn = (f, v, ph, w, st) => `<input class="obval ${st ? "obst-" + st : ""}" style="width:${w}" data-obq="czxu" data-f="${f}" value="${esc(v || "")}" placeholder="${esc(ph)}" aria-label="${esc(f)}">`;
 // Colour state letter → pill colour.
 const obQSel = (f, v, opts) => `<select class="obsel" data-obq="czx" data-f="${f}">${["", ...opts].map(o => `<option value="${esc(o)}" ${o === (v || "") ? "selected" : ""}>${esc(o || "-")}</option>`).join("")}</select>`;
 // Small wind rose: runway line and an arrow from the wind direction.
@@ -625,6 +627,7 @@ document.addEventListener("change", e => {
   el.disabled = true;
   if (k === "fasf" || k === "rsaf" || k === "rwy") obQuick(d => { d.airfields[i][k] = v; });
   else if (k === "czx" || k === "czxv") obQuick(d => { d.czx[el.dataset.f] = v.trim(); });
+  else if (k === "czxu") obQuick(d => { d.czx[el.dataset.f] = v.trim().toUpperCase().replace(/\s*°C$/, ""); });
   else if (k === "eqv") obQuick(d => { d.equip[el.dataset.f] = v.trim().toUpperCase(); });
   else if (k === "r115") obQuick(d => { d.r115 = { ...(d.r115 || {}), [el.dataset.f]: v.trim().toUpperCase() }; });
   else if (k === "aval") obQuick(d => { d.areas[+el.dataset.j].val = v.trim(); });
