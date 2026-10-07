@@ -6,7 +6,7 @@
    Loaded before the main script; uses its helpers at call time
    ($, esc, S, toast, ask, errMsg, who, active, todayStr) and ops.js (OPS, opsGet...).
    ===================================================================== */
-const OB = { loaded: false, loading: false, state: {}, wx: {}, crew: [], items: [], acks: [], edit: null, showClosed: false, open: {} };
+const OB = { files: {}, loaded: false, loading: false, state: {}, wx: {}, crew: [], items: [], acks: [], edit: null, showClosed: false, open: {} };
 const OB_STATUS = { g: "Available", a: "Limited", r: "U/S", "": "-" };
 const OB_GROUPS = ["QFI", "PGF", "TRAINEES", "ATCO", "STEDAS", "OTH"];
 const OB_LEGEND = [
@@ -67,13 +67,15 @@ async function obLoad() {
   const res = await Promise.all([
     sb.from("ops_state").select("*"), sb.from("ops_wx").select("*"), sb.from("crew").select("*").order("sort").order("name"),
     sb.from("rs_items").select("*").order("created_at", { ascending: false }).limit(200), sb.from("rs_acks").select("*"),
+    sb.storage.from("ops-files").list("charts", { limit: 50 }),
   ]);
   OB.loading = false;
-  const bad = res.find(r => r.error);
+  const bad = res.slice(0, 5).find(r => r.error); // the chart list (res[5]) is optional
   if (bad) { toast("Couldn't load operations: " + errMsg(bad.error)); return; }
   OB.state = {}; for (const r of res[0].data) OB.state[r.key] = r;
   OB.wx = {}; for (const r of res[1].data) OB.wx[r.station] = r;
   [OB.crew, OB.items, OB.acks] = [res[2].data, res[3].data, res[4].data];
+  OB.files = {}; for (const f of res[5].data || []) OB.files[f.name] = f;
   OB.loaded = true;
   if (["opsboard", "gonogo", "aircraft", "tv", "home", "ops"].includes(S.tab) && !OB.edit) render();
 }
@@ -222,7 +224,7 @@ function renderOpsBoard(v) {
   if (!OB.loaded) return obNotLoaded(v);
   const editing = OB.edit && OB.edit.key === "board", can = opsCanEdit();
   const top = `<div class="opsbar"><span class="grow"></span><button class="btn small" data-ob="metar">Refresh METARs</button><button class="btn small primary" data-tab="tv">TV mode</button></div>`;
-  v.innerHTML = top + (editing ? obCard("ob-board", "Ops board", "", obEditor("board")) : obBoardView(false) + `<p class="opsmeta" style="justify-content:flex-end">${obMeta("board")} ${obEditBtn("board", can, "Edit ops board")}</p>`);
+  v.innerHTML = top + (editing ? obCard("ob-board", "Ops board", "", obEditor("board")) : obBoardView(false) + obChartsCard() + `<p class="opsmeta" style="justify-content:flex-end">${obMeta("board")} ${obEditBtn("board", can, "Edit ops board")}</p>`);
 }
 function obBoardView(tv) {
   const b = obGet("board"), z = obCzx();
@@ -275,7 +277,7 @@ function obBoardView(tv) {
         <div>Parachute ${q ? `<button class="obst obst-${b.equip.parachute || "n"} obtap" data-obq="equip" data-f="parachute">${esc(OB_STATUS[b.equip.parachute] ?? "-")}</button>` : obDot(b.equip.parachute)}</div><div>SAMAR ${obPill(/^G/i.test(b.equip.samar || "") ? "g" : b.equip.samar ? "a" : "", b.equip.samar || "-")}</div></div>
         <p class="hint" style="margin:6px 0 0">Canopy and APU are worked out from the Cazaux wind and temperature unless ops sets them.${q ? " Tap coloured items to change them." : ""}</p></section>
       <section class="card opscard obwide"><h2>Restricted areas</h2>${(b.restricted || []).length ? `<div class="tablewrap"><table class="opst obt"><thead><tr><th>Item</th><th>TGT</th><th>WX</th><th>Before</th><th>After</th><th>Restrictions</th></tr></thead><tbody>${b.restricted.map(r =>
-          `<tr><td>${esc(r.item)}</td><td>${esc(r.tgt)}</td><td>${esc(r.wx)}</td><td>${esc(r.before)}</td><td>${esc(r.after)}</td><td>${q ? `<button class="obpill ${r.hot ? "obst-r" : ""} obtap" data-obq="hot" data-j="${b.restricted.indexOf(r)}" title="Tap to mark active / inactive">${esc(r.restr || (r.hot ? "ACTIVE" : "inactive"))}</button>` : r.hot ? obPill("r", r.restr || "ACTIVE") : esc(r.restr)}</td></tr>`).join("")}</tbody></table></div>` : `<p class="hint">None entered.</p>`}
+          `<tr><td>${esc(r.item)}${/R\s*115|CAPTIEUX/i.test(r.item) ? ` <button class="btn small" data-ob="chart" data-k="captieux">Map</button>` : ""}</td><td>${esc(r.tgt)}</td><td>${esc(r.wx)}</td><td>${esc(r.before)}</td><td>${esc(r.after)}</td><td>${q ? `<button class="obpill ${r.hot ? "obst-r" : ""} obtap" data-obq="hot" data-j="${b.restricted.indexOf(r)}" title="Tap to mark active / inactive">${esc(r.restr || (r.hot ? "ACTIVE" : "inactive"))}</button>` : r.hot ? obPill("r", r.restr || "ACTIVE") : esc(r.restr)}</td></tr>`).join("")}</tbody></table></div>` : `<p class="hint">None entered.</p>`}
         ${czx.firing ? `<p><b>Firing sch:</b> ${esc(czx.firing)}</p>` : ""}${czx.calamar ? `<p><b>CALAMAR:</b> ${esc(czx.calamar)}</p>` : ""}</section>
     </div>`;
 }
@@ -291,6 +293,83 @@ function obRose(w, rwy) {
     ${["N", "E", "S", "W"].map((t, i) => { const [x, y] = p(i * 90, R - 9); return `<text x="${x}" y="${y + 3}" text-anchor="middle" font-size="9" fill="var(--muted)">${t}</text>`; }).join("")}
     ${rw ? `<line x1="${rw[0][0]}" y1="${rw[0][1]}" x2="${rw[1][0]}" y2="${rw[1][1]}" stroke="var(--muted)" stroke-width="7" stroke-linecap="square" opacity=".55"/>` : ""}${arrow}</svg>`;
 }
+
+/* ---------- Charts (private storage, bucket ops-files/charts/<key>) ---------- */
+const OB_CHARTS = [
+  { key: "captieux", label: "Captieux (R115)" },
+  { key: "xsection", label: "Cross-section", daily: true },
+  { key: "special", label: "Special areas / activities", daily: true },
+  { key: "diane", label: "DIANE", daily: true },
+];
+// Captieux target areas, in pixels of the 468 × 486 range map. Lit up when named in the R115 restrictions (e.g. "G1, G3, RADAR").
+const OB_CAPTIEUX = { w: 468, h: 486, areas: {
+  G7: "M103 194L115 160L136 143L168 138L211 151L257 177L295 204L325 245L290 260L225 267L164 272L122 262L105 233Z",
+  G1: "M192 169L317 231L299 248L181 238Z",
+  G6: "M205 378L260 383L290 398L268 420L212 431Z",
+  G2: [322, 305, 44], G4: [250, 311, 47], G5: [220, 340, 39], G3: [282, 360, 37], RADAR: [342, 359, 36],
+} };
+function obCaptieuxActive() {
+  const r = (obGet("board").restricted || []).find(x => /R\s*115|CAPTIEUX/i.test(x.item || ""));
+  const t = " " + String(r ? r.restr || "" : "").toUpperCase().replace(/[,/;]/g, " ").replace(/\s+/g, " ") + " ";
+  const on = Object.keys(OB_CAPTIEUX.areas).filter(k => k === "RADAR" ? / (RADAR|SATAN) /.test(t) : t.includes(" " + k + " "));
+  return on;
+}
+const obChartAge = f => f && (f.updated_at || f.created_at) ? new Date(f.updated_at || f.created_at) : null;
+function obChartsCard() {
+  const can = opsCanEdit(), today = todayStr();
+  const rows = OB_CHARTS.map(c => {
+    const f = OB.files[c.key], at = obChartAge(f);
+    const stale = c.daily && at && at.toISOString().slice(0, 10) !== today && at.toLocaleDateString("en-CA") !== today;
+    return `<div class="obchart"><button class="btn" data-ob="chart" data-k="${c.key}" ${f ? "" : "disabled"}>${esc(c.label)}</button>
+      <span class="hint">${at ? `${stale ? obPill("a", "not today") + " " : ""}${esc(at.toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}` : "Not uploaded"}</span>
+      ${can ? `<label class="btn small obup">Upload<input type="file" accept="image/*,application/pdf" data-ob="upload" data-k="${c.key}" hidden></label>` : ""}</div>`;
+  }).join("");
+  const on = obCaptieuxActive();
+  return obCard("ob-charts", "Charts", on.length ? `Captieux active: ${esc(on.map(k => k === "RADAR" ? "RADAR SATAN" : k).join(", "))}` : "", `<div class="obcharts">${rows}</div>
+    ${can ? `<p class="hint" style="margin:6px 0 0">Uploading replaces the old one. Only signed-in users can open these.</p>` : ""}`);
+}
+const obUrlCache = {};
+async function obChartUrl(key) {
+  const f = OB.files[key], stamp = f ? (f.updated_at || f.id) : "";
+  if (obUrlCache[key] && obUrlCache[key].stamp === stamp) return obUrlCache[key];
+  const { data, error } = await S.sb.storage.from("ops-files").download("charts/" + key);
+  if (error) throw error;
+  if (obUrlCache[key]) URL.revokeObjectURL(obUrlCache[key].url);
+  return (obUrlCache[key] = { stamp, url: URL.createObjectURL(data), type: data.type });
+}
+async function obShowChart(key) {
+  const c = OB_CHARTS.find(x => x.key === key); if (!c) return;
+  let d = document.getElementById("dlgChart");
+  if (!d) { d = document.createElement("dialog"); d.id = "dlgChart"; document.body.appendChild(d); }
+  d.innerHTML = `<div class="dlg"><div class="opshead"><h2 tabindex="-1" autofocus>${esc(c.label)}</h2><button class="btn small" data-x="close">Close</button></div><div class="obchartview"><p class="hint">Loading…</p></div></div>`;
+  d.onclick = e => { if (e.target.closest("[data-x=close]") || e.target === d) d.close(); };
+  d.showModal();
+  try {
+    const u = await obChartUrl(key), box = d.querySelector(".obchartview");
+    if (/pdf/.test(u.type)) { box.innerHTML = `<iframe src="${u.url}" title="${esc(c.label)}"></iframe><p><a href="${u.url}" target="_blank" rel="noopener">Open full screen</a></p>`; return; }
+    let svg = "";
+    if (key === "captieux") {
+      const on = obCaptieuxActive(), A = OB_CAPTIEUX.areas;
+      svg = `<svg viewBox="0 0 ${OB_CAPTIEUX.w} ${OB_CAPTIEUX.h}" preserveAspectRatio="none">${on.map(k => {
+        const v = A[k], cls = k === "RADAR" ? "obhot radar" : "obhot";
+        return Array.isArray(v) ? `<circle class="${cls}" cx="${v[0]}" cy="${v[1]}" r="${v[2]}"/>` : `<path class="${cls}" d="${v}"/>`;
+      }).join("")}</svg>`;
+      box.insertAdjacentHTML("beforebegin", `<p class="hint" style="margin:0 0 6px">${on.length ? "Lit up from the R115 restrictions: <b>" + esc(on.map(k => k === "RADAR" ? "RADAR SATAN" : k).join(", ")) + "</b>" : "Nothing listed in the R115 restrictions."}</p>`);
+    }
+    box.innerHTML = `<div class="obchartimg"><img src="${u.url}" alt="${esc(c.label)}">${svg}</div>`;
+  } catch (e) { d.querySelector(".obchartview").innerHTML = `<p class="err">Couldn't open it: ${esc(errMsg(e))}</p>`; }
+}
+async function obUpload(input) {
+  const file = input.files && input.files[0], key = input.dataset.k; if (!file) return;
+  if (file.size > 15 * 1024 * 1024) return toast("That file is over 15 MB.");
+  toast("Uploading…");
+  const { error } = await S.sb.storage.from("ops-files").upload("charts/" + key, file, { upsert: true, contentType: file.type || "application/octet-stream", cacheControl: "60" });
+  input.value = "";
+  if (error) return toast("Upload failed: " + errMsg(error));
+  delete obUrlCache[key];
+  toast("Uploaded."); obLoad();
+}
+document.addEventListener("change", e => { if (e.target.dataset && e.target.dataset.ob === "upload") obUpload(e.target); });
 
 /* ---------- Go / No-Go page ---------- */
 function renderGoNoGo(v) {
@@ -563,6 +642,7 @@ document.addEventListener("click", async e => {
     toast(n ? `${n} trainee${n > 1 ? "s" : ""} added.` : "All trainees are already on the list."); obLoad();
   }
   else if (a === "exittv") { obLeaveTv(); S.tab = "opsboard"; render(); }
+  else if (a === "chart") obShowChart(el.dataset.k);
 });
 
 // Pick crew dialog: group buttons + one checkbox per person. onOk(ids, dialog) returns an error
@@ -642,6 +722,19 @@ select.obcs option{background:var(--paper);color:var(--ink)}
 .obpbtn{width:28px;height:24px;border:1px dashed var(--line);border-radius:3px;background:none;cursor:pointer;font:700 .85rem var(--body);color:var(--muted)}
 .obpbtn.on{background:#1f9d55;border:0;color:#fff}
 .obeor{display:inline-flex;gap:4px;align-items:center}
+.obcharts{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.obchart{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--field)}
+.obchart>.btn{flex:1 1 100%;text-align:left}
+.obup{cursor:pointer;margin-left:auto}
+#dlgChart{width:min(1100px,calc(100vw - 16px))}
+.obchartview iframe{width:100%;height:75vh;border:0;background:#fff}
+.obchartimg{position:relative;line-height:0}
+.obchartimg img{width:100%;height:auto;display:block;border-radius:4px}
+.obchartimg svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.obhot{fill:rgba(255,40,40,.32);stroke:#ff2d2d;stroke-width:3;animation:obpulse 1.6s ease-in-out infinite}
+.obhot.radar{fill:rgba(255,255,255,.25);stroke:#fff}
+@keyframes obpulse{50%{fill-opacity:.12}}
+@media (prefers-reduced-motion:reduce){.obhot{animation:none}}
 table.obt{min-width:0}
 .obnote{margin:8px 0 0;font-weight:600}
 .obraw{font:500 .78rem ui-monospace,Menlo,Consolas,monospace;color:var(--muted);margin:8px 0 0;word-break:break-word}
