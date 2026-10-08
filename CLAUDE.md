@@ -25,7 +25,7 @@ A book-in / book-out board for RSAF trainees at 150 Squadron (BA 120 Cazaux, Fra
   - **No emails.** Usernames are stored in Supabase Auth as `<username>@150sqn.local`, and the page adds or strips that suffix.
   - **Two roles:** admin (instructor) and user (trainee).
   - **First sign-in:** a trainee must replace the temporary password before using the board.
-- **France only (added 7 Oct, Gordon's request):** after a successful sign-in (and each time a signed-in user opens the page), it asks for location and only shows the board inside metropolitan France (box: lat 41.3–51.15, lng −5.2–9.6, so it spills slightly into neighbours). Denied → "Location needed"; outside → "You are not in France"; both have Try again and Sign out. Applies to everyone, including instructors and trainees on leave abroad. It's a browser-side check (keeps casual outsiders out, can be faked); the real protection is accounts + RLS.
+- **France only (added 7 Oct, Gordon's request):** after a successful sign-in (and each time a signed-in user opens the page), it asks for location and only shows the board inside metropolitan France (box: lat 41.3–51.15, lng −5.2–9.6, so it spills slightly into neighbours). Denied → "Location needed"; outside → "You are not in France"; both have Try again and Sign out. Applies to everyone, including instructors and trainees on leave abroad. It's a browser-side check (keeps casual outsiders out, can be faked); the real protection is accounts + RLS. **Exempt accounts (8 Oct):** an admin can tick "No location check" under Admin → Edit (`profiles.no_geo`, set via admin-only `set_no_geo(user, on)`), e.g. for the ops room laptop, which blocks location. The profile is read first, then the gate runs only if `no_geo` is false.
 - **Instructor appointments:** CO, DYCO, OC A, OC B and CC each have a single holder; QFI can have many.
   - **Who can approve travel requests:** CO, DYCO, OC A and OC B. CC and QFI cannot.
   - **No approvers yet:** if nobody holds an approving appointment, any admin can approve.
@@ -104,7 +104,7 @@ A book-in / book-out board for RSAF trainees at 150 Squadron (BA 120 Cazaux, Fra
 ## 5. Database (public schema)
 - **Tables:**
   - **`trainees`:** id, name, course, phone, active, posted_out_at, can_drive.
-  - **`profiles`:** id = auth user, email (`user@150sqn.local`), display_name, role admin|user, trainee_id, must_change_password, appointment (CO|DYCO|OC A|OC B|CC|QFI), acting_oc/acting_for (unused).
+  - **`profiles`:** id = auth user, email (`user@150sqn.local`), display_name, role admin|user, trainee_id, must_change_password, appointment (CO|DYCO|OC A|OC B|CC|QFI), ops_editor, eng_editor, no_geo, acting_oc/acting_for (unused).
   - **`vehicles`:** description, plate, plate_key (generated), owner_type course|personal, course, owner_trainee, added_by, seats.
   - **`movements`:** one row per trip.
     - **People:** `members` jsonb (current crew: id, name, course, role driver|vcom|pax|person) and `member_ids` uuid[] (current crew), plus `orig_members` (original crew, set by a trigger) and `events` jsonb (per-person in / leave / moved / joined).

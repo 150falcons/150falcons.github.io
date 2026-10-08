@@ -310,6 +310,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
   </div>
   <label id="eOpsWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eOps" type="checkbox" style="width:auto;margin:0">Can edit the ops board</label>
   <label id="eEngWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eEng" type="checkbox" style="width:auto;margin:0">Can edit aircraft status</label>
+  <label id="eNoGeoWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eNoGeo" type="checkbox" style="width:auto;margin:0">No location check (e.g. ops room laptop)</label>
   <label id="eUserWrap">Username<input id="eUser" maxlength="30" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
   <p class="hint" id="eHint" style="margin:-4px 0 10px"></p>
   <div class="err" id="editErr"></div>
@@ -507,7 +508,7 @@ async function fetchAll() {
   const sb = S.sb;
   const res = await Promise.all([
     sb.from("trainees").select("*").order("course").order("name"),
-    sb.from("profiles").select("id,email,display_name,role,trainee_id,must_change_password,appointment,ops_editor,eng_editor"),
+    sb.from("profiles").select("id,email,display_name,role,trainee_id,must_change_password,appointment,ops_editor,eng_editor,no_geo"),
     sb.from("vehicles").select("*").order("description"),
     sb.from("movements").select("*").in("status", ["out", "pending"]),
     sb.from("movements").select("*").order("out_at", { ascending: false }).limit(300),
@@ -547,9 +548,10 @@ async function adminApi(body) {
 async function startSession(session) {
   S.session = session;
   $("#btnSignOut").hidden = false;
-  if (!await franceGate()) return;
   const { data, error } = await S.sb.from("profiles").select("*").eq("id", session.user.id).single();
   if (error || !data) { toast("Your account isn't set up yet. Ask an instructor."); await S.sb.auth.signOut(); return; }
+  // Accounts an admin has exempted (e.g. the ops room laptop, which blocks location) skip the France check.
+  if (!data.no_geo && !await franceGate()) return;
   S.me = data;
   if (isOpsAssistant(S.me)) S.tab = S.me.ops_editor ? "opsboard" : "aircraft";
   if (S.me.must_change_password) { render(); return; }
@@ -1246,7 +1248,7 @@ function renderAdmin(v) {
   const cur = active(), gone = S.roster.filter(t => !t.active);
   const acctLine = t => {
     const a = acctOf(t.id);
-    return a ? `<span class="hint">Login: <strong>${esc(showLogin(a.email))}</strong>${a.must_change_password ? " (temporary password)" : ""}</span> <a href="#" data-act="resetpw" data-id="${esc(a.id)}">Reset password</a>`
+    return a ? `<span class="hint">Login: <strong>${esc(showLogin(a.email))}</strong>${a.must_change_password ? " (temporary password)" : ""}${a.no_geo ? " · no location check" : ""}</span> <a href="#" data-act="resetpw" data-id="${esc(a.id)}">Reset password</a>`
       : `<span class="hint">No login</span> <a href="#" data-act="mkacct" data-id="${esc(t.id)}">Create login</a>`;
   };
   const list = byCourse(cur).map(([c, ts]) => `<li class="chead">${esc(c)}<span>${ts.length}</span></li>` + ts.map(t => `<li><span><strong>${esc(t.name)}</strong> <span class="hint">${leaveOf(t.id) ? `on leave until ${esc(fmtDay(leaveOf(t.id).until))}` : ob[t.id] && !isPend(ob[t.id]) ? "out of base" : ""}</span>${t.can_drive === false ? ` <span class="tag nd">Non-driver</span>` : ""}<br>${t.phone ? `<span class="hint">Tel ${telLink(t.phone)}</span><br>` : ""}${acctLine(t)}</span>
@@ -1255,7 +1257,7 @@ function renderAdmin(v) {
       <span class="acts"><button class="btn small" data-act="restore" data-id="${esc(t.id)}">Restore</button><button class="btn small" data-act="deltrainee" data-id="${esc(t.id)}">Delete</button></span></li>`).join("");
   const admins = S.profiles.filter(p => p.role === "admin")
     .sort((a, b) => (APPT_ORDER[a.appointment] ?? 9) - (APPT_ORDER[b.appointment] ?? 9) || (a.display_name || "").localeCompare(b.display_name || ""));
-  const alist = admins.map(p => `<li><span><strong>${esc(p.display_name || p.email)}</strong>${apptText(p) ? ` <span class="tag open">${esc(apptText(p))}</span>` : ""}${p.ops_editor && !APPROVER(p) ? ` <span class="tag nd">Ops</span>` : ""}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.id === S.me.id ? " (you)" : ""}</span></span>
+  const alist = admins.map(p => `<li><span><strong>${esc(p.display_name || p.email)}</strong>${apptText(p) ? ` <span class="tag open">${esc(apptText(p))}</span>` : ""}${p.ops_editor && !APPROVER(p) ? ` <span class="tag nd">Ops</span>` : ""}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.id === S.me.id ? " (you)" : ""}${p.no_geo ? " · no location check" : ""}</span></span>
       <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button>${p.id === S.me.id ? "" : `<button class="btn small" data-act="resetpw" data-id="${esc(p.id)}">Reset password</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button>`}</span></li>`).join("");
 
   const opsAsst = S.profiles.filter(isOpsAssistant);
@@ -1274,7 +1276,7 @@ function renderAdmin(v) {
         <label>Username<input id="iEmail" autocapitalize="none" placeholder="e.g. tanjh"></label>
         <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddAdmin">Add instructor</button></div></div>
       <div class="card"><h2>Ops &amp; engineering logins (${opsAsst.length})</h2>
-        ${opsAsst.length ? `<ul class="rlist">${opsAsst.map(p => `<li><span><strong>${esc(p.display_name || p.email)}</strong>${p.ops_editor ? ` <span class="tag open">Ops</span>` : ""}${p.eng_editor ? ` <span class="tag open">Aircraft</span>` : ""}${p.ops_editor || p.eng_editor ? "" : ` <span class="tag nd">Can't edit</span>`}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.must_change_password ? " (temporary password)" : ""}</span></span>
+        ${opsAsst.length ? `<ul class="rlist">${opsAsst.map(p => `<li><span><strong>${esc(p.display_name || p.email)}</strong>${p.ops_editor ? ` <span class="tag open">Ops</span>` : ""}${p.eng_editor ? ` <span class="tag open">Aircraft</span>` : ""}${p.ops_editor || p.eng_editor ? "" : ` <span class="tag nd">Can't edit</span>`}${p.no_geo ? ` <span class="tag nd">No location check</span>` : ""}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.must_change_password ? " (temporary password)" : ""}</span></span>
           <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button><button class="btn small" data-act="resetpw" data-id="${esc(p.id)}">Reset password</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button></span></li>`).join("")}</ul>` : ""}
         <p class="hint" style="margin-top:6px">Logins without instructor admin rights. An ops assistant edits the flying program, ops board and Go / No-Go; an engineer edits aircraft status only. The CO, DYCO and OCs can always edit; tick other instructors under Edit.</p>
         <label>Type<select id="oaType"><option value="ops">Ops assistant</option><option value="eng">Engineer (aircraft status)</option></select></label>
@@ -1429,6 +1431,7 @@ function openEdit(key) {
   $("#eAppt").value = inst ? (acct.appointment || "") : "";
   $("#eOpsWrap").hidden = !acct || (!inst && !isOpsAssistant(acct)); $("#eOps").checked = !!(acct && acct.ops_editor);
   $("#eEngWrap").hidden = !acct || !isOpsAssistant(acct); $("#eEng").checked = !!(acct && acct.eng_editor);
+  $("#eNoGeoWrap").hidden = !acct; $("#eNoGeo").checked = !!(acct && acct.no_geo);
   $("#eHint").textContent = acct ? "Changing the username doesn't change the password. Tell them their new username." : "No login yet. Use Create login on the Admin tab to give them one.";
   $("#editErr").textContent = ""; $("#dlgEdit").showModal(); $("#eName").focus();
 }
@@ -1456,6 +1459,11 @@ $("#btnEdit").onclick = async () => {
       }
       if (!$("#eEngWrap").hidden && $("#eEng").checked !== !!acct.eng_editor) {
         const { error } = await S.sb.rpc("set_eng_editor", { p_user: acct.id, p_on: $("#eEng").checked });
+        if (error) throw error;
+      }
+      if ($("#eNoGeo").checked !== !!acct.no_geo) {
+        if ($("#eNoGeo").checked && !await ask("Skip the location check?", `${name} will be able to sign in from anywhere, not just France. Use this only for a shared device like the ops room laptop, and keep its password private.`, "Skip check")) { b.disabled = false; return; }
+        const { error } = await S.sb.rpc("set_no_geo", { p_user: acct.id, p_on: $("#eNoGeo").checked });
         if (error) throw error;
       }
       if (!$("#eOpsWrap").hidden && $("#eOps").checked !== !!acct.ops_editor) {
