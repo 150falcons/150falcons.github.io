@@ -269,7 +269,7 @@ function obValCell(q, key, attrs, val, st, setS, ph) {
   return `<span class="obvc"><input class="obval obst-${st || "n"}" data-obq="${key}" ${attrs} value="${esc(val || "")}" placeholder="${esc(ph || "")}" aria-label="Value">
     <button class="obcol obst-${setS || "n"} obtap" data-obq="${key}c" ${attrs} title="Colour: ${setS ? "set by ops" : "auto (red when filled)"}. Tap to change.">${setS ? "✎" : "A"}</button></span>`;
 }
-function obBoardView(tv) {
+function obBoardView(tv, extra) {
   const b = obGet("board"), z = obCzx();
   const wxAge = obWxAll().LFBC ? obObsZ(obWxAll().LFBC.data) : "";
   const q = !tv && opsCanEdit(); // ops editors change these straight on the board
@@ -303,7 +303,7 @@ function obBoardView(tv) {
       ${obNewMetar() ? `<span class="obpill obst-a obpulse">New METAR waiting${q ? "" : " for ops"}</span>` : ""}<b>Airfield status${asOf ? " as of " + esc(asOf) : ""}</b>${wxAge ? ` <span class="hint">METAR ${esc(wxAge)}</span>` : ""}</div>
     ${b.banner ? `<div class="obbanner">${esc(b.banner)}</div>` : ""}
     <div class="obgrid ${tv ? "tv" : ""}">
-      <section class="card opscard obwide"><div class="tablewrap"><table class="opst obt"><thead><tr><th>Airfield</th><th>P</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS</th><th>Restrictions</th><th>Aids</th></tr></thead><tbody>${main.map(([a, i]) => afRow(a, i)).join("")}</tbody></table></div>
+      <section class="card opscard obwide obafcard"><div class="tablewrap"><table class="opst obt"><thead><tr><th>Airfield</th><th>P</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS</th><th>Restrictions</th><th>Aids</th></tr></thead><tbody>${main.map(([a, i]) => afRow(a, i)).join("")}</tbody></table></div>
         ${alt.length ? `<div class="tablewrap" style="margin-top:8px"><table class="opst obt"><thead><tr><th>Airfield</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS</th><th>Restrictions</th></tr></thead><tbody>${alt.map(([a, i]) => afRow(a, i)).join("")}</tbody></table></div>` : ""}
         ${b.zrt ? `<p class="obnote">${esc(b.zrt)}</p>` : ""}</section>
       <section class="card opscard"><h2>Cazaux weather</h2><dl class="opsdl">
@@ -323,7 +323,7 @@ function obBoardView(tv) {
         <div>SAMAR ${q ? `<input class="obval obst-${obSamarS(b.equip.samar) || "n"}" style="width:64px" data-obq="eqv" data-f="samar" value="${esc(b.equip.samar || "")}" aria-label="SAMAR">` : obPill(obSamarS(b.equip.samar), b.equip.samar || "-")}</div></div>
         <p class="hint" style="margin:6px 0 0">Canopy and APU are worked out from the Cazaux wind and temperature.${q ? " Tap one to mark it Not available; Refresh METARs puts them back to auto." : ""}</p></section>
       <section class="card opscard obwide"><h2>Restricted areas</h2>${obAreasView(b, q, z)}</section>
-      ${tv ? "" : obCallsignsCard()}
+      ${tv ? "" : obCallsignsCard()}${extra || ""}
     </div>`;
 }
 function obAreasView(b, q, z) {
@@ -566,10 +566,33 @@ function renderTv(v) {
   const n = new Date();
   v.innerHTML = `<div class="tvbar"><b>150 Falcon Det · Ops board</b><span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 16).replace(":", ""))}Z</small></span>
       <span class="grow"></span>${st ? `<span>Today: ${st.sorties} sorties · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>` : ""}<button class="btn small" data-ob="exittv">Exit TV</button></div>
-    ${obBoardView(true)}
-    <div class="obgrid tv">${obAircraftCards().join("")}
-      ${obCard("ob-tvgo", "Aircrew status", `${crew.length - nogo.length} of ${crew.length} GO`, nogo.length ? `<div class="obtvgo">${nogo.map(c => `<span>${obPill("r", c.name)} <span class="hint">${esc(obCodes(obOutstanding(c.id)))}</span></span>`).join("")}</div>` : `<p>${obPill("g", "ALL GO")}</p>`)}</div>`;
+    ${obBoardView(true, obAircraftCards().join("") +
+      obCard("ob-tvgo", "Aircrew status", `${crew.length - nogo.length} of ${crew.length} GO`, nogo.length ? `<div class="obtvgo">${nogo.map(c => `<span>${obPill("r", c.name)} <span class="hint">${esc(obCodes(obOutstanding(c.id)))}</span></span>`).join("")}</div>` : `<p>${obPill("g", "ALL GO")}</p>`))}`;
+  v.innerHTML = `<div class="tvstage">${v.innerHTML}</div>`;
+  obTvColumns(v);
+  requestAnimationFrame(obTvFit);
 }
+// Spread the TV cards over balanced columns: each card goes to the currently shortest column.
+function obTvColumns(v) {
+  const grid = v.querySelector(".obgrid.tv"); if (!grid) return;
+  const n = innerWidth / innerHeight < 1 ? 2 : 4;
+  const wrap = document.createElement("div"); wrap.className = "tvcols"; wrap.style.gridTemplateColumns = `repeat(${n},minmax(0,1fr))`;
+  const cols = Array.from({ length: n }, () => { const c = document.createElement("div"); c.className = "tvcol"; wrap.appendChild(c); return c; });
+  const cards = [...grid.children].filter(c => !c.classList.contains("obafcard"));
+  grid.appendChild(wrap);
+  for (const c of cards) cols.reduce((a, b) => (b.offsetHeight < a.offsetHeight ? b : a)).appendChild(c);
+}
+// Fit the whole TV dashboard on one screen: find the largest zoom at which it fits the window height (the layout reflows at each zoom).
+function obTvFit() {
+  const st = document.querySelector(".tvstage"); if (!st || !document.body.classList.contains("tvmode")) return;
+  const avail = window.innerHeight - st.getBoundingClientRect().top - 6;
+  const fits = z => { st.style.zoom = z; return st.getBoundingClientRect().height <= avail; };
+  let lo = 0.3, hi = 2.2;
+  if (fits(hi)) return;
+  for (let k = 0; k < 9; k++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; }
+  st.style.zoom = lo;
+}
+window.addEventListener("resize", () => { clearTimeout(obTvFit.t); obTvFit.t = setTimeout(obTvFit, 150); });
 const obLeaveTv = () => { document.body.classList.remove("tvmode"); if (obWake) { obWake.release().catch(() => {}); obWake = null; } };
 
 /* ---------- editors (board, aircraft, gonogo) ---------- */
@@ -914,6 +937,21 @@ body.tvmode .wrap{max-width:none;padding:10px 16px}
 body.tvmode{font-size:17px}
 .tvbar{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-bottom:10px}
 .tvbar b{font:700 1.5rem var(--cond)} .tvclock{font:700 1.5rem var(--cond)} .tvbar .grow{flex:1}
-@media (min-width:1400px){body.tvmode .obgrid.tv{grid-template-columns:2fr 1fr 1fr}body.tvmode .obgrid.tv .obwide{grid-column:auto}}`;
+/* TV: everything on one screen. Airfields across the top (main and other side by side), the rest flows in columns; obTvFit zooms to fit. */
+body.tvmode{overflow:hidden}
+body.tvmode .wrap{padding:6px 12px}
+.tvstage{width:100%}
+body.tvmode .obgrid.tv{display:block}
+.tvcols{display:grid;gap:12px;align-items:start}
+.tvcol{display:flex;flex-direction:column;gap:12px;min-width:0}
+body.tvmode .obgrid.tv .card{margin:0;padding:10px 12px}
+body.tvmode .obgrid.tv>.obafcard{display:grid;grid-template-columns:3fr 2fr;gap:0 12px;align-items:start;margin-bottom:12px}
+body.tvmode .obafcard>.tablewrap{margin-top:0!important}
+body.tvmode .obafcard>.obnote{grid-column:1/-1}
+body.tvmode .opscard p.hint{display:none}
+body.tvmode .opscard h2{font-size:1.15rem;margin:0 0 6px}
+body.tvmode .obhead{margin-bottom:6px}
+body.tvmode .tablewrap{overflow:visible}
+@media (max-aspect-ratio:1/1){body.tvmode .obgrid.tv>.obafcard{grid-template-columns:1fr}}`;
   document.head.appendChild(s);
 })();
