@@ -11,7 +11,7 @@
 :root{
   --bg:#E4E8EC; --paper:#FFFFFF; --ink:#16202B; --muted:#5B6875; --line:#C9D0D7;
   --in:#2F6FB5; --out:#C98E00; --late:#C42B2B; --accent:#33393F; --accent-ink:#FFFFFF;
-  --field:#F5F7F9;
+  --field:#F5F7F9; --ok:#1F8A4C;
   --cond:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
   --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   box-sizing:border-box;
@@ -19,11 +19,11 @@
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#151B22; --paper:#1E2630; --ink:#E7ECF1; --muted:#95A3B1; --line:#33404D;
-  --in:#5C9BE0; --out:#F0B429; --late:#F06262; --accent:#D9DEE3; --accent-ink:#1A1F24; --field:#18202A;
+  --in:#5C9BE0; --out:#F0B429; --late:#F06262; --accent:#D9DEE3; --accent-ink:#1A1F24; --field:#18202A; --ok:#4ADE80;
 }}
 :root[data-theme="dark"]{
   --bg:#151B22; --paper:#1E2630; --ink:#E7ECF1; --muted:#95A3B1; --line:#33404D;
-  --in:#5C9BE0; --out:#F0B429; --late:#F06262; --accent:#D9DEE3; --accent-ink:#1A1F24; --field:#18202A;
+  --in:#5C9BE0; --out:#F0B429; --late:#F06262; --accent:#D9DEE3; --accent-ink:#1A1F24; --field:#18202A; --ok:#4ADE80;
 }
 *,*::before,*::after{box-sizing:inherit}
 html{scroll-padding-top:calc(env(safe-area-inset-top,0px) + 100px)}
@@ -369,7 +369,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 <div class="toast" id="toast" hidden></div>
 
 <script src="ops.js?v=3"></script>
-<script src="opsboard.js?v=12"></script>
+<script src="opsboard.js?v=13"></script>
 <script>
 /* =====================================================================
    SETUP: paste your Supabase Project URL and anon (public) key here.

@@ -514,7 +514,9 @@ function renderAircraft(v) {
   const editing = OB.edit && OB.edit.key === "aircraft";
   v.innerHTML = editing ? obCard("ob-aircraft", "Aircraft status", "", obEditor("aircraft")) : obAircraftView(false) + `<p class="opsmeta" style="justify-content:flex-end">${obMeta("aircraft")} ${obEditBtn("aircraft", obCanEditAc(), "Edit aircraft")}</p>`;
 }
-const obNoteLine = l => /^\s*(NTS|AMC|NPC|OJT|MAX FLY|CFH|CONTROL HOURS)\b/i.test(l) ? `<span class="obamb">${esc(l)}</span>` : esc(l);
+// Colour tags typed (or added with the colour buttons) in notes: [r]red[/r], [y]amber[/y], [g]green[/g], [b]bold[/b].
+const obFmt = t => esc(t).replace(/\[(r|y|g|b)\]([\s\S]*?)\[\/\1\]/gi, (m, c, x) => `<span class="fx-${c.toLowerCase()}">${x}</span>`).replace(/\[\/?[rygb]\]/gi, "");
+const obNoteLine = l => /^\s*(NTS|AMC|NPC|OJT|MAX FLY|CFH|CONTROL HOURS)\b/i.test(l.replace(/\[\/?[rygb]\]/gi, "")) ? `<span class="obamb">${obFmt(l)}</span>` : obFmt(l);
 function obAircraftView(tv) { return `<div class="obgrid ${tv ? "tv" : ""}">${obAircraftCards().join("")}</div>`; }
 function obAircraftCards() {
   const a = obGet("aircraft"), tails = a.tails || [];
@@ -527,6 +529,30 @@ function obAircraftCards() {
   return [obCard("ob-tails", "Aircraft status", tails.length ? `${sv} of ${tails.length} serviceable` : "", tailsHtml).replace('class="card opscard"', 'class="card opscard obwide"'),
     obCard("ob-cs", "Callsigns", "", cs.length ? `<table class="opst obt"><thead><tr><th>Callsign</th><th>ETTS</th><th>Vehicle</th></tr></thead><tbody>${cs.map(c => `<tr><td>${esc(c.callsign)}</td><td>${esc(c.etts)}</td><td>${esc(c.vehicle)}</td></tr>`).join("")}</tbody></table>${a.vehicleCap ? `<p class="hint">Vehicle cap: ${esc(a.vehicleCap)}</p>` : ""}` : `<p class="hint">None entered.</p>`)];
 }
+
+const obPrev = v => String(v || "").trim() ? String(v).split("\n").filter(Boolean).map(obNoteLine).join("<br>") : `<span class="hint">Preview shows here.</span>`;
+// Colour buttons in the aircraft editor: wrap the selected words (each line separately) in a colour tag, or strip tags.
+document.addEventListener("mousedown", e => { if (e.target.closest("[data-fx]")) e.preventDefault(); }); // keep the selection
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-fx]"); if (!b || !OB.edit) return;
+  const ta = document.querySelector(`#obEdit textarea[data-bp="${b.dataset.ta}"]`); if (!ta) return;
+  const v = ta.value, s0 = ta.selectionStart, s1 = ta.selectionEnd, c = b.dataset.fx;
+  let out, a = s0, z = s1;
+  if (c === "x") {
+    if (s0 === s1) { a = 0; z = v.length; }
+    out = v.slice(a, z).replace(/\[\/?[rygb]\]/gi, "");
+  } else {
+    if (s0 === s1) return toast("Select the words to colour first.");
+    out = v.slice(a, z).split("\n").map(l => l.trim() ? `[${c}]${l}[/${c}]` : l).join("\n");
+  }
+  ta.value = v.slice(0, a) + out + v.slice(z);
+  ta.focus(); ta.setSelectionRange(a, a + out.length);
+  ta.dispatchEvent(new Event("input", { bubbles: true }));
+});
+document.addEventListener("input", e => {
+  const ta = e.target; if (!ta.classList || !ta.classList.contains("obnotesin")) return;
+  const pv = document.querySelector(`.obprev[data-prev="${ta.dataset.bp}"]`); if (pv) pv.innerHTML = obPrev(ta.value);
+});
 
 /* ---------- TV mode ---------- */
 let obWake = null;
@@ -590,9 +616,12 @@ function obEditor(k) {
         <tr><td>CALAMAR</td><td>${bI("czx.calamar", d.czx.calamar, "110px")}</td><td>${bS("czx.calamarS", d.czx.calamarS, OB_VALCOL)}</td><td></td></tr></tbody></table></div>${bB("add", "areas", "", "+ Area", "ra")}
       <p class="hint">FASF / RSAF "Auto" works the colour state out from the METAR (or your WX/VIS override) using the Excel's criteria. Aid status "auto" (CAT 1 line) follows CZX FASF. Weather, wind, temperature, QNH and sunrise/sunset come in automatically.</p></div>`;
   } else if (k === "aircraft") {
-    body = `<div class="opsed"><div class="tablewrap"><table><thead><tr><th>Tail</th><th>Status</th><th>Flags</th><th>Significant ADDL / NPC / AMC (one per line)</th><th></th></tr></thead><tbody>${(d.tails || []).map((t, i) => `<tr>
-        <td>${bI(`tails.${i}.tail`, t.tail, "80px", "e.g. 327#(W)")}</td><td>${bS(`tails.${i}.status`, t.status, [["S", "Serviceable"], ["US", "U/S"], ["MX", "Maintenance"]])}</td>
-        <td>${bC(`tails.${i}.npc`, t.npc, "NPC")}${bC(`tails.${i}.nts`, t.nts, "NTS")}${bC(`tails.${i}.ojt`, t.ojt, "OJT")}</td><td>${bT(`tails.${i}.notes`, t.notes, 3)}</td><td>${bTools("tails", i)}</td></tr>`).join("")}</tbody></table></div>${bB("add", "tails", "", "+ Aircraft", "tail")}
+    body = `<div class="opsed">${(d.tails || []).map((t, i) => `<div class="obtail">
+        <div class="obtailhead"><label>Tail${bI(`tails.${i}.tail`, t.tail, "90px", "e.g. 327#(W)")}</label><label>Status${bS(`tails.${i}.status`, t.status, [["S", "Serviceable"], ["US", "U/S"], ["MX", "Maintenance"]])}</label>
+          <span class="obflags">${bC(`tails.${i}.npc`, t.npc, "NPC")}${bC(`tails.${i}.nts`, t.nts, "NTS")}${bC(`tails.${i}.ojt`, t.ojt, "OJT")}</span><span class="grow"></span>${bTools("tails", i)}</div>
+        <div class="obfxbar"><span class="hint">Significant ADDL / NPC / AMC (one per line) · select words, then:</span>${[["r", "Red"], ["y", "Amber"], ["g", "Green"], ["b", "Bold"]].map(([c, l]) => `<button type="button" class="btn small fxbtn fx-${c}" data-fx="${c}" data-ta="tails.${i}.notes">${l}</button>`).join("")}<button type="button" class="btn small" data-fx="x" data-ta="tails.${i}.notes">Clear colour</button></div>
+        <textarea class="obnotesin" data-bp="tails.${i}.notes" rows="6">${esc(t.notes ?? "")}</textarea>
+        <div class="obprev obnotes" data-prev="tails.${i}.notes">${obPrev(t.notes)}</div></div>`).join("")}${bB("add", "tails", "", "+ Aircraft", "tail")}
       <h3 class="opssub">Callsigns</h3><div class="tablewrap"><table><thead><tr><th>Callsign</th><th>ETTS</th><th>Vehicle</th><th></th></tr></thead><tbody>${(d.callsigns || []).map((c, i) => `<tr>
         <td>${bI(`callsigns.${i}.callsign`, c.callsign, "120px")}</td><td>${bI(`callsigns.${i}.etts`, c.etts, "50px")}</td><td>${bI(`callsigns.${i}.vehicle`, c.vehicle, "100px")}</td><td>${bTools("callsigns", i)}</td></tr>`).join("")}</tbody></table></div>${bB("add", "callsigns", "", "+ Callsign", "cs")}
       <label style="max-width:300px;margin-top:8px">Vehicle cap${bI("vehicleCap", d.vehicleCap, "", "e.g. VAN - 8, ZOE - 4")}</label>
@@ -867,6 +896,16 @@ table.obt{min-width:0}
 .obleg{grid-template-columns:max-content 1fr}
 .obamb{color:var(--out);font-weight:600}
 .obnotes{font-size:.82rem}
+.fx-r{color:var(--late);font-weight:700}.fx-y{color:var(--out);font-weight:700}.fx-g{color:var(--ok,#1F8A4C);font-weight:700}.fx-b{font-weight:700}
+.obtail{border:1px solid var(--line);border-radius:6px;padding:10px;margin-bottom:10px;background:var(--field)}
+.obtailhead{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end}
+.obtailhead>label{display:flex;flex-direction:column;font-size:.8rem;color:var(--muted)}
+.obflags{display:flex;gap:10px}
+.obfxbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0 6px}
+.obfxbar .hint{flex:1 1 100%;font-size:.8rem}
+.fxbtn{min-width:56px}
+.opsed textarea.obnotesin{width:100%;min-height:130px;font-size:.92rem;line-height:1.45;padding:8px 10px}
+.obprev{margin-top:6px;padding:6px 8px;border:1px dashed var(--line);border-radius:4px;background:var(--paper)}
 table.obed input,table.obed select{padding:4px 6px;font-size:.85rem;margin:0}
 table.obed{min-width:0} table.obed td,table.obed th{border:0;padding:2px 4px;background:none}
 .obtvgo{display:flex;flex-wrap:wrap;gap:6px 14px}
