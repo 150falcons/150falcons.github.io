@@ -331,6 +331,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
   <label id="eOpsWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eOps" type="checkbox" style="width:auto;margin:0">Can edit the ops board (incl. Go / No-Go)</label>
   <label id="eProgWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eProg" type="checkbox" style="width:auto;margin:0">Can edit the flying program (incl. flown times)</label>
   <label id="eEngWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eEng" type="checkbox" style="width:auto;margin:0">Can edit aircraft status</label>
+  <label id="eUAdmWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eUAdm" type="checkbox" style="width:auto;margin:0">Account admin (can add, remove and reset logins and change everyone's rights)</label>
   <label id="eNoGeoWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eNoGeo" type="checkbox" style="width:auto;margin:0">No location check (e.g. ops room laptop)</label>
   <label id="eUserWrap">Username<input id="eUser" maxlength="30" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
   <p class="hint" id="eHint" style="margin:-4px 0 10px"></p>
@@ -424,6 +425,8 @@ const dur = m => { m = Math.round(m / 60000); if (m < 60) return m + " min"; con
 const ROLE = { driver: "Driver", vcom: "VCOM", pax: "Pax", person: "" };
 
 const isAdmin = () => !!S.me && S.me.role === "admin";
+// Account admin: a QFI given the right (Admin → Edit) to manage logins and everyone's rights. Brut by default.
+const isUserAdmin = () => isAdmin() && !!S.me.user_admin;
 const myTid = () => S.me ? S.me.trainee_id : null;
 const active = () => S.roster.filter(t => t.active);
 const me = () => active().find(t => t.id === myTid()) || null;
@@ -529,7 +532,7 @@ async function fetchAll() {
   const sb = S.sb;
   const res = await Promise.all([
     sb.from("trainees").select("*").order("course").order("name"),
-    sb.from("profiles").select("id,email,display_name,role,trainee_id,must_change_password,appointment,ops_editor,prog_editor,eng_editor,no_geo,callsign,staff_role,qfi_cat,quals"),
+    sb.from("profiles").select("id,email,display_name,role,trainee_id,must_change_password,appointment,ops_editor,prog_editor,eng_editor,no_geo,callsign,staff_role,qfi_cat,quals,user_admin"),
     sb.from("vehicles").select("*").order("description"),
     sb.from("movements").select("*").in("status", ["out", "pending"]),
     sb.from("movements").select("*").order("out_at", { ascending: false }).limit(300),
@@ -619,7 +622,7 @@ function render() {
   if (S.me.must_change_password) return renderChangePw(v);
   if (!S.ready) { v.innerHTML = `<div class="empty">Loading the board…</div>`; return; }
   document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.area === area));
-  document.querySelector('#tabs [data-tab="roster"]').textContent = isAdmin() ? "Admin" : "Roster";
+  document.querySelector('#tabs [data-tab="roster"]').textContent = isUserAdmin() ? "Admin" : "Account";
   renderTally();
   if (S.tab !== "tv" && S.tab !== "flytv") obLeaveTv();
   if (S.tab === "home") renderHome(v);
@@ -633,7 +636,7 @@ function render() {
   else if (S.tab === "tv") renderTv(v);
   else if (S.tab === "flytv") renderFlyTv(v);
   else if (S.tab === "hours") renderHours(v);
-  else if (isAdmin()) renderAdmin(v); else renderRoster(v);
+  else if (isUserAdmin()) renderAdmin(v); else renderRoster(v);
 }
 
 // Top-level areas (top bar) and their pages (sub-tabs).
@@ -745,7 +748,7 @@ function renderBoard(v) {
   const now = Date.now(), ob = openByTrainee();
   const mine = me();
   if (!active().length) {
-    v.innerHTML = `<div class="empty"><strong>No trainees on the roster yet</strong>${isAdmin() ? `Post in your course on the <a href="#" data-tab="roster">Admin</a> tab.` : "Ask a QFI to add the course."}</div>`;
+    v.innerHTML = `<div class="empty"><strong>No trainees on the roster yet</strong>${isUserAdmin() ? `Post in your course on the <a href="#" data-tab="roster">Admin</a> tab.` : "Ask an account admin to add the course."}</div>`;
     return;
   }
   let idCard = "";
@@ -1293,7 +1296,7 @@ async function editPhone(tid) {
   const t = S.roster.find(x => x.id === tid); if (!t) return;
   const val = await ask(t.id === myTid() ? "Your handphone number" : `${t.name}'s number`, "Used to fill in the contact number when booking out.", "Save number", { type: "tel", value: t.phone, placeholder: "+33 / +65" });
   if (val === null) return;
-  const { error } = (t.id === myTid() && !isAdmin())
+  const { error } = t.id === myTid()
     ? await S.sb.rpc("set_my_phone", { p_phone: val })
     : await S.sb.from("trainees").update({ phone: val }).eq("id", tid);
   if (error) return toast(errMsg(error));
@@ -1303,7 +1306,64 @@ async function editPhone(tid) {
 /* ---------- roster (trainees) ---------- */
 function renderRoster(v) {
   const list = byCourse(active()).map(([c, ts]) => `<li class="chead">${esc(c)}<span>${ts.length}</span></li>` + ts.map(t => `<li><span><strong>${esc(t.name)}</strong>${t.can_drive === false ? ` <span class="tag nd">Non-driver</span>` : ""}${t.phone ? `<br><span class="hint">Tel ${telLink(t.phone)}</span>` : ""}</span></li>`).join("")).join("");
-  v.innerHTML = `<div class="card"><h2>On the roster (${active().length})</h2>${list ? `<ul class="rlist">${list}</ul>` : `<p class="hint">No trainees yet.</p>`}</div>`;
+  v.innerHTML = `<div class="roster"><div class="stack">${myAccountCard()}${isAdmin() ? telegramCard() : ""}</div>
+    <div class="card"><h2>On the roster (${active().length})</h2>${list ? `<ul class="rlist">${list}</ul>` : `<p class="hint">No trainees yet.</p>`}</div></div>`;
+  wireMyAccount(); wireTelegram();
+}
+/* ---------- my account (everyone): own details and password ---------- */
+function myAccountCard() {
+  const me = S.me, t = me.trainee_id ? S.roster.find(x => x.id === me.trainee_id) : null, inst = me.role === "admin";
+  const what = inst ? (apptText(me) || "QFI") + (me.user_admin ? " · account admin" : "") : t ? `Trainee${t.course ? ", " + t.course : ""}` : STAFF_LABEL[me.staff_role] || "Staff";
+  return `<div class="card" id="myAcct"><h2>My account</h2>
+    <p class="hint">Username <strong>${esc(showLogin(me.email))}</strong> · ${esc(what)}</p>
+    ${t ? `<p class="hint">Name: <strong>${esc(t.name)}</strong> (an account admin changes names on the roster)</p>`
+      : `<label>${inst ? "Name (as on the flying lines)" : "Name"}<input id="myName" maxlength="60" value="${esc(me.display_name || "")}"></label>`}
+    ${inst ? `<label>Callsign (leave blank if none)<input id="myCall" maxlength="30" value="${esc(me.callsign || "")}"></label>` : ""}
+    ${t ? `<label>Handphone<input id="myPhone" type="tel" maxlength="30" value="${esc(t.phone || "")}" placeholder="+33 / +65"></label>` : ""}
+    <div class="err" id="myErr"></div>
+    <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnMySave">Save my details</button></div>
+    <h3 class="opssub" style="margin-top:14px">Change password</h3>
+    <label>Current password<input id="myPw0" type="password" autocomplete="current-password"></label>
+    <label>New password<input id="myPw1" type="password" autocomplete="new-password" minlength="8"></label>
+    <label>Type the new one again<input id="myPw2" type="password" autocomplete="new-password"></label>
+    <div class="err" id="myPwErr"></div>
+    <div style="display:flex;justify-content:flex-end"><button class="btn primary" id="btnMyPw">Change password</button></div></div>`;
+}
+function wireMyAccount() {
+  const save = $("#btnMySave"); if (!save) return;
+  save.onclick = async () => {
+    const err = $("#myErr"); err.textContent = "";
+    const name = $("#myName") ? $("#myName").value.trim() : null, call = $("#myCall") ? $("#myCall").value.trim() : null;
+    if (name !== null && !name) return err.textContent = "Enter your name.";
+    save.disabled = true;
+    try {
+      if (name !== null || call !== null) { const { error } = await S.sb.rpc("update_my_info", { p_name: name, p_callsign: call }); if (error) throw error; }
+      if ($("#myPhone")) { const { error } = await S.sb.rpc("set_my_phone", { p_phone: $("#myPhone").value.trim() }); if (error) throw error; }
+      if (name !== null) S.me.display_name = name;
+      if (call !== null) S.me.callsign = call || null;
+      toast("Details saved."); fetchAll();
+    } catch (e) { err.textContent = errMsg(e); }
+    finally { save.disabled = false; }
+  };
+  $("#btnMyPw").onclick = async () => {
+    const cur = $("#myPw0").value, a = $("#myPw1").value, b = $("#myPw2").value, err = $("#myPwErr"), btn = $("#btnMyPw");
+    err.textContent = "";
+    if (!cur) return err.textContent = "Enter your current password.";
+    if (a.length < 8) return err.textContent = "Use at least 8 characters for the new password.";
+    if (a === cur) return err.textContent = "The new password is the same as the current one.";
+    if (a !== b) return err.textContent = "The two new passwords don't match.";
+    btn.disabled = true;
+    try {
+      // Check the current password first (signs in again as the same person).
+      const chk = await S.sb.auth.signInWithPassword({ email: S.me.email, password: cur });
+      if (chk.error) throw new Error("Current password is wrong.");
+      const { error } = await S.sb.auth.updateUser({ password: a });
+      if (error) throw error;
+      for (const k of ["#myPw0", "#myPw1", "#myPw2"]) $(k).value = "";
+      toast("Password changed. Use the new one next time you sign in.");
+    } catch (e) { err.textContent = errMsg(e); }
+    finally { btn.disabled = false; }
+  };
 }
 
 /* ---------- admin ---------- */
@@ -1323,7 +1383,7 @@ function renderAdmin(v) {
     // Management appointment first (CO, DYCO, OC A, OC B, CC, QFI), then QFI CAT (A, B1, B2, C), then callsign.
     .sort((a, b) => (APPT_ORDER[a.appointment] ?? 9) - (APPT_ORDER[b.appointment] ?? 9) || (CAT_ORDER[a.qfi_cat] ?? 9) - (CAT_ORDER[b.qfi_cat] ?? 9) || pLabel(a).localeCompare(pLabel(b)));
   const alist = admins.map(p => `<li class="qrow">
-      <span class="qname"><strong>${esc(pLabel(p))}</strong>${p.callsign && p.display_name && p.display_name !== p.callsign ? ` <span class="hint">${esc(p.display_name)}</span>` : p.callsign ? ` <span class="hint">(name not set)</span>` : ""}<span class="qtags">${apptText(p) ? `<span class="tag open">${esc(apptText(p))}</span>` : ""}${p.qfi_cat ? `<span class="tag qcat">CAT ${esc(p.qfi_cat)}</span>` : ""}${p.ops_editor && !APPROVER(p) ? `<span class="tag nd">Ops board</span>` : ""}${p.prog_editor && !APPROVER(p) ? `<span class="tag nd">Flying prog</span>` : ""}</span></span>
+      <span class="qname"><strong>${esc(pLabel(p))}</strong>${p.callsign && p.display_name && p.display_name !== p.callsign ? ` <span class="hint">${esc(p.display_name)}</span>` : p.callsign ? ` <span class="hint">(name not set)</span>` : ""}<span class="qtags">${apptText(p) ? `<span class="tag open">${esc(apptText(p))}</span>` : ""}${p.qfi_cat ? `<span class="tag qcat">CAT ${esc(p.qfi_cat)}</span>` : ""}${p.user_admin ? `<span class="tag open">Account admin</span>` : ""}${p.ops_editor && !APPROVER(p) ? `<span class="tag nd">Ops board</span>` : ""}${p.prog_editor && !APPROVER(p) ? `<span class="tag nd">Flying prog</span>` : ""}</span></span>
       <span class="hint qlogin">Login: ${esc(showLogin(p.email))}${p.id === S.me.id ? " (you)" : ""}${p.no_geo ? " · no location check" : ""}</span>
       <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button>${p.id === S.me.id ? "" : `<button class="btn small" data-act="resetpw" data-id="${esc(p.id)}" title="Reset password">Reset pw</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button>`}</span></li>`).join("");
 
@@ -1332,6 +1392,7 @@ function renderAdmin(v) {
   v.innerHTML = `<div class="roster">
     <div class="card"><h2>Current trainees (${cur.length})</h2>${list ? `<ul class="rlist">${list}</ul>` : `<p class="hint">No trainees yet. Post in your course on the right.</p>`}</div>
     <div class="stack">
+      ${myAccountCard()}
       <div class="card"><h2>Post in trainees</h2>
         <p class="hint">One per line: name, course, handphone, username. Handphone and username are optional, e.g. <em>TAN WEI MING, Course 24, +33 612345678, tanwm</em>. Leave it out and one is made from the name. Add <em>non-driver</em> to the line for trainees who can't drive.</p>
         <textarea id="addList" placeholder="LIM J, Course 24, limj&#10;ONG K, Course 24, non-driver"></textarea>
@@ -1342,6 +1403,7 @@ function renderAdmin(v) {
         <li class="chead">QFI<span>${admins.length}</span></li>${alist}
         ${["ST", "CEN", "AOSX", "ATCO"].map(t => { const g = perm.filter(p => (p.staff_role || "AOSX") === t); return g.length ? `<li class="chead">${t === "ST" ? "ST Tow" : t}<span>${g.length}</span></li>${g.map(staffRow).join("")}` : ""; }).join("")}</ul>
         <p class="hint" style="margin-top:10px">QFI are instructors (the CO, DYCO and OCs approve travel; under Edit, tick "Can edit the ops board" and / or "Can edit the flying program" for anyone else who should). The AOSX gets both by default. ST Tow, CEN and ATCO can view everything unless ticked.</p>
+        <p class="hint">Only account admins see this Admin tab and can add, remove or reset logins and change anyone's rights. To make another QFI an account admin, tap Edit and tick "Account admin". Everyone else gets an Account tab to change their own details and password.</p>
         <p class="hint" style="margin-top:10px">Add perm staff:</p>
         <label>Type<select id="psType"><option value="QFI">QFI (instructor)</option><option value="ST">ST Tow</option><option value="CEN">CEN (contracts &amp; squadron logistics)</option><option value="AOSX">AOSX (ops assistant)</option><option value="ATCO">ATCO (air traffic controller)</option></select></label>
         <label>Name (as on the flying lines)<input id="iName" maxlength="60" placeholder="e.g. LEE G"></label>
@@ -1356,11 +1418,7 @@ function renderAdmin(v) {
         <label>Name<input id="oaName" maxlength="60" placeholder="e.g. ENG TAN"></label>
         <label>Username<input id="oaUser" autocapitalize="none" placeholder="e.g. engtan"></label>
         <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddOps">Add engineer</button></div></div>
-      <div class="card"><h2>Telegram</h2>
-        ${isOC() ? `<p class="hint">Get travel requests in your own Telegram and approve or reject them there. <span id="tgLinkState"></span></p>
-        <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn primary" data-act="tglink">Link Telegram</button></div>` : ""}
-        <p class="hint">Sends tonight's movement check to the group now, so you can confirm the bot works.</p>
-        <div style="display:flex;justify-content:flex-end"><button class="btn" data-act="tgtest">Send test message now</button></div></div>
+      ${telegramCard()}
       <div class="card"><h2>Posted out (${gone.length})</h2>
         ${glist ? `<ul class="rlist">${glist}</ul><p class="hint">Their past movements stay in the log.</p>` : `<p class="hint">Trainees you post out appear here. Their login is disabled and their history is kept.</p>`}</div>
     </div></div>`;
@@ -1370,6 +1428,14 @@ function renderAdmin(v) {
   if (!S.defPw) adminApi({ action: "default_password" }).then(r => { S.defPw = r && r.password; const i = $("#tmpPw"); if (i && !i.value && S.defPw) i.value = S.defPw; }).catch(() => {});
   $("#btnAddOps").onclick = () => addStaff("ENG", $("#oaName"), $("#oaUser"));
   $("#psType").onchange = () => { $("#psQfi").hidden = $("#psType").value !== "QFI"; $("#psSt").hidden = $("#psType").value !== "ST"; };
+  wireMyAccount(); wireTelegram();
+}
+const telegramCard = () => `<div class="card"><h2>Telegram</h2>
+        ${isOC() ? `<p class="hint">Get travel requests in your own Telegram and approve or reject them there. <span id="tgLinkState"></span></p>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn primary" data-act="tglink">Link Telegram</button></div>` : ""}
+        <p class="hint">Sends tonight's movement check to the group now, so you can confirm the bot works.</p>
+        <div style="display:flex;justify-content:flex-end"><button class="btn" data-act="tgtest">Send test message now</button></div></div>`;
+function wireTelegram() {
   if (isOC()) S.sb.rpc("tg_link_status").then(({ data }) => { const s = $("#tgLinkState"); if (s) s.textContent = data ? "Linked." : "Not linked yet."; });
 }
 // OC A / OC B can link their Telegram to approve requests from the bot.
@@ -1522,6 +1588,7 @@ function openEdit(key) {
   $("#eOpsWrap").hidden = !acct || (!inst && !isOpsAssistant(acct)); $("#eOps").checked = !!(acct && acct.ops_editor);
   $("#eProgWrap").hidden = $("#eOpsWrap").hidden; $("#eProg").checked = !!(acct && acct.prog_editor);
   $("#eEngWrap").hidden = !acct || !isOpsAssistant(acct); $("#eEng").checked = !!(acct && acct.eng_editor);
+  $("#eUAdmWrap").hidden = !inst; $("#eUAdm").checked = !!(acct && acct.user_admin);
   $("#eNoGeoWrap").hidden = !acct; $("#eNoGeo").checked = !!(acct && acct.no_geo);
   $("#eCallWrap").hidden = !inst; $("#eCall").value = inst ? (acct.callsign || "") : "";
   $("#eCatWrap").hidden = !inst; $("#eCat").value = inst ? (acct.qfi_cat || "") : "";
@@ -1577,6 +1644,12 @@ $("#btnEdit").onclick = async () => {
       if (!$("#eOpsWrap").hidden && $("#eOps").checked !== !!acct.ops_editor) {
         const { error } = await S.sb.rpc("set_ops_editor", { p_user: acct.id, p_on: $("#eOps").checked });
         if (error) throw error;
+      }
+      if (!$("#eUAdmWrap").hidden && $("#eUAdm").checked !== !!acct.user_admin) {
+        if (acct.id === S.me.id && !$("#eUAdm").checked && !await ask("Remove your own account admin right?", "You'll lose the Admin tab straight away. Another account admin would have to give it back.", "Remove it")) { b.disabled = false; return; }
+        const { error } = await S.sb.rpc("set_user_admin", { p_user: acct.id, p_on: $("#eUAdm").checked });
+        if (error) throw error;
+        if (acct.id === S.me.id) S.me.user_admin = $("#eUAdm").checked;
       }
       if (!$("#eProgWrap").hidden && $("#eProg").checked !== !!acct.prog_editor) {
         const { error } = await S.sb.rpc("set_prog_editor", { p_user: acct.id, p_on: $("#eProg").checked });
