@@ -606,7 +606,7 @@ function renderTv(v) {
   const n = new Date();
   v.innerHTML = `<div class="tvbar"><b>150 Falcon Det · Ops board</b><span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 19).replace(/:/g, ""))}Z</small></span>
       <span class="grow"></span>${st ? `<span>Today: ${st.sorties} sorties · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>` : ""}<button class="btn small" data-ob="exittv">Exit TV</button></div>
-    ${obBoardView(true, obAircraftCards().slice(1).join("") + // TV: no aircraft status table (Gordon, 10 Oct), callsigns only
+    ${obBoardView(true, ((obGet("aircraft").callsigns || []).length || obGet("aircraft").vehicleCap ? obAircraftCards()[1] : "") + // TV: no aircraft status table (Gordon, 10 Oct); callsigns only when there are some // TV: no aircraft status table (Gordon, 10 Oct), callsigns only
       obCard("ob-tvgo", "Aircrew status", `${crew.length - nogo.length} of ${crew.length} GO`, nogo.length ? `<div class="obtvgo">${nogo.map(c => `<span>${obPill("r", c.name)} <span class="hint">${esc(obCodes(obOutstanding(c.id)))}</span></span>`).join("")}</div>` : `<p>${obPill("g", "ALL GO")}</p>`))}`;
   v.innerHTML = `<div class="tvstage">${v.innerHTML}</div>`;
   obTvColumns(v);
