@@ -493,20 +493,40 @@ function renderGoNoGo(v) {
   if (!OB.loaded) return obNotLoaded(v);
   const can = opsCanEdit(), gm = obGet("gonogo");
   let html = obMyItemsCard();
-  // status grid
+  // status: one compact block per group, side by side; big groups spread over columns
   const crew = OB.crew.filter(c => c.active);
-  const groups = [...new Set([...OB_GROUPS, ...crew.map(c => c.grp)])].filter(g => crew.some(c => c.grp === g));
   const goCount = crew.filter(c => !obOutstanding(c.id).length).length;
   html += obCard("ob-go", "Aircrew status", `${goCount} of ${crew.length} GO${gm.miac ? ` · MIAC 4 effective till ${esc(fmtDay(gm.miac))}` : ""}`,
-    crew.length ? `<div class="obgo">${groups.map(g => `<div><h3 class="opssub">${esc(g)}</h3><table class="opst obt"><tbody>${crew.filter(c => c.grp === g).map(c => {
-      const out = obOutstanding(c.id);
-      return `<tr><td>${opsX(c.name)}</td><td class="hint">${esc(obCodes(out))}</td><td>${obPill(out.length ? "r" : "g", out.length ? "NO-GO" : "GO")}</td></tr>`;
-    }).join("")}</tbody></table></div>`).join("")}</div>` : `<p class="hint">${can ? "Add the aircrew under Crew list below." : "No crew list yet."}</p>`);
+    crew.length ? `<div class="obgo">${obCrewGroups(crew).map(([g, list]) => {
+      const ng = list.filter(c => obOutstanding(c.id).length).length;
+      return `<div class="obgg" style="--r:${Math.ceil(list.length / Math.ceil(list.length / 8))}"><h3 class="opssub">${esc(obGrpLabel(g))} <span class="hint">${ng ? `${ng} NO-GO` : "all GO"}</span></h3><div class="obgl">${list.map(c => {
+        const out = obOutstanding(c.id);
+        return `<div class="obgp${out.length ? " ng" : ""}"><span class="n">${opsX(c.name)}</span>${out.length ? `<span class="hint">${esc(obCodes(out))}</span>` : ""}${obPill(out.length ? "r" : "g", out.length ? "NO-GO" : "GO")}</div>`;
+      }).join("")}</div></div>`;
+    }).join("")}</div>` : `<p class="hint">${can ? "Add the aircrew under Crew list below." : "No crew list yet."}</p>`);
   if (can) html += obItemsCard() + obCrewCard();
-  html += obCard("ob-legend", "Legend", "", `<dl class="opsdl obleg">${(gm.legend || []).map(l => `<dt>${esc(l.code)}</dt><dd>${esc(l.label)}</dd>`).join("")}</dl>`,
+  html += obCard("ob-legend", "Legend", "", `<div class="obleg">${(gm.legend || []).map(l => `<div><b>${esc(l.code)}</b><span>${esc(l.label)}</span></div>`).join("")}</div>`,
     can && !OB.edit ? `<button class="btn small" data-ob="edit" data-k="gonogo">Edit MIAC / legend</button>` : "");
   if (OB.edit && OB.edit.key === "gonogo") html += obCard("ob-gonogo", "MIAC 4 / legend", "", obEditor("gonogo"));
-  v.innerHTML = html;
+  v.innerHTML = `<div class="obgng">${html}</div>`;
+}
+const obGrpLabel = g => g === "ST" ? "ST TOW" : g;
+// [[group, crew…]] in the standard group order (QFI, ST, PGF, TRAINEES, …), then any other groups.
+function obCrewGroups(crew) {
+  const groups = [...new Set([...OB_GROUPS, ...crew.map(c => c.grp)])].filter(g => crew.some(c => c.grp === g));
+  return groups.map(g => [g, crew.filter(c => c.grp === g)]);
+}
+// Everyone who flies: QFIs (instructor logins except the Command Chief), ST Tow, then trainees (PGF first, FWC, WSO).
+function obFlyers() {
+  const out = [], ao = { CO: 0, DYCO: 1, "OC A": 2, "OC B": 3, QFI: 4 };
+  S.profiles.filter(p => p.role === "admin" && p.appointment !== "CC" && p.display_name)
+    .sort((a, b) => (ao[a.appointment] ?? 5) - (ao[b.appointment] ?? 5) || a.display_name.localeCompare(b.display_name))
+    .forEach((p, i) => out.push({ name: p.display_name, grp: "QFI", profile: p.id, sort: 100 + i }));
+  S.profiles.filter(p => p.staff_role === "ST" && p.display_name).forEach((p, i) => out.push({ name: p.display_name, grp: "ST", profile: p.id, sort: 300 + i }));
+  const rank = c => /PGF/i.test(c) ? 0 : /FWC/i.test(c) ? 1 : /WSO/i.test(c) ? 2 : 3;
+  active().slice().sort((a, b) => rank(a.course || "") - rank(b.course || "") || String(a.course || "").localeCompare(String(b.course || ""), undefined, { numeric: true }) || a.name.localeCompare(b.name))
+    .forEach((t, i) => { const p = S.profiles.find(x => x.trainee_id === t.id); out.push({ name: t.name, grp: "TRAINEES", profile: p ? p.id : null, sort: 500 + i }); });
+  return out;
 }
 function obMyItemsCard() {
   const mine = obMyCrew();
@@ -531,21 +551,26 @@ function obItemsCard() {
         <div class="tools" style="margin-top:6px"><button class="btn small" data-ob="assign" data-item="${esc(i.id)}">+ Add people</button><button class="btn small" data-ob="close" data-item="${esc(i.id)}" data-closed="${i.closed ? "0" : "1"}">${i.closed ? "Reopen" : "Close item"}</button></div>` : ""}</div>`;
   }).join("");
   return obCard("ob-items", "Read &amp; sign items", "", `${list || `<p class="hint">No items.</p>`}
-    <div class="tools" style="margin-top:8px"><button class="btn primary small" data-ob="newitem">+ New item</button><label class="opschk"><input type="checkbox" data-ob="showclosed" ${OB.showClosed ? "checked" : ""}>Show closed</label></div>
-    <p class="hint">Tap an item to see who's done it. Tick people off for them, or they tap Done on their own phone.</p>`);
+    <div class="obbar"><button class="btn primary small" data-ob="newitem">+ New item</button><label class="opschk"><input type="checkbox" data-ob="showclosed" ${OB.showClosed ? "checked" : ""}>Show closed items</label></div>
+    <p class="hint" style="margin:6px 0 0">Tap an item to see who's done it. Tick people off for them, or they tap Done on their own phone.</p>`);
 }
+// Split a long list into roughly equal blocks of at most n (so a big group sits side by side on wide screens).
+const obChunks = (a, n) => { const k = Math.ceil(a.length / n) || 1, sz = Math.ceil(a.length / k); return Array.from({ length: k }, (_, i) => a.slice(i * sz, i * sz + sz)); };
 function obCrewCard() {
   const logins = S.profiles.filter(p => !p.trainee_id || active().some(t => t.id === p.trainee_id));
   const opts = sel => `<option value="">No login</option>` + logins.map(p => `<option value="${esc(p.id)}" ${p.id === sel ? "selected" : ""}>${esc(pLabel(p) + (p.callsign && p.display_name && p.display_name !== p.callsign ? " – " + p.display_name : ""))}</option>`).join("");
-  const rows = OB.crew.map(c => `<tr class="${c.active ? "" : "opsadd"}"><td><input value="${esc(c.name)}" data-crew="${esc(c.id)}" data-f="name" style="width:130px"></td>
-      <td><input value="${esc(c.grp)}" list="obGroups" data-crew="${esc(c.id)}" data-f="grp" style="width:110px"></td>
-      <td><select data-crew="${esc(c.id)}" data-f="profile_id" style="width:150px">${opts(c.profile_id)}</select></td>
-      <td><label class="opschk"><input type="checkbox" data-crew="${esc(c.id)}" data-f="active" ${c.active ? "checked" : ""}>Active</label></td></tr>`).join("");
-  return obCard("ob-crew", "Crew list", "", `<datalist id="obGroups">${OB_GROUPS.map(g => `<option value="${g}">`).join("")}</datalist>
-    <div class="tablewrap"><table class="obed"><thead><tr><th>Name (as on the programme)</th><th>Group</th><th>Login</th><th></th></tr></thead><tbody>${rows}
-      <tr><td><input id="obNewName" placeholder="e.g. M LIM" style="width:130px"></td><td><input id="obNewGrp" list="obGroups" value="QFI" style="width:110px"></td><td><select id="obNewLogin" style="width:150px">${opts("")}</select></td><td><button class="btn small" data-ob="addcrew">Add</button></td></tr></tbody></table></div>
-    <div class="tools"><button class="btn small" data-ob="addtrainees">+ All trainees on roster</button></div>
-    <p class="hint">Changes save as you go. Linking a login lets that person sign off their own items and see their own day on the flying program. Untick Active instead of deleting.</p>`);
+  const gopts = sel => [...new Set([...OB_GROUPS, sel].filter(Boolean))].map(g => `<option value="${esc(g)}" ${g === sel ? "selected" : ""}>${esc(obGrpLabel(g))}</option>`).join("");
+  const row = c => `<tr class="${c.active ? "" : "off"}"><td><input class="obcn" value="${esc(c.name)}" data-crew="${esc(c.id)}" data-f="name" aria-label="Name"></td>
+      <td><select class="obcg" data-crew="${esc(c.id)}" data-f="grp" aria-label="Group">${gopts(c.grp)}</select></td>
+      <td><select class="obcl" data-crew="${esc(c.id)}" data-f="profile_id" aria-label="Login">${opts(c.profile_id)}</select></td>
+      <td class="c"><input type="checkbox" data-crew="${esc(c.id)}" data-f="active" ${c.active ? "checked" : ""} aria-label="Active"></td></tr>`;
+  const head = `<thead><tr><th>Name (as on the programme)</th><th>Group</th><th>Login</th><th class="c">Active</th></tr></thead>`;
+  const missing = obFlyers().filter(f => !OB.crew.some(c => opsNorm(c.name) === opsNorm(f.name) || (f.profile && c.profile_id === f.profile))).length;
+  return obCard("ob-crew", "Crew list", `${OB.crew.filter(c => c.active).length} active`, `<div class="obcrew">${obCrewGroups(OB.crew).map(([g, list]) =>
+      obChunks(list, 8).map((part, k) => `<div class="obct"><h3 class="opssub">${k ? "&nbsp;" : esc(obGrpLabel(g))}</h3><table class="obed">${head}<tbody>${part.map(row).join("")}</tbody></table></div>`).join("")).join("")}</div>
+    <div class="obadd"><b>Add someone</b><input class="obcn" id="obNewName" placeholder="e.g. M LIM" aria-label="Name"><select class="obcg" id="obNewGrp" aria-label="Group">${gopts("QFI")}</select><select class="obcl" id="obNewLogin" aria-label="Login">${opts("")}</select><button class="btn small" data-ob="addcrew">Add</button></div>
+    <div class="obbar"><button class="btn small${missing ? " primary" : ""}" data-ob="addflyers">+ Add all flyers${missing ? ` (${missing} missing)` : ""}</button><span class="hint">QFIs, ST Tow and trainees on the roster who aren't on the list yet.</span></div>
+    <p class="hint" style="margin:6px 0 0">Changes save as you go. Linking a login lets that person sign off their own items and see their own day on the flying program. Untick Active instead of deleting.</p>`);
 }
 
 /* ---------- Aircraft page ---------- */
@@ -761,6 +786,7 @@ document.addEventListener("change", async e => {
     const { error } = await S.sb.rpc("crew_save", { p_id: c.id, p_name: nc.name, p_grp: nc.grp, p_profile: nc.profile_id || null, p_active: nc.active, p_sort: nc.sort });
     if (error) { toast(errMsg(error)); return obRerender(); }
     Object.assign(c, nc, { name: String(nc.name).toUpperCase().trim(), grp: String(nc.grp || c.grp).toUpperCase().trim() }); toast("Saved.");
+    if (el.dataset.f === "grp" || el.dataset.f === "active") obRerender(); // move the row to its new group / status
     return;
   }
   if (el.dataset && el.dataset.ob === "ack") {
@@ -836,15 +862,14 @@ document.addEventListener("click", async e => {
     const { error } = await S.sb.rpc("crew_save", { p_id: null, p_name: name, p_grp: $("#obNewGrp").value, p_profile: $("#obNewLogin").value || null, p_active: true, p_sort: OB.crew.length });
     if (error) return toast(errMsg(error)); toast(`${name.toUpperCase()} added.`); obLoad();
   }
-  else if (a === "addtrainees") {
-    const have = new Set(OB.crew.map(c => opsNorm(c.name))); let n = 0;
-    for (const t of active()) {
-      if (have.has(opsNorm(t.name))) continue;
-      const p = S.profiles.find(x => x.trainee_id === t.id);
-      const { error } = await S.sb.rpc("crew_save", { p_id: null, p_name: t.name, p_grp: "TRAINEES", p_profile: p ? p.id : null, p_active: true, p_sort: 500 + n });
+  else if (a === "addflyers") {
+    let n = 0;
+    for (const f of obFlyers()) {
+      if (OB.crew.some(c => opsNorm(c.name) === opsNorm(f.name) || (f.profile && c.profile_id === f.profile))) continue;
+      const { error } = await S.sb.rpc("crew_save", { p_id: null, p_name: f.name, p_grp: f.grp, p_profile: f.profile, p_active: true, p_sort: f.sort });
       if (error) return toast(errMsg(error)); n++;
     }
-    toast(n ? `${n} trainee${n > 1 ? "s" : ""} added.` : "All trainees are already on the list."); obLoad();
+    toast(n ? `${n} added.` : "Everyone who flies is already on the list."); obLoad();
   }
   else if (a === "exittv") { obLeaveTv(); S.tab = "opsboard"; render(); }
   else if (a === "chart") obShowChart(el.dataset.k);
@@ -958,14 +983,34 @@ table.obt{min-width:0}
 .obcol{min-width:26px;padding:3px 0;border-radius:3px;border:1px solid var(--line);font:700 .75rem var(--body);cursor:pointer}
 .obcol.obst-n{background:var(--field);color:var(--muted);opacity:1}
 .obeq{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;font-size:.9rem}
-.obgo{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:4px 16px}
-.obgo td{padding:3px 6px}
+.obgo{display:flex;flex-wrap:wrap;gap:10px 28px;align-items:flex-start}
+.obgg{flex:0 1 auto;min-width:200px}
+.obgg h3{margin:0 0 4px;display:flex;gap:8px;align-items:baseline}
+@media (min-width:700px){.obgl{display:grid;grid-auto-flow:column;grid-template-rows:repeat(var(--r),auto);grid-auto-columns:210px;column-gap:22px}}
+.obgp{display:flex;align-items:center;gap:8px;break-inside:avoid;padding:3px 2px;border-bottom:1px solid var(--line);font-size:.92rem}
+.obgp .n{flex:1;font-weight:600;white-space:nowrap}.obgp.ng .n{color:var(--late)}
+.obgng .opschk{display:inline-flex;align-items:center;gap:6px;margin:0;color:var(--ink);white-space:nowrap;font-size:.9rem}
+.obgng .opschk input{width:auto;margin:0}
+.obbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-top:10px}
+.obcrew{display:flex;flex-wrap:wrap;gap:6px 24px;align-items:flex-start}
+.obcrew h3{margin:6px 0 2px}
+.obgng .obcn{width:120px}.obgng .obcg{width:116px}.obgng .obcl{width:170px}
+.obgng .obct{max-width:100%;overflow-x:auto}
+.obgng table.obed input:not([type=checkbox]),.obgng table.obed select{height:30px;padding:2px 6px}
+@media (max-width:600px){.obgng .obcn{width:96px}.obgng .obcg{width:84px}.obgng .obcl{width:120px}}
+.obgng table.obed th{font-size:.75rem;color:var(--muted);font-weight:600;text-align:left}
+.obgng table.obed .c{text-align:center}.obgng table.obed td.c input{width:auto;margin:0}
+.obgng table.obed tr.off input:not([type=checkbox]),.obgng table.obed tr.off select{opacity:.5}
+.obadd{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.obadd b{font-size:.85rem;margin-right:4px}
+.obadd input,.obadd select{padding:4px 6px;font-size:.85rem;margin:0}
 .obitem{border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-bottom:8px;background:var(--field)}
 .obitem.closed{opacity:.6}
 .obitemhead{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}
 .obbody{margin:6px 0;font-size:.9rem}
 .obacks{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:2px 10px;margin-top:6px}
-.obleg{grid-template-columns:max-content 1fr}
+.obleg{columns:260px 4;column-gap:24px;font-size:.88rem}
+.obleg>div{display:flex;gap:10px;break-inside:avoid;padding:2px 0}.obleg b{min-width:48px}
 .obamb{color:var(--out);font-weight:600}
 .obnotes{font-size:.82rem}
 .fx-r{color:var(--late);font-weight:700}.fx-y{color:var(--out);font-weight:700}.fx-g{color:var(--ok,#1F8A4C);font-weight:700}.fx-b{font-weight:700}
