@@ -858,9 +858,9 @@ document.addEventListener("click", async e => {
     if (!error) toast("Board updated with the latest METARs.");
   }
   else if (a === "done") {
-    if (!await ask("Done?", "Confirm you've read and understood this item.", "Done")) return;
+    el.disabled = true; // one tap signs it off, no confirm step (Gordon, 10 Oct)
     const { error } = await S.sb.rpc("rs_done", { p_item: el.dataset.item, p_crew: el.dataset.crew, p_done: true });
-    if (error) return toast(errMsg(error));
+    if (error) { el.disabled = false; return toast(errMsg(error)); }
     toast("Signed off."); obLoad();
   }
   else if (a === "toggle") { OB.open[el.dataset.item] = !OB.open[el.dataset.item]; obRerender(); }
