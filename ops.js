@@ -408,15 +408,15 @@ const opsEd = {
       <div class="grid"><label>SXO${oP(`waves.${wi}.sxo`, w.sxo)}</label><label>OPS O${oI(`waves.${wi}.opsO`, w.opsO, "", "e.g. LIM Y / LEE L (TKOVER @ 1100Z)")}</label></div>
       <label>Wave remarks (airfield notes for this wave)${oT(`waves.${wi}.rmks`, w.rmks)}</label>
       ${(w.flights || []).map((f, fi) => { const p = `waves.${wi}.flights.${fi}`; return `<div class="blk flt">
-        <div class="tablewrap"><table><thead><tr><th>Brief</th><th>Step</th><th>ETD</th><th>ETA</th><th>Callsign</th><th>Area</th><th>Area time</th><th></th><th></th></tr></thead><tbody><tr>
-          <td>${oI(p + ".brief", f.brief, "70px")}</td><td>${oI(p + ".step", f.step, "70px")}</td><td>${oI(p + ".etd", f.etd, "70px")}</td><td>${oI(p + ".eta", f.eta, "70px")}</td>
+        <div class="tablewrap"><table><thead><tr><th class="opsetdh">ETD ① key in first</th><th>ETA</th><th>Step</th><th>Brief</th><th>Callsign</th><th>Area</th><th>Area time</th><th></th><th></th></tr></thead><tbody><tr>
+          <td>${oI(p + ".etd", f.etd, "80px", "e.g. 0715").replace("<input", '<input class="opsetd"')}</td>${OPS_AUTO_T.map(k => `<td>${opsAutoIn(p, f, k)}</td>`).join("")}
           <td>${oI(p + ".callsign", f.callsign, "120px")}</td><td>${oI(p + ".area", f.area, "120px")}</td><td>${oI(p + ".areaTime", f.areaTime, "110px")}</td>
           <td>${oC(p + ".opsAdd", f.opsAdd, "Ops add")}</td><td>${oTools(`waves.${wi}.flights`, fi)}</td></tr></tbody></table>
         <table><thead><tr><th>#</th><th>Aircrew</th><th>Aircrew</th><th>Mission</th><th>A/C</th><th>Config</th><th>Rmks</th><th></th><th></th></tr></thead><tbody>
           ${(f.ac || []).map((a, ai) => { const q = `${p}.ac.${ai}`; return `<tr><td>${oI(q + ".n", a.n, "40px")}</td><td>${oP(q + ".crew1", a.crew1, "120px")}</td><td>${oP(q + ".crew2", a.crew2, "120px")}</td><td>${oI(q + ".mission", a.mission, "110px")}</td><td>${oI(q + ".tail", a.tail, "60px")}</td><td>${oI(q + ".config", a.config, "60px")}</td><td>${oI(q + ".rmks", a.rmks, "200px")}</td><td>${oC(q + ".opsAdd", a.opsAdd, "Ops add")}</td><td>${oB("del", p + ".ac", ai, "✕", "", "Remove aircraft")}</td></tr>`; }).join("")}
         </tbody></table></div>${oB("add", p + ".ac", "", "+ Aircraft", "ac")}</div>`; }).join("")}
       <div class="tools">${oB("add", `waves.${wi}.flights`, "", "+ Flight", "flight")}</div></div>`).join("")
-      + `<div class="tools">${oB("add", "waves", "", "+ Wave", "wave")}${oB("add", "waves", "", "+ Night wave", "nwave")}</div>` + `<p class="hint">Times as 0725 (Zulu). Tick "Ops add" on the flight (whole flight) or on one aircraft line (e.g. #1 ops add): they show as * and don't count in planned sorties or hours.</p>`;
+      + `<div class="tools">${oB("add", "waves", "", "+ Wave", "wave")}${oB("add", "waves", "", "+ Night wave", "nwave")}</div>` + `<p class="hint"><b>Key in the ETD first:</b> ETA (ETD + 1 h), step (ETD − 1 h) and brief (step − 45 min) fill in by themselves (shown in grey). Type over any of them to match the ops or WX / NOTAM brief; clear a box to go back to the worked-out time. Times as 0725 (Zulu). Tick "Ops add" on the flight (whole flight) or on one aircraft line (e.g. #1 ops add): they show as * and don't count in planned sorties or hours.</p>`;
   },
   sim(sim) {
     return (sim.rows || []).map((s, si) => { const p = `rows.${si}`; return `<div class="blk flt"><div class="tablewrap">
@@ -460,6 +460,31 @@ const opsEd = {
       <p class="hint">The names are the squadron's standing list and carry over to each new day. <a href="#" data-ops="names">${open ? "Done changing names" : "Change standing names"}</a> (when someone is posted in or out).</p>`;
   },
 };
+// Flight times worked out from the ETD (Gordon, 10 Oct): ETA = ETD + 1 h, step = ETD − 1 h, brief = step − 45 min.
+// A typed value overrides (f.man[k] = true); clearing the box goes back to the worked-out time.
+const OPS_AUTO_T = ["eta", "step", "brief"], OPS_AUTO_OFF = { eta: 60, step: -60, brief: -105 };
+const opsZ4 = m => { m = ((m % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, "0") + String(m % 60).padStart(2, "0"); };
+const opsAutoT = (f, k) => { const e = opsMin(f.etd); return e == null ? "" : opsZ4(e + OPS_AUTO_OFF[k]); };
+// Older flights have no f.man: a filled time that differs from the worked-out one counts as typed.
+const opsIsMan = (f, k) => f.man ? !!f.man[k] : !!String(f[k] || "").trim() && f[k] !== opsAutoT(f, k);
+function opsAutoIn(p, f, k) {
+  // Settle the flight in the edit copy first: which times are typed over, and fill the worked-out ones.
+  if (!f.man) f.man = Object.fromEntries(OPS_AUTO_T.map(t => [t, opsIsMan(f, t)]));
+  if (!f.man[k] && opsAutoT(f, k)) f[k] = opsAutoT(f, k);
+  const man = f.man[k], v = f[k] || "";
+  return `<input data-p="${p}.${k}" data-auto="${k}" class="${man ? "opsman" : "opsauto"}" value="${esc(v)}" style="width:70px" placeholder="auto" title="${man ? "Typed over. Clear it to go back to the worked-out time." : "Worked out from the ETD. Type over it to change."}">`;
+}
+// ETD typed: refill the auto times (in the data and the boxes on screen). Auto box typed: mark it typed over, or back to auto when cleared.
+function opsAutoTimes(el) {
+  const m = /^(waves\.\d+\.flights\.\d+)\.(etd|eta|step|brief)$/.exec(el.dataset.p); if (!m) return;
+  const f = opsPath(OPS.edit.data, m[1]); if (!f) return;
+  if (!f.man) f.man = {};
+  if (m[2] !== "etd") { f.man[m[2]] = !!el.value.trim(); if (!f.man[m[2]]) f[m[2]] = opsAutoT(f, m[2]); el.className = f.man[m[2]] ? "opsman" : "opsauto"; return; }
+  for (const k of OPS_AUTO_T) if (!f.man[k]) {
+    f[k] = opsAutoT(f, k);
+    const box = el.closest("tr").querySelector(`[data-auto="${k}"]`); if (box) box.value = f[k];
+  }
+}
 function opsPath(obj, path) { return path.split(".").reduce((o, k) => (o == null ? o : o[k]), obj); }
 function opsSetPath(obj, path, val) {
   const ks = path.split("."), last = ks.pop();
@@ -475,10 +500,16 @@ function opsRerenderEdit() {
 document.addEventListener("input", e => {
   const el = e.target; if (!OPS.edit || !el.dataset || !el.dataset.p || !el.closest("#opsEdit")) return;
   opsSetPath(OPS.edit.data, el.dataset.p, el.type === "checkbox" ? el.checked : el.value);
+  if (OPS.edit.section === "flying") opsAutoTimes(el);
   if (OPS.edit.section === "duties" && el.dataset.p.endsWith(".name")) return; // auto hints refresh on next re-render
 });
 document.addEventListener("change", e => {
   const el = e.target; if (!OPS.edit || !el.dataset || !el.dataset.p || !el.closest("#opsEdit")) return;
+  if (el.dataset.auto && !el.value.trim()) { // cleared: back to the worked-out time
+    const f = opsPath(OPS.edit.data, el.dataset.p.replace(/\.\w+$/, ""));
+    if (f) { (f.man ||= {})[el.dataset.auto] = false; f[el.dataset.auto] = opsAutoT(f, el.dataset.auto); el.value = f[el.dataset.auto]; el.className = "opsauto"; }
+    return;
+  }
   opsSetPath(OPS.edit.data, el.dataset.p, el.type === "checkbox" ? el.checked : el.value);
   // Re-draw after the browser finishes the blur that fired this change (re-drawing mid-blur throws).
   if (el.type === "checkbox" || (OPS.edit.section === "duties" && el.dataset.p.endsWith(".name"))) setTimeout(opsRerenderEdit);
@@ -707,6 +738,10 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .opsed .tools{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .opsed .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 10px}
 .opsed label{margin-bottom:6px}
+.opsed input.opsauto{color:var(--muted);font-style:italic}
+.opsed input.opsman{border-color:var(--out);color:var(--ink);font-weight:600}
+.opsed input.opsetd{border:2px solid var(--in);font-weight:700}
+.opsed th.opsetdh{color:var(--in)!important;white-space:nowrap}
 .opsed .opschk{display:flex;align-items:center;gap:4px;margin:0;color:var(--ink);white-space:nowrap}
 .opsed .opschk input{width:auto;margin:0}
 .opsauto{font-size:.7rem;color:var(--muted);margin-top:1px}
