@@ -24,6 +24,9 @@ const OB_RWYS = { LFBC: ["06", "24"], LFBM: ["09", "27"], LFBD: ["05", "23", "11
 const OB_FASF_AUTO = ["LFBZ", "LFSL", "LFBE"];
 const OB_FASF = ["B", "W", "G VFR", "G IFR", "Y", "A", "R", "BLACK", "CLSD"];
 const OB_RSAF = ["B", "Y1", "Y2", "A1", "A2", "R", "BLACK", "CLSD"];
+// R115 range weather (Gordon, 10 Oct): Blue, White with a number (W5) or Yellow with a number (Y2).
+const OB_RANGE_WX = ["B", ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => "W" + n), ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => "Y" + n)];
+const obRangeOpts = cur => ["", ...OB_RANGE_WX, ...(cur && !OB_RANGE_WX.includes(cur) ? [cur] : [])];
 // Restricted-area list (Excel AD19:AV22). A filled value shows red unless ops picks another colour.
 const OB_AREAS = ["R46 A/B", "R166", "R259 (4200FT)", "ZRT 598 (500AGL)", "R148 (SFC – 1650 FT)", "R61 MEDOC", "CEL"];
 const obAf = (icao, grp, p, rwy, aids) => ({ icao, grp, p, rwy, fasf: OB_FASF_AUTO.includes(icao) ? "AUTO" : "B", rsaf: "AUTO", wx: "", restr: "", aids });
@@ -170,7 +173,7 @@ function obState(a, kind) {
   return { v: (kind === "rsaf" ? obRsafAuto : obFasfAuto)(obVisCeil(a)), auto: true };
 }
 // Colour of a colour-state value.
-const obCsCls = v => ({ B: "cs-b", W: "cs-w", "G VFR": "cs-gv", "G IFR": "cs-gi", Y: "cs-y", Y1: "cs-y1", Y2: "cs-y2", A: "cs-a", A1: "cs-a1", A2: "cs-a2", R: "cs-r", BLACK: "cs-k", CLSD: "cs-c" }[v] || "cs-n");
+const obCsCls = v => ({ B: "cs-b", W: "cs-w", "G VFR": "cs-gv", "G IFR": "cs-gi", Y: "cs-y", Y1: "cs-y1", Y2: "cs-y2", A: "cs-a", A1: "cs-a1", A2: "cs-a2", R: "cs-r", BLACK: "cs-k", CLSD: "cs-c" }[v] || (/^W\d$/.test(v) ? "cs-w" : /^Y\d$/.test(v) ? "cs-y" : "cs-n"));
 // Aid status, with the LFBC CAT 1 line following CZX FASF when set to auto (B/W green, else yellow).
 function obAidS(a, x) {
   if (x.s !== "auto") return x.s;
@@ -366,7 +369,7 @@ function obBoardView(tv, extra) {
 function obAreasView(b, q, z, tv) {
   const r = b.r115 || {}, czx = b.czx || {};
   const f = (k, w) => q ? `<input class="obval" style="width:${w}" data-obq="r115" data-f="${k}" value="${esc(r[k] || "")}" aria-label="R115 ${k}">` : esc(r[k] || "-");
-  const wx = q ? `<select class="obcs ${obCsCls(r.wx)}" data-obq="r115" data-f="wx" aria-label="R115 WX colour state">${["", ...OB_FASF].map(v => `<option value="${v}" ${v === (r.wx || "") ? "selected" : ""}>${v || "-"}</option>`).join("")}</select>`
+  const wx = q ? `<select class="obcs ${obCsCls(r.wx)}" data-obq="r115" data-f="wx" aria-label="R115 WX colour state">${obRangeOpts(r.wx).map(v => `<option value="${v}" ${v === (r.wx || "") ? "selected" : ""}>${v || "-"}</option>`).join("")}</select>`
     : `<span class="obcs ${obCsCls(r.wx)}">${esc(r.wx || "-")}</span>`;
   const restr = q ? `<input class="obval" style="width:${tv ? "220px" : "170px"}" data-obq="r115" data-f="restr" value="${esc(r.restr || "")}" placeholder="e.g. G1, G3, RADAR" aria-label="R115 restrictions">` : esc(r.restr || "-");
   // On the page, board editors can add or remove areas (Gordon, 10 Oct): ✕ on each, "+ Area" at the bottom.
@@ -813,7 +816,7 @@ function obEditor(k) {
       <h3 class="opssub">Canopy / equipment</h3><div class="grid"><label>Canopy${bS("equip.canopy", d.equip.canopy, OB_AUTO)}</label><label>APU (A11–15)${bS("equip.apu1", d.equip.apu1, OB_AUTO)}</label><label>APU (A16–23)${bS("equip.apu2", d.equip.apu2, OB_AUTO)}</label>
         <label>Parachute (0 = green)${bI("equip.parachute", d.equip.parachute)}</label><label>SAMAR (G… / Y… / R…)${bI("equip.samar", d.equip.samar)}</label></div>
       <h3 class="opssub">Restricted areas</h3><div class="tablewrap"><table><thead><tr><th>R115 (CAPTIEUX)</th><th>TGT</th><th>WX</th><th>Before</th><th>After</th><th>Restrictions (G1–G7, RADAR)</th></tr></thead><tbody><tr><td></td>
-        <td>${bI("r115.tgt", d.r115.tgt, "70px")}</td><td>${bS("r115.wx", d.r115.wx, ["", ...OB_FASF].map(v => [v, v || "-"]))}</td><td>${bI("r115.before", d.r115.before, "80px")}</td><td>${bI("r115.after", d.r115.after, "80px")}</td><td>${bI("r115.restr", d.r115.restr, "180px")}</td></tr></tbody></table></div>
+        <td>${bI("r115.tgt", d.r115.tgt, "70px")}</td><td>${bS("r115.wx", d.r115.wx, obRangeOpts(d.r115.wx).map(v => [v, v || "-"]))}</td><td>${bI("r115.before", d.r115.before, "80px")}</td><td>${bI("r115.after", d.r115.after, "80px")}</td><td>${bI("r115.restr", d.r115.restr, "180px")}</td></tr></tbody></table></div>
       <div class="tablewrap"><table><thead><tr><th>Item</th><th>Value</th><th>Colour</th><th></th></tr></thead><tbody>${(d.areas || []).map((r, i) => `<tr>
         <td>${bI(`areas.${i}.item`, r.item, "120px")}</td><td>${bI(`areas.${i}.val`, r.val, "110px")}</td><td>${bS(`areas.${i}.s`, r.s, OB_VALCOL)}</td><td>${bTools("areas", i)}</td></tr>`).join("")}
         <tr><td>Firing sch</td><td>${bI("czx.firing", d.czx.firing, "110px")}</td><td>${bS("czx.firingS", d.czx.firingS, OB_VALCOL)}</td><td></td></tr>
