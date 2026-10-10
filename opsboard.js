@@ -504,11 +504,22 @@ function renderGoNoGo(v) {
         return `<div class="obgp${out.length ? " ng" : ""}"><span class="n">${opsX(c.name)}</span>${out.length ? `<span class="hint">${esc(obCodes(out))}</span>` : ""}${obPill(out.length ? "r" : "g", out.length ? "NO-GO" : "GO")}</div>`;
       }).join("")}</div></div>`;
     }).join("")}</div>` : `<p class="hint">${can ? "Add the aircrew under Crew list below." : "No crew list yet."}</p>`);
-  if (can) html += obItemsCard() + obCrewCard();
+  if (can) { obSyncCrewNames(); html += obItemsCard() + obCrewCard(); }
   html += obCard("ob-legend", "Legend", "", `<div class="obleg">${(gm.legend || []).map(l => `<div><b>${esc(l.code)}</b><span>${esc(l.label)}</span></div>`).join("")}</div>`,
     can && !OB.edit ? `<button class="btn small" data-ob="edit" data-k="gonogo">Edit MIAC / legend</button>` : "");
   if (OB.edit && OB.edit.key === "gonogo") html += obCard("ob-gonogo", "MIAC 4 / legend", "", obEditor("gonogo"));
   v.innerHTML = `<div class="obgng">${html}</div>`;
+}
+// Keep linked crew names in step with the account name (renamed under Admin).
+const obSyncing = new Set();
+function obSyncCrewNames() {
+  for (const c of OB.crew) {
+    const p = c.profile_id && S.profiles.find(x => x.id === c.profile_id), want = p && String(p.display_name || "").trim().toUpperCase();
+    if (!want || want === c.name || obSyncing.has(c.id)) continue;
+    obSyncing.add(c.id);
+    S.sb.rpc("crew_save", { p_id: c.id, p_name: want, p_grp: c.grp, p_profile: c.profile_id, p_active: c.active, p_sort: c.sort })
+      .then(({ error }) => { obSyncing.delete(c.id); if (!error) { c.name = want; obRerender(); } });
+  }
 }
 const obGrpLabel = g => g === "ST" ? "ST TOW" : g;
 // [[group, crew…]] in the standard group order (QFI, ST, PGF, TRAINEES, …), then any other groups.
@@ -558,19 +569,26 @@ function obItemsCard() {
 const obChunks = (a, n) => { const k = Math.ceil(a.length / n) || 1, sz = Math.ceil(a.length / k); return Array.from({ length: k }, (_, i) => a.slice(i * sz, i * sz + sz)); };
 function obCrewCard() {
   const logins = S.profiles.filter(p => !p.trainee_id || active().some(t => t.id === p.trainee_id));
-  const opts = sel => `<option value="">No login</option>` + logins.map(p => `<option value="${esc(p.id)}" ${p.id === sel ? "selected" : ""}>${esc(pLabel(p) + (p.callsign && p.display_name && p.display_name !== p.callsign ? " – " + p.display_name : ""))}</option>`).join("");
+  const linked = new Set(OB.crew.map(c => c.profile_id).filter(Boolean));
+  const lbl = p => pLabel(p) + (p.callsign && p.display_name && p.display_name !== p.callsign ? " – " + p.display_name : "");
+  const opts = sel => `<option value="">No login</option>` + logins.filter(p => p.id === sel || !linked.has(p.id)).map(p => `<option value="${esc(p.id)}" ${p.id === sel ? "selected" : ""}>${esc(lbl(p))}</option>`).join("");
   const gopts = sel => [...new Set([...OB_GROUPS, sel].filter(Boolean))].map(g => `<option value="${esc(g)}" ${g === sel ? "selected" : ""}>${esc(obGrpLabel(g))}</option>`).join("");
-  const row = c => `<tr class="${c.active ? "" : "off"}"><td><input class="obcn" value="${esc(c.name)}" data-crew="${esc(c.id)}" data-f="name" aria-label="Name"></td>
+  // People with a login: name, group and login come from their account, so only Active can change here.
+  // Entries without a login (e.g. visitors) stay editable.
+  const row = c => { const p = c.profile_id && S.profiles.find(x => x.id === c.profile_id);
+    return p ? `<tr class="${c.active ? "" : "off"}"><td class="fix">${esc(c.name)}</td><td class="fix">${esc(obGrpLabel(c.grp))}</td><td class="fix hint">${esc(lbl(p))}</td>
+      <td class="c"><input type="checkbox" data-crew="${esc(c.id)}" data-f="active" ${c.active ? "checked" : ""} aria-label="Active"></td></tr>`
+    : `<tr class="${c.active ? "" : "off"}"><td><input class="obcn" value="${esc(c.name)}" data-crew="${esc(c.id)}" data-f="name" aria-label="Name"></td>
       <td><select class="obcg" data-crew="${esc(c.id)}" data-f="grp" aria-label="Group">${gopts(c.grp)}</select></td>
       <td><select class="obcl" data-crew="${esc(c.id)}" data-f="profile_id" aria-label="Login">${opts(c.profile_id)}</select></td>
-      <td class="c"><input type="checkbox" data-crew="${esc(c.id)}" data-f="active" ${c.active ? "checked" : ""} aria-label="Active"></td></tr>`;
+      <td class="c"><input type="checkbox" data-crew="${esc(c.id)}" data-f="active" ${c.active ? "checked" : ""} aria-label="Active"></td></tr>`; };
   const head = `<thead><tr><th>Name (as on the programme)</th><th>Group</th><th>Login</th><th class="c">Active</th></tr></thead>`;
   const missing = obFlyers().filter(f => !OB.crew.some(c => opsNorm(c.name) === opsNorm(f.name) || (f.profile && c.profile_id === f.profile))).length;
   return obCard("ob-crew", "Crew list", `${OB.crew.filter(c => c.active).length} active`, `<div class="obcrew">${obCrewGroups(OB.crew).map(([g, list]) =>
       obChunks(list, 8).map((part, k) => `<div class="obct"><h3 class="opssub">${k ? "&nbsp;" : esc(obGrpLabel(g))}</h3><table class="obed">${head}<tbody>${part.map(row).join("")}</tbody></table></div>`).join("")).join("")}</div>
     <div class="obadd"><b>Add someone</b><input class="obcn" id="obNewName" placeholder="e.g. M LIM" aria-label="Name"><select class="obcg" id="obNewGrp" aria-label="Group">${gopts("QFI")}</select><select class="obcl" id="obNewLogin" aria-label="Login">${opts("")}</select><button class="btn small" data-ob="addcrew">Add</button></div>
     <div class="obbar"><button class="btn small${missing ? " primary" : ""}" data-ob="addflyers">+ Add all flyers${missing ? ` (${missing} missing)` : ""}</button><span class="hint">QFIs, ST Tow and trainees on the roster who aren't on the list yet.</span></div>
-    <p class="hint" style="margin:6px 0 0">Changes save as you go. Linking a login lets that person sign off their own items and see their own day on the flying program. Untick Active instead of deleting.</p>`);
+    <p class="hint" style="margin:6px 0 0">People with a login are listed as on their account (rename them under Admin). Add someone without a login (e.g. an auditor) above; linking a login lets them sign off their own items and see their own day. Untick Active instead of deleting.</p>`);
 }
 
 /* ---------- Aircraft page ---------- */
@@ -998,6 +1016,8 @@ table.obt{min-width:0}
 .obgng .obct{max-width:100%;overflow-x:auto}
 .obgng table.obed input:not([type=checkbox]),.obgng table.obed select{height:30px;padding:2px 6px}
 @media (max-width:600px){.obgng .obcn{width:96px}.obgng .obcg{width:84px}.obgng .obcl{width:120px}}
+.obgng table.obed td.fix{padding:5px 10px 5px 4px;white-space:nowrap;border-bottom:1px solid var(--line)}
+.obgng table.obed td.fix:first-child{font-weight:600;min-width:90px}
 .obgng table.obed th{font-size:.75rem;color:var(--muted);font-weight:600;text-align:left}
 .obgng table.obed .c{text-align:center}.obgng table.obed td.c input{width:auto;margin:0}
 .obgng table.obed tr.off input:not([type=checkbox]),.obgng table.obed tr.off select{opacity:.5}
