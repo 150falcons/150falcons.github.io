@@ -8,7 +8,7 @@
    ===================================================================== */
 const OB = { files: {}, loaded: false, loading: false, state: {}, wx: {}, crew: [], items: [], acks: [], edit: null, showClosed: false, open: {} };
 const OB_STATUS = { g: "Available", a: "Limited", r: "U/S", "": "-" };
-const OB_GROUPS = ["QFI", "PGF", "TRAINEES", "ATCO", "STEDAS", "OTH"];
+const OB_GROUPS = ["QFI", "ST", "PGF", "TRAINEES", "ATCO", "STEDAS", "OTH"];
 const OB_LEGEND = [
   ["BF", "Boldface"], ["OL", "Ops limit"], ["OB", "Ops brief"], ["ED", "EODD"], ["RS", "Read & sign"], ["SAM", "Safety alert message"],
   ["UP", "Up chit"], ["IFG", "In-flight guide"], ["TS", "Take & sign"], ["MIAC 4", "MIAC 4"], ["HTC", "GFET"], ["ST", "Standardisation"],

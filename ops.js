@@ -36,7 +36,7 @@ const opsBlank = {
   ground: () => ({ groups: ["GROUND PROGRAM", "QFI GROUND PROGRAM"].map(opsTpl.group) }),
   airfield: () => ({ rows: [], sunset: "" }),
   notes: () => ({ currencies: [], aircraft: [] }),
-  duties: () => ({ groups: [opsTpl.dgroup("QFI", true), opsTpl.dgroup("TRAINEES"), opsTpl.dgroup("ATCO / AOSX")] }),
+  duties: () => ({ groups: [opsTpl.dgroup("QFI", true), opsTpl.dgroup("ST (TOW / FCF)"), opsTpl.dgroup("TRAINEES"), opsTpl.dgroup("ATCO / AOSX")] }),
 };
 const OPS_HEADER_FIELDS = [
   ["inTime", "In time", 3], ["lateIn", "Late in", 2], ["wxBrief", "WX/NTM brief"], ["modb", "MODB"], ["nightBrief", "Night ops brief"],
