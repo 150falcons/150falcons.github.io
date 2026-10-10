@@ -369,7 +369,10 @@ function obAreasView(b, q, z, tv) {
   const wx = q ? `<select class="obcs ${obCsCls(r.wx)}" data-obq="r115" data-f="wx" aria-label="R115 WX colour state">${["", ...OB_FASF].map(v => `<option value="${v}" ${v === (r.wx || "") ? "selected" : ""}>${v || "-"}</option>`).join("")}</select>`
     : `<span class="obcs ${obCsCls(r.wx)}">${esc(r.wx || "-")}</span>`;
   const restr = q ? `<input class="obval" style="width:${tv ? "220px" : "170px"}" data-obq="r115" data-f="restr" value="${esc(r.restr || "")}" placeholder="e.g. G1, G3, RADAR" aria-label="R115 restrictions">` : esc(r.restr || "-");
-  const areas = (b.areas || []).map((x, j) => `<div class="obarea"><span>${esc(x.item)}</span>${obValCell(q, "aval", `data-j="${j}"`, x.val, obValS(x.val, x.s), x.s)}</div>`).join("");
+  // On the page, board editors can add or remove areas (Gordon, 10 Oct): ✕ on each, "+ Area" at the bottom.
+  const rm = j => q && !tv ? `<button class="obrm" data-obarea="rm" data-j="${j}" title="Remove this area" aria-label="Remove">✕</button>` : "";
+  const areas = (b.areas || []).map((x, j) => `<div class="obarea"><span>${esc(x.item)}</span><span class="obvc2">${obValCell(q, "aval", `data-j="${j}"`, x.val, obValS(x.val, x.s), x.s)}${rm(j)}</span></div>`).join("")
+    + (q && !tv ? `<div class="obaddarea"><button class="btn small" data-obarea="add">+ Area</button></div>` : "");
   const r115 = tv ? `<div class="obr115"><b>R115 (CAPTIEUX)</b><span>TGT <b>${esc(r.tgt || "-")}</b></span><span>WX ${wx}</span><span>Before <b>${esc(r.before || "-")}</b></span><span>After <b>${esc(r.after || "-")}</b></span><span>Restr <b>${esc(r.restr || "-")}</b></span></div>`
     : "";
   const other = `<div class="obarea"><span>Immersion suit</span>${z.immersion ? obPill(z.immersion === "YES" ? "r" : "g", z.immersion) : `<span class="hint">-</span>`}</div>
@@ -847,6 +850,18 @@ async function obQuick(mutate) {
   }
 }
 const OB_CYCLE = { g: "a", a: "r", r: "g", "": "g" };
+document.addEventListener("click", async e => {
+  const el = e.target.closest("[data-obarea]"); if (!el || OB.edit) return;
+  if (el.dataset.obarea === "add") {
+    const name = await ask("Add an area", "Name as it should show on the board, e.g. R31 (SFC – 3000 FT).", "Add", { placeholder: "Area name" });
+    if (!name) return;
+    obQuick(d => { d.areas = d.areas || []; d.areas.push({ item: name.toUpperCase().slice(0, 40), val: "", s: "" }); });
+  } else {
+    const j = +el.dataset.j, a = (obGet("board").areas || [])[j]; if (!a) return;
+    if (!await ask("Remove area?", `Take ${a.item} off the board?`, "Remove")) return;
+    obQuick(d => { if (d.areas[j] && d.areas[j].item === a.item) d.areas.splice(j, 1); });
+  }
+});
 document.addEventListener("click", e => {
   const el = e.target.closest("button[data-obq]"); if (!el || OB.edit) return;
   const i = +el.dataset.af, j = +el.dataset.j, k = el.dataset.obq;
@@ -1205,6 +1220,9 @@ body.tvmode .tvcol .opst td,body.tvmode .tvcol .opst th{white-space:normal}
 .obracol{display:grid;grid-template-columns:max-content auto;gap:6px 14px;align-content:start;align-items:center;justify-items:start}
 .obracol h3{grid-column:1/-1;margin:0;display:flex;align-items:center;gap:8px}
 .obracol .obarea{display:contents}
+.obvc2{display:inline-flex;align-items:center;gap:6px}
+.obrm{background:none;border:0;color:var(--muted);cursor:pointer;font-size:.85rem;padding:2px 4px;opacity:.6}.obrm:hover{opacity:1;color:var(--late)}
+.obaddarea{grid-column:1/-1;margin-top:4px}
 .obracol .obarea>span:first-child{color:var(--muted);font-weight:500}
 .tvcol>.card .obwind{align-items:center}
 body.tvmode .obareas{grid-template-columns:1fr 1fr;gap:4px 14px}
