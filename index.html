@@ -161,6 +161,14 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 @media (min-width:700px){.homegrid{grid-template-columns:1fr 1fr}}
 .homecard{display:block;width:100%;text-align:left;background:var(--paper);border:1px solid var(--line);border-left:6px solid var(--in);border-radius:6px;padding:18px;cursor:pointer;color:var(--ink)}
 .homecard.ops{border-left-color:var(--out)}
+.homedash{margin-top:8px}
+.homedash h2{margin:0 0 6px}
+.hdrow{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:4px 10px;align-items:baseline;padding:8px 0;border-top:1px solid var(--line)}
+.hdk{font:700 .8rem var(--cond);text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.hdlist{margin:0;padding-left:16px}.hdlist li{margin:2px 0}
+.hdgo{font-size:.82rem;white-space:nowrap;color:var(--accent)}
+.hdops{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
+@media (max-width:520px){.hdrow{grid-template-columns:1fr auto}.hdrow>:nth-child(2){grid-column:1/-1;grid-row:2}}
 .homecard:hover{border-color:var(--accent)}
 .homecard h2{font:700 1.6rem/1.1 var(--cond);margin:0 0 6px;text-transform:uppercase}
 .homecard p{margin:0 0 4px;font-size:1rem}
@@ -378,8 +386,8 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 
 <div class="toast" id="toast" hidden></div>
 
-<script src="ops.js?v=4"></script>
-<script src="opsboard.js?v=17"></script>
+<script src="ops.js?v=5"></script>
+<script src="opsboard.js?v=18"></script>
 <script>
 /* =====================================================================
    SETUP: paste your Supabase Project URL and anon (public) key here.
@@ -631,14 +639,52 @@ function renderHome(v) {
   const hs = S.homeOps && S.homeOps.day === day ? S.homeOps : null, myRs = OB.loaded ? obMyPending() : [];
   const opsLine = !hs ? "Loading today's programme…" : !hs.any ? "No programme for today yet"
     : `Today: ${hs.st.sorties} sortie${hs.st.sorties === 1 ? "" : "s"}${hs.st.first != null ? ` · first takeoff ${opsHM(hs.st.first)}` : ""}`;
-  v.innerHTML = `<div class="homegrid">
+  v.innerHTML = homeDash(hs) + `<div class="homegrid">
     <button class="homecard" data-tab="board"><h2>Trainee movement</h2><p>${esc(mv)}</p>${pend ? `<p>${pend} awaiting approval</p>` : ""}<span>Board, log and vehicles</span></button>
     <button class="homecard ops" data-tab="${myRs.length ? "gonogo" : "opsboard"}"><h2>Operations</h2><p>${esc(opsLine)}</p>${myRs.length ? `<p><span class="obpill obst-r">${myRs.length} to read &amp; sign</span></p>` : ""}<span>Ops board, flying program, Go / No-Go, aircraft</span></button></div>`;
   if (!hs) S.sb.from("ops_sections").select("section,data").eq("day", day).then(({ data }) => {
     const fl = (data || []).find(r => r.section === "flying");
-    S.homeOps = { day, any: (data || []).some(r => r.data && Object.keys(r.data).length), st: opsStats(fl ? fl.data : { waves: [] }) };
+    const rows = {}; for (const r of data || []) rows[r.section] = r.data;
+    S.homeOps = { day, rows, any: (data || []).some(r => r.data && Object.keys(r.data).length), st: opsStats(fl ? fl.data : { waves: [] }) };
     if (S.tab === "home") render();
   });
+}
+
+// Personal dashboard at the top of Home: greeting, your lines on today's programme, read & sign,
+// your movement status (trainees) or approvals waiting (approvers), and a one-line ops snapshot.
+function homeDash(hs) {
+  const n = new Date(), h = n.getHours(), hi = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+  const rows = [];
+  // Today's programme
+  if (!hs) rows.push(`<div class="hdrow"><span class="hdk">Today</span><span class="hint">Loading today's programme…</span></div>`);
+  else {
+    const get = sec => { const d = hs.rows && hs.rows[sec]; return d && Object.keys(d).length ? JSON.parse(JSON.stringify(d)) : opsBlank[sec](); };
+    const items = hs.any ? opsMyItems(get) : [];
+    rows.push(`<div class="hdrow"><span class="hdk">Today</span>${items.length ? `<ul class="hdlist">${items.join("")}</ul>`
+      : `<span class="hint">${hs.any ? "Nothing on today's programme for you." : "No programme for today yet."}</span>`}<a href="#" data-tab="ops" class="hdgo">Programme ›</a></div>`);
+  }
+  // Read & sign
+  if (OB.loaded && obMyCrew().length) {
+    const mine = obMyPending();
+    rows.push(`<div class="hdrow"><span class="hdk">Go / No-Go</span>${mine.length ? `<span>${obPill("r", "NO-GO")} ${mine.length} to read &amp; sign: ${esc(obCodes(mine.map(x => x.item)))}</span>` : obPill("g", "GO")}<a href="#" data-tab="gonogo" class="hdgo">Go / No-Go ›</a></div>`);
+  }
+  // Movement
+  const t = me();
+  if (t) {
+    const m = openByTrainee()[t.id], lv = leaveOf(t.id), now = Date.now();
+    const txt = lv ? `On leave until ${esc(fmtDay(lv.until))}` : !m ? "In base"
+      : isPend(m) ? `Travel request to ${esc(m.destination)} waiting for approval`
+      : `Out to ${esc(m.destination)}, back by ${esc(fmt(m.expected_back))}${isLate(m, now) ? ` <span class="obpill obst-r">OVERDUE</span>` : ""}`;
+    rows.push(`<div class="hdrow"><span class="hdk">You</span><span>${txt}</span><a href="#" data-tab="board" class="hdgo">Board ›</a></div>`);
+  }
+  if (canApprove()) {
+    const pend = S.open.filter(isPend).length;
+    if (pend) rows.push(`<div class="hdrow"><span class="hdk">Approvals</span><span><b>${pend}</b> travel request${pend === 1 ? "" : "s"} waiting for you</span><a href="#" data-tab="board" class="hdgo">Review ›</a></div>`);
+  }
+  // Ops snapshot
+  const ol = typeof obHomeLine === "function" ? obHomeLine() : "";
+  if (ol) rows.push(`<div class="hdrow"><span class="hdk">Ops</span><span class="hdops">${ol}</span><a href="#" data-tab="opsboard" class="hdgo">Ops board ›</a></div>`);
+  return `<section class="card homedash"><h2>${hi}, ${esc(pLabel(S.me) || "")}</h2><p class="hint" style="margin:-4px 0 8px">${esc(n.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }))}</p>${rows.join("")}</section>`;
 }
 
 function renderLogin(v) {

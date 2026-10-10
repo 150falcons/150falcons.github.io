@@ -237,6 +237,17 @@ function obCard(id, title, meta, body, tools) {
 }
 const obNotLoaded = v => { v.innerHTML = `<div class="empty">Loading…</div>`; if (!OB.loading) obLoad(); };
 
+// One-line ops snapshot for the home dashboard: EOR, bingo, Cazaux colour states and wind.
+function obHomeLine() {
+  if (!OB.loaded) return "";
+  const bd = obGet("board"), lfbc = (bd.airfields || []).find(a => a.icao === "LFBC");
+  const f = lfbc ? obState(lfbc, "fasf").v : "", r = lfbc ? obState(lfbc, "rsaf").v : "", bg = obBingo(bd, r).v, w = obCzx().w;
+  const wind = !w ? "" : w.vrb ? `VRB/${w.spd}KT` : `${String(w.dir).padStart(3, "0")}°/${w.spd}${w.gst ? "G" + w.gst : ""}KT`;
+  return `<span class="obpill ${bd.eor === "IN HSE" ? "obst-a" : "obst-g"}">EOR ${esc(bd.eor || "NORMAL")}</span>
+    ${f ? `<span>CZX FASF <span class="obcs ${obCsCls(f)}">${esc(f)}</span></span>` : ""}${r ? `<span>RSAF <span class="obcs ${obCsCls(r)}">${esc(r)}</span></span>` : ""}
+    ${bg ? `<span class="obpill ${/UPG|IFR/.test(bg) ? "obst-y" : ""}">${esc(bg)}</span>` : ""}${wind ? `<span>Wind <b>${esc(wind)}</b></span>` : ""}`;
+}
+
 /* ---------- Ops board page ---------- */
 function renderOpsBoard(v) {
   if (!OB.loaded) return obNotLoaded(v);

@@ -17,6 +17,7 @@ A book-in / book-out board for RSAF trainees at 150 Squadron (BA 120 Cazaux, Fra
 ## 2b. Name and navigation (7 Oct 2026)
 - **Name:** the site is **150 Falcon Det** (page title and top bar). Tapping the name goes to the home screen.
 - **Home** (after sign-in): two cards, **Trainee movement** (in base / out / on leave / overdue, pending approvals) and **Operations** (today's sorties and first takeoff).
+- **Personal dashboard (10 Oct, Gordon):** above the two cards, `homeDash()` shows a greeting (callsign or name) and date, then rows: **Today** (the person's lines on today's programme via `opsMyItems(get)` in ops.js, which also powers "Your day"; today's sections are in `S.homeOps.rows`), **Go / No-Go** (GO, or NO-GO with items to read & sign, if linked to a crew entry), **You** (trainees: in base / out to … back by … / request pending / on leave), **Approvals** (approvers: requests waiting), **Ops** (`obHomeLine()`: EOR, CZX FASF/RSAF, bingo, wind). Each row links to its page.
 - **Top bar areas:** Movement · Operations · Admin (Roster for trainees). Sub-tabs: Movement → Board / Log / Vehicles; Operations → Ops board / Flying program / Go / No-Go / Aircraft. The movement counts strip only shows inside Movement. Ops assistants open on Operations.
 - **Code:** `AREA` (tab → area) and `SUBTABS` (area → pages) in `index.html`; tabs are `home`, `board`, `log`, `vehicles`, `ops`, `roster`.
 

@@ -223,8 +223,15 @@ function opsSection(sec, canEdit) {
 }
 // Everything on today's programme for the signed-in person.
 function opsMyDay() {
-  const names = opsMyNames(); if (!names.length) return "";
-  const fl = opsGet("flying"), sim = opsGet("sim"), items = [];
+  const items = opsMyItems(opsGet);
+  if (!items.length) return "";
+  return `<section class="card opscard opsmine"><div class="opshead"><h2>Your day</h2></div><ul>${items.join("")}</ul></section>`;
+}
+// The signed-in person's lines on a day's programme (get = section → data), as <li> items. Used by "Your day" and the home dashboard.
+function opsMyItems(get) {
+  const names = opsMyNames(); if (!names.length) return [];
+  const opsGet = get;
+  const fl = opsNameWaves(opsGet("flying")), sim = opsGet("sim"), items = [];
   for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) {
     const n = names.find(n => opsCrewHas(a, n)); if (!n) continue;
     const mate = opsNorm(a.crew1) === n ? a.crew2 : a.crew1;
@@ -246,8 +253,7 @@ function opsMyDay() {
       const notes = (r.cells || []).map((c, i) => c && (fl.waves[i] ? fl.waves[i].name : "") + ": " + c).filter(Boolean);
       if (notes.length) items.push(`<li>${esc(notes.join(" · "))}</li>`);
     }
-  if (!items.length) return "";
-  return `<section class="card opscard opsmine"><div class="opshead"><h2>Your day</h2></div><ul>${items.join("")}</ul></section>`;
+  return items;
 }
 const opsView = {
   header(h) {
