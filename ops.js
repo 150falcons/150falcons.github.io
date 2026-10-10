@@ -233,10 +233,35 @@ function renderFlyTv(v) {
       <span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 19).replace(/:/g, ""))}Z</small></span>
       <span class="grow"></span><span>${st.sorties} sorties · ${st.hours} h · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>
       <button class="btn small" data-tab="ops">Exit TV</button></div>
-    ${OPS_ORDER.some(opsData) ? `<div class="flytv"><div class="flytvl">${card(OPS_TITLES.flying, opsView.flying(fl))}</div>
-      <div class="flytvr">${card(OPS_TITLES.sim, opsView.sim(opsGet("sim")))}${card(OPS_TITLES.ground, opsView.ground(opsGet("ground")))}</div></div>`
+    ${OPS_ORDER.some(opsData) ? `<div class="flytv"><div class="flytvl"><section class="card opscard">${opsView.flying(fl) || `<p class="hint" style="display:block;margin:0">No flights.</p>`}</section></div>
+      <div class="flytvr">${card(OPS_TITLES.sim, opsView.sim(opsGet("sim")))}${card(OPS_TITLES.ground, opsFlyTvGround(opsGet("ground")))}</div></div>`
       : `<div class="empty"><strong>No programme for today yet</strong></div>`}</div>`;
-  requestAnimationFrame(obTvFit); setTimeout(obTvFit, 1200);
+  // Save height so everything can be shown bigger: wave remarks sit on the wave band, column headings only once.
+  v.querySelectorAll(".flytvl .opsrmk").forEach(r => { const w = r.previousElementSibling; if (w && w.classList.contains("opswave")) { r.classList.add("inband"); w.insertBefore(r, w.querySelector(".opswavest")); } });
+  v.querySelectorAll(".flytvl table.opsfly").forEach((t, i) => { if (i) t.querySelector("thead")?.remove(); });
+  requestAnimationFrame(opsFlyTvFit); setTimeout(opsFlyTvFit, 1200);
+}
+// Pick the left/right split (around 2/3 for the flying lines) that lets the whole screen be shown biggest.
+function opsFlyTvFit() {
+  const g = document.querySelector(".flytv"); if (!g || S.tab !== "flytv") return obTvFit();
+  if (innerWidth / innerHeight < 1) { g.style.gridTemplateColumns = ""; return obTvFit(); }
+  let best = null;
+  for (const r of [2.2, 2, 1.8, 1.65]) {
+    g.style.gridTemplateColumns = `minmax(0,${r}fr) minmax(0,1fr)`; obTvFit();
+    const z = parseFloat(document.querySelector(".tvstage").style.zoom) || 1;
+    if (!best || z > best.z + 0.005) best = { r, z };
+  }
+  g.style.gridTemplateColumns = `minmax(0,${best.r}fr) minmax(0,1fr)`; obTvFit();
+}
+window.addEventListener("resize", () => { if (S.tab !== "flytv") return; clearTimeout(opsFlyTvFit.t); opsFlyTvFit.t = setTimeout(opsFlyTvFit, 300); });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (S.tab === "flytv") opsFlyTvFit(); });
+
+// Ground programme for the TV: one compact table, a thin row per group.
+function opsFlyTvGround(g) {
+  const groups = (g.groups || []).map(x => ({ ...x, rows: (x.rows || []).filter(r => r.time || r.event || r.personnel) })).filter(x => x.rows.length);
+  if (!groups.length) return "";
+  return `<table class="opst flytvg"><thead><tr><th>Time</th><th>Event</th><th>Personnel</th><th>Venue</th></tr></thead><tbody>${groups.map(x =>
+    `<tr class="grp"><td colspan="4">${esc(x.name || "")}</td></tr>` + x.rows.map(r => `<tr><td class="nw">${esc(r.time)}</td><td>${esc(r.event)}</td><td>${opsX(r.personnel || "")}</td><td>${esc(r.venue)}</td></tr>`).join("")).join("")}</tbody></table>`;
 }
 
 /* ---------- view ---------- */
@@ -769,6 +794,18 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .flytv{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:12px;align-items:start}
 .flytv .card{margin:0 0 12px;padding:10px 12px}
 .flytvr{display:flex;flex-direction:column}
+body.tvmode .flytv td,body.tvmode .flytv th{padding:3px 6px!important;line-height:1.25}
+body.tvmode .flytv td{font-weight:500}
+body.tvmode .flytv table.opsfly{min-width:0}
+${[7, 10, 9, 3, 15, 9, 10, 5, 5, 27].map((w, i) => `body.tvmode .flytv table.opsfly col:nth-child(${i + 1}){width:${w}%!important}`).join("\n")}
+body.tvmode .flytv td.cs{white-space:normal}
+body.tvmode .flytv .opsaddtag{font-size:.6rem;padding:0 3px}
+body.tvmode .flytv td small{color:color-mix(in srgb,var(--ink) 65%,transparent);margin-top:0}
+body.tvmode .flytv .opswave{margin:8px 0 3px;padding:3px 0 3px 10px}
+body.tvmode .flytv .opswave:first-child{margin-top:0}
+body.tvmode .flytv .opsrmk.inband{margin:0;padding:1px 8px;font-size:.85rem}
+body.tvmode .flytv .opscard h2{margin:0 0 4px}
+.flytvg tr.grp td{font:700 .8rem var(--cond);letter-spacing:.04em;text-transform:uppercase;color:var(--in);padding-top:6px!important;border-bottom:1px solid var(--line)}
 .flytvr table{min-width:0!important;width:100%}.flytvr td,.flytvr th{white-space:normal!important}
 @media (max-aspect-ratio:1/1){.flytv{grid-template-columns:minmax(0,1fr)}}
 .opsed input.opsauto{color:var(--muted);font-style:italic}
