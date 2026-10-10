@@ -880,6 +880,10 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .flytv.measure .tvpane>.tablewrap{flex-grow:0!important}
 .flytv.measure table{height:auto!important}
 body.tvmode .flytv td,body.tvmode .flytv th{padding:3px 6px!important;line-height:1.25}
+/* Flying lines a little more spaced out (Gordon, 10 Oct) */
+body.tvmode .flytv .fly td{padding:6px 6px!important;line-height:1.35}
+body.tvmode .flytv .fly .opswave{margin:12px 0 5px;padding:5px 0 5px 10px}
+body.tvmode .flytv .fly .opswave:first-child{margin-top:0}
 body.tvmode .flytv td{font-weight:500}
 body.tvmode .flytv table.opsfly{min-width:0}
 ${[7, 10, 9, 3, 15, 9, 10, 6, 5, 26].map((w, i) => `body.tvmode .flytv table.opsfly col:nth-child(${i + 1}){width:${w}%!important}`).join("\n")}
