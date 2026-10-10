@@ -494,14 +494,16 @@ function renderGoNoGo(v) {
   const can = opsCanEdit(), gm = obGet("gonogo");
   let html = obMyItemsCard();
   // status: one compact block per group, side by side; big groups spread over columns
-  const crew = OB.crew.filter(c => c.active);
+  const crew = OB.crew.filter(c => c.active), tg = obTodayGet();
   const goCount = crew.filter(c => !obOutstanding(c.id).length).length;
-  html += obCard("ob-go", "Aircrew status", `${goCount} of ${crew.length} GO${gm.miac ? ` · MIAC 4 effective till ${esc(fmtDay(gm.miac))}` : ""}`,
+  const soonNg = crew.filter(c => obOutstanding(c.id).length && obSoon(c.name, tg)).length;
+  html += obCard("ob-go", "Aircrew status", `${soonNg ? `<b class="obsoonhd">${soonNg} NO-GO on the programme within 3 h</b> · ` : ""}${goCount} of ${crew.length} GO${gm.miac ? ` · MIAC 4 effective till ${esc(fmtDay(gm.miac))}` : ""}`,
     crew.length ? `<div class="obgo">${obCrewGroups(crew).map(([g, list]) => {
       const ng = list.filter(c => obOutstanding(c.id).length).length;
       return `<div class="obgg" style="--r:${Math.ceil(list.length / Math.ceil(list.length / 8))}"><h3 class="opssub">${esc(obGrpLabel(g))} <span class="hint">${ng ? `${ng} NO-GO` : "all GO"}</span></h3><div class="obgl">${list.map(c => {
         const out = obOutstanding(c.id);
-        return `<div class="obgp${out.length ? " ng" : ""}"><span class="n">${opsX(c.name)}</span>${out.length ? `<span class="hint">${esc(obCodes(out))}</span>` : ""}${obPill(out.length ? "r" : "g", out.length ? "NO-GO" : "GO")}</div>`;
+        const so = out.length && obSoon(c.name, tg);
+        return `<div class="obgp${out.length ? " ng" : ""}${so ? " soon" : ""}"><span class="n">${opsX(c.name)}</span>${so ? obSoonTag(so) : ""}${out.length ? `<span class="hint">${esc(obCodes(out))}</span>` : ""}${obPill(out.length ? "r" : "g", out.length ? "NO-GO" : "GO")}</div>`;
       }).join("")}</div></div>`;
     }).join("")}</div>` : `<p class="hint">${can ? "Add the aircrew under Crew list below." : "No crew list yet."}</p>`);
   if (can) { obSyncCrewNames(); html += obItemsCard() + obCrewCard(); }
@@ -521,6 +523,50 @@ function obSyncCrewNames() {
       .then(({ error }) => { obSyncing.delete(c.id); if (!error) { c.name = want; obRerender(); } });
   }
 }
+// Today's programme sections (from the flying program if it's on today, else the home dashboard's copy; fetched once if neither).
+let obTodayFetch = null;
+function obTodayGet() {
+  const day = todayStr();
+  if (OPS.rowsDay === day) return opsGet;
+  if (S.homeOps && S.homeOps.day === day) return sec => S.homeOps.rows[sec] || {};
+  if (obTodayFetch !== day) {
+    obTodayFetch = day;
+    S.sb.from("ops_sections").select("section,data").eq("day", day).then(({ data }) => {
+      const rows = {}; for (const r of data || []) rows[r.section] = r.data;
+      const fl = rows.flying;
+      S.homeOps = { day, rows, any: (data || []).some(r => r.data && Object.keys(r.data).length), st: opsStats(fl || { waves: [] }) };
+      if (["gonogo", "tv"].includes(S.tab)) obRerender();
+    });
+  }
+  return null;
+}
+// A person's first programme item today that is under way or starts within the next 3 hours (times in Z):
+// flights (from brief), sims, ground events (taken as 1 h), SXO / OPS O (the wave's window). Returns { t, what } or null.
+const OB_SOON_MIN = 180;
+function obSoon(name, get) {
+  if (!get) return null;
+  const n = opsNorm(name); if (!n) return null;
+  const d = new Date(), now = d.getUTCHours() * 60 + d.getUTCMinutes(), list = [];
+  const add = (s, e, what) => { if (s == null) return; e = e ?? s + 60; if (e < s) e += 1440; if (s <= now + OB_SOON_MIN && e >= now) list.push({ t: s, what }); };
+  const z4 = m => String(Math.floor(m / 60) % 24).padStart(2, "0") + String(m % 60).padStart(2, "0") + "Z";
+  const fl = opsNameWaves(JSON.parse(JSON.stringify(get("flying") || {}))), wins = opsWindows(fl);
+  (fl.waves || []).forEach((w, i) => {
+    for (const f of w.flights || []) if ((f.ac || []).some(a => opsCrewHas(a, n))) {
+      const st = [f.brief, f.step, f.etd].map(opsMin).filter(m => m != null);
+      add(st.length ? Math.min(...st) : null, opsMin(f.eta), `${f.callsign || "Flight"} ${f.etd || ""}`.trim());
+    }
+    if (opsHas(w.sxo, n)) add(wins[i].s, wins[i].e, "SXO " + w.name);
+    if (opsHas(w.opsO, n)) add(wins[i].s, wins[i].e, "OPS O " + w.name);
+  });
+  for (const r of (get("sim") || {}).rows || []) if ((r.ac || []).some(a => opsCrewHas(a, n))) add(opsMin(r.etd), opsMin(r.eta), "SIM " + (r.etd || ""));
+  for (const g of (get("ground") || {}).groups || []) for (const r of g.rows || []) if (opsGroundHas(r.personnel, n)) add(opsMin(r.time), null, opsShortEvent(r.event));
+  if (!list.length) return null;
+  list.sort((a, b) => a.t - b.t);
+  return { t: list[0].t, what: list[0].what, at: z4(list[0].t) };
+}
+// The 3-hour window moves with the clock: refresh the TV and the Go / No-Go page every 5 minutes.
+setInterval(() => { if ((S.tab === "tv" || S.tab === "gonogo") && !/^(INPUT|SELECT|TEXTAREA)$/.test((document.activeElement || {}).tagName) && !document.querySelector("dialog[open]")) S.tab === "tv" ? render() : obRerender(); }, 5 * 60 * 1000);
+const obSoonTag = so => so ? `<span class="obsoon" title="${esc(so.what)}">⏱ ${esc(so.at)}</span>` : "";
 const obGrpLabel = g => g === "ST" ? "ST TOW" : g;
 // [[group, crew…]] in the standard group order (QFI, ST, PGF, TRAINEES, …), then any other groups.
 function obCrewGroups(crew) {
@@ -650,10 +696,21 @@ function renderTv(v) {
   v.innerHTML = `<div class="tvbar"><b>150 Falcon Det · Ops board</b><span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 19).replace(/:/g, ""))}Z</small></span>
       <span class="grow"></span>${st ? `<span>Today: ${st.sorties} sorties · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>` : ""}<button class="btn small" data-ob="exittv">Exit TV</button></div>
     ${obBoardView(true, ((obGet("aircraft").callsigns || []).length || obGet("aircraft").vehicleCap ? obAircraftCards()[1] : "") + // TV: no aircraft status table (Gordon, 10 Oct); callsigns only when there are some // TV: no aircraft status table (Gordon, 10 Oct), callsigns only
-      obCard("ob-tvgo", "Aircrew status", `${crew.length - nogo.length} of ${crew.length} GO`, nogo.length ? `<div class="obtvgo">${nogo.map(c => `<span>${obPill("r", c.name)} <span class="hint">${esc(obCodes(obOutstanding(c.id)))}</span></span>`).join("")}</div>` : `<p>${obPill("g", "ALL GO")}</p>`))}`;
+      obTvGoCard(crew, nogo))}`;
   v.innerHTML = `<div class="tvstage">${v.innerHTML}</div>`;
   obTvColumns(v);
   requestAnimationFrame(obTvFit); setTimeout(obTvFit, 1200);
+}
+// TV aircrew status: NO-GO people on the programme within 3 h first and loud (with their time); other NO-GO toned down.
+function obTvGoCard(crew, nogo) {
+  if (!nogo.length) return obCard("ob-tvgo", "Aircrew status", `${crew.length} of ${crew.length} GO`, `<p>${obPill("g", "ALL GO")}</p>`);
+  const tg = obTodayGet(), soon = [], later = [];
+  for (const c of nogo) { const so = obSoon(c.name, tg); (so ? soon : later).push([c, so]); }
+  soon.sort((a, b) => a[1].t - b[1].t);
+  const chip = ([c, so]) => `<span class="${so ? "obtvsoon" : "obtvlater"}">${obPill(so ? "r" : "", c.name)}${so ? ` <b>${esc(so.at)}</b>` : ""} <span class="hint">${esc(obCodes(obOutstanding(c.id)))}</span></span>`;
+  return obCard("ob-tvgo", "Aircrew status", `${crew.length - nogo.length} of ${crew.length} GO`,
+    `<div class="obtvgo">${soon.length ? `<div class="obtvhd soon">NO-GO · on the programme within 3 h</div>${soon.map(chip).join("")}` : `<div class="obtvhd">${obPill("g", "No NO-GO crew on the programme in the next 3 h")}</div>`}
+      ${later.length ? `<div class="obtvhd">Other NO-GO (${later.length})</div>${later.map(chip).join("")}` : ""}</div>`);
 }
 // Spread the TV cards over balanced columns: each card goes to the currently shortest column.
 function obTvColumns(v) {
@@ -1045,7 +1102,17 @@ table.obt{min-width:0}
 .obprev{margin-top:6px;padding:6px 8px;border:1px dashed var(--line);border-radius:4px;background:var(--paper)}
 table.obed input,table.obed select{padding:4px 6px;font-size:.85rem;margin:0}
 table.obed{min-width:0} table.obed td,table.obed th{border:0;padding:2px 4px;background:none}
-.obtvgo{display:flex;flex-wrap:wrap;gap:6px 14px}
+.obtvgo{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.obtvhd{flex:1 1 100%;font:700 .8rem var(--body);letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+.obtvhd.soon{color:var(--late)}
+.obtvsoon .obpill{font-size:1.05em;animation:obsoonp 1.6s ease-in-out infinite}
+.obtvsoon b{color:var(--late)}
+.obtvlater{opacity:.55}.obtvlater .obpill{background:transparent;border:1px solid var(--late);color:var(--late)}
+@keyframes obsoonp{0%,100%{box-shadow:0 0 0 0 rgba(220,60,60,.7)}50%{box-shadow:0 0 0 6px rgba(220,60,60,0)}}
+@media (prefers-reduced-motion:reduce){.obtvsoon .obpill{animation:none}}
+.obsoon{font:700 .78rem var(--body);color:#fff;background:var(--late);border-radius:3px;padding:1px 5px;white-space:nowrap}
+.obgp.soon{background:rgba(220,60,60,.12)}
+.obsoonhd{color:var(--late)}
 body.tvmode .topbar,body.tvmode #subtabs,body.tvmode #tally{display:none!important}
 body.tvmode .wrap{max-width:none;padding:10px 16px}
 body.tvmode{font-size:17px}
