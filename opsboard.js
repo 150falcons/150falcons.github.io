@@ -368,18 +368,21 @@ function obAreasView(b, q, z, tv) {
   const f = (k, w) => q ? `<input class="obval" style="width:${w}" data-obq="r115" data-f="${k}" value="${esc(r[k] || "")}" aria-label="R115 ${k}">` : esc(r[k] || "-");
   const wx = q ? `<select class="obcs ${obCsCls(r.wx)}" data-obq="r115" data-f="wx" aria-label="R115 WX colour state">${["", ...OB_FASF].map(v => `<option value="${v}" ${v === (r.wx || "") ? "selected" : ""}>${v || "-"}</option>`).join("")}</select>`
     : `<span class="obcs ${obCsCls(r.wx)}">${esc(r.wx || "-")}</span>`;
-  const restr = q ? `<input class="obval" style="width:220px" data-obq="r115" data-f="restr" value="${esc(r.restr || "")}" placeholder="e.g. G1, G3, RADAR" aria-label="R115 restrictions">` : esc(r.restr || "-");
+  const restr = q ? `<input class="obval" style="width:${tv ? "220px" : "170px"}" data-obq="r115" data-f="restr" value="${esc(r.restr || "")}" placeholder="e.g. G1, G3, RADAR" aria-label="R115 restrictions">` : esc(r.restr || "-");
   const areas = (b.areas || []).map((x, j) => `<div class="obarea"><span>${esc(x.item)}</span>${obValCell(q, "aval", `data-j="${j}"`, x.val, obValS(x.val, x.s), x.s)}</div>`).join("");
   const r115 = tv ? `<div class="obr115"><b>R115 (CAPTIEUX)</b><span>TGT <b>${esc(r.tgt || "-")}</b></span><span>WX ${wx}</span><span>Before <b>${esc(r.before || "-")}</b></span><span>After <b>${esc(r.after || "-")}</b></span><span>Restr <b>${esc(r.restr || "-")}</b></span></div>`
-    : `<div class="obr115 ed"><b>R115 (CAPTIEUX)</b><button class="btn small" data-ob="chart" data-k="captieux">Map</button>
-      <label>TGT ${q ? f("tgt", "64px") : `<b>${esc(r.tgt || "-")}</b>`}</label><label>WX ${wx}</label>
-      <label>Before ${q ? f("before", "70px") : `<b>${esc(r.before || "-")}</b>`}</label><label>After ${q ? f("after", "70px") : `<b>${esc(r.after || "-")}</b>`}</label>
-      <label class="rs">Restr ${q ? restr : `<b>${restr}</b>`}</label></div>`; // compact, labels next to boxes (Gordon, 10 Oct)
-  return `${r115}
-    <div class="obareas">${areas}
-      <div class="obarea"><span>Immersion suit</span>${z.immersion ? obPill(z.immersion === "YES" ? "r" : "g", z.immersion) : `<span class="hint">-</span>`}</div>
+    : "";
+  const other = `<div class="obarea"><span>Immersion suit</span>${z.immersion ? obPill(z.immersion === "YES" ? "r" : "g", z.immersion) : `<span class="hint">-</span>`}</div>
       <div class="obarea"><span>Firing sch</span>${obValCell(q, "czxv", `data-f="firing"`, czx.firing, obValS(czx.firing, czx.firingS), czx.firingS)}</div>
-      <div class="obarea"><span>CALAMAR</span>${obValCell(q, "czxv", `data-f="calamar"`, czx.calamar, obValS(czx.calamar, czx.calamarS, true), czx.calamarS)}</div></div>
+      <div class="obarea"><span>CALAMAR</span>${obValCell(q, "czxv", `data-f="calamar"`, czx.calamar, obValS(czx.calamar, czx.calamarS, true), czx.calamarS)}</div>`;
+  if (tv) return `${r115}<div class="obareas">${areas}${other}</div>`;
+  // Page: three lists straight down with dividers, like the weather card (Gordon, 10 Oct): R115 | restricted areas | other
+  const row = (l, v) => `<div class="obarea"><span>${l}</span>${v}</div>`;
+  return `<div class="obra3">
+      <div class="obracol"><h3 class="opssub">R115 (CAPTIEUX) <button class="btn small" data-ob="chart" data-k="captieux">Map</button></h3>
+        ${row("TGT", q ? f("tgt", "90px") : `<b>${esc(r.tgt || "-")}</b>`)}${row("WX", wx)}${row("Before", q ? f("before", "90px") : `<b>${esc(r.before || "-")}</b>`)}${row("After", q ? f("after", "90px") : `<b>${esc(r.after || "-")}</b>`)}${row("Restr", q ? restr : `<b>${restr}</b>`)}</div>
+      <div class="obracol"><h3 class="opssub">Areas</h3>${areas}</div>
+      <div class="obracol"><h3 class="opssub">Other</h3>${other}</div></div>
     ${q ? `<p class="hint" style="margin:6px 0 0">Type a value and it shows red (CALAMAR "BOOKED" shows yellow). Tap A to pick another colour. R115 restrictions light up the Captieux map (G1–G7, RADAR).</p>` : ""}`;
 }
 function obCallsignsCard() {
@@ -1196,8 +1199,13 @@ body.tvmode .tvcol .opst td,body.tvmode .tvcol .opst th{white-space:normal}
 .obr115.ed label{display:inline-flex;align-items:center;gap:6px;margin:0;color:var(--muted);font-size:.85rem}
 .obr115.ed label b{color:var(--ink)}
 .obr115.ed label input,.obr115.ed label select{margin:0}
-/* page: areas packed in fixed-width cells, label right next to its box */
-.obgrid:not(.tv) .obareas{grid-template-columns:repeat(auto-fill,minmax(230px,280px));justify-content:start;gap:4px 22px}
+/* page: restricted areas as three straight-down lists with dividers */
+.obra3{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+@media (min-width:900px){.obra3{grid-template-columns:repeat(3,minmax(0,1fr));gap:0}.obra3>.obracol+.obracol{border-left:1px solid var(--line);padding-left:20px}.obra3>.obracol{padding-right:20px}}
+.obracol{display:grid;grid-template-columns:max-content auto;gap:6px 14px;align-content:start;align-items:center;justify-items:start}
+.obracol h3{grid-column:1/-1;margin:0;display:flex;align-items:center;gap:8px}
+.obracol .obarea{display:contents}
+.obracol .obarea>span:first-child{color:var(--muted);font-weight:500}
 .tvcol>.card .obwind{align-items:center}
 body.tvmode .obareas{grid-template-columns:1fr 1fr;gap:4px 14px}
 body.tvmode .obarea{flex-wrap:wrap}
