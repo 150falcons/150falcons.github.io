@@ -227,13 +227,13 @@ function renderFlyTv(v) {
   const day = todayStr();
   if (OPS.day !== day && !OPS.edit) { OPS.day = day; OPS.rowsDay = null; }
   if (OPS.rowsDay !== OPS.day) { v.innerHTML = `<div class="empty">Loading today's programme…</div>`; if (!OPS.loading) opsLoad(OPS.day); return; }
-  const fl = opsGet("flying"), st = opsStats(fl), n = new Date();
+  const fl = opsGet("flying"), st = opsStats(fl), n = new Date(), tw = opsFlyTvWaves(fl);
   const card = (title, body) => `<section class="card opscard"><div class="opshead"><h2>${title}</h2></div>${body || `<p class="hint" style="display:block;margin:0">Nothing entered.</p>`}</section>`;
   v.innerHTML = `<div class="tvstage"><div class="tvbar"><b>150 Falcon Det · Flying program</b><span>${esc(opsLongDay(OPS.day))}</span>
       <span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 19).replace(/:/g, ""))}Z</small></span>
       <span class="grow"></span><span>${st.sorties} sorties · ${st.hours} h · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>
       <button class="btn small" data-tab="ops">Exit TV</button></div>
-    ${OPS_ORDER.some(opsData) ? `<div class="flytv"><div class="flytvl"><section class="card opscard">${opsView.flying(fl) || `<p class="hint" style="display:block;margin:0">No flights.</p>`}</section></div>
+    ${OPS_ORDER.some(opsData) ? `<div class="flytv"><div class="flytvl"><section class="card opscard">${tw.note ? `<div class="flytvnote">${esc(tw.note)}</div>` : ""}${opsView.flying(tw.fl, tw.n0) || `<p class="hint" style="display:block;margin:0">No flights.</p>`}</section></div>
       <div class="flytvr">${card(OPS_TITLES.sim, opsView.sim(opsGet("sim")))}${card(OPS_TITLES.ground, opsFlyTvGround(opsGet("ground")))}</div></div>`
       : `<div class="empty"><strong>No programme for today yet</strong></div>`}</div>`;
   // Save height so everything can be shown bigger: wave remarks sit on the wave band, column headings only once.
@@ -241,6 +241,21 @@ function renderFlyTv(v) {
   v.querySelectorAll(".flytvl table.opsfly").forEach((t, i) => { if (i) t.querySelector("thead")?.remove(); });
   v.querySelectorAll(".flytvl .tablewrap").forEach(w => { w.style.flexGrow = w.querySelectorAll("tbody tr").length || 1; }); // extra height shared by rows
   requestAnimationFrame(opsFlyTvFit); setTimeout(opsFlyTvFit, 1200);
+}
+// TV shows about 3 waves (Gordon, 10 Oct): empty waves are left out; from the first wave not yet finished, 3 waves
+// (or the last 3 once the day is nearly over). Line numbers carry on from the hidden earlier waves.
+const OPS_TV_WAVES = 3;
+function opsFlyTvWaves(fl) {
+  const all = opsNameWaves(JSON.parse(JSON.stringify(fl))).waves || [];
+  const used = all.filter(w => (w.flights || []).some(f => (f.ac || []).some(opsLineUsed)));
+  const wins = opsWindows({ waves: used }), d = new Date(), now = d.getUTCHours() * 60 + d.getUTCMinutes();
+  let i = wins.findIndex(x => x.e == null || x.e >= now); if (i < 0) i = used.length;
+  i = Math.max(0, Math.min(i, used.length - OPS_TV_WAVES));
+  const shown = used.slice(i, i + OPS_TV_WAVES);
+  let n0 = 0; for (const w of used.slice(0, i)) for (const f of w.flights || []) for (const a of f.ac || []) if (!opsIsAdd(f, a) && opsLineUsed(a)) n0++;
+  const before = used.slice(0, i).map(w => w.name), after = used.slice(i + OPS_TV_WAVES).map(w => w.name);
+  const note = [before.length ? `Done: ${before.join(", ")}` : "", after.length ? `Later: ${after.join(", ")}` : ""].filter(Boolean).join(" · ");
+  return { fl: { ...fl, waves: shown }, n0, note };
 }
 // Pick the left/right split (around 2/3 for the flying lines) that lets the whole screen be shown biggest.
 function opsFlyTvFit() {
@@ -359,8 +374,8 @@ const opsView = {
     const rows = OPS_HEADER_FIELDS.filter(([k]) => k !== "dailyReq" && h[k]).map(([k, label]) => `<dt>${esc(label)}</dt><dd>${opsNl(h[k])}</dd>`).join("");
     return stats + (rows ? `<dl class="opsdl">${rows}</dl>` : "");
   },
-  flying(fl) {
-    let n = 0, out = "";
+  flying(fl, n0) {
+    let n = n0 || 0, out = "";
     const z4 = m => String(Math.floor(m / 60) % 24).padStart(2, "0") + String(m % 60).padStart(2, "0");
     const cols = `<colgroup>${[5, 10, 8, 3, 15, 9, 11, 6, 5, 28].map(p => `<col style="width:${p}%">`).join("")}</colgroup>`;
     for (const w of fl.waves || []) {
@@ -795,6 +810,7 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .flytv{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:12px;align-items:stretch}
 /* Fill the screen: the shorter side stretches to the taller one and its rows share the extra height (Gordon: "maximise the space") */
 .flytvl,.flytvr{display:flex;flex-direction:column}
+.flytvnote{font-size:.8rem;color:var(--muted);margin:0 0 6px;text-align:right}
 .flytvl>.card{flex:1;display:flex;flex-direction:column;margin-bottom:0}
 .flytvl>.card>.tablewrap{flex:1 1 auto}
 .flytvl>.card>.tablewrap>table{height:100%}
