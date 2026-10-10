@@ -425,7 +425,10 @@ function renderHours(v) {
   const ents = hrsEntries(OPS.hrs.days).filter(e => e.day >= from && e.day <= to);
   const crewOf = n => (typeof OB !== "undefined" ? OB.crew : []).find(c => opsNorm(c.name) === n);
   const people = {};
-  for (const e of ents) { const p = people[e.name] || (people[e.name] = { name: e.name, sorties: 0, day: 0, night: 0, last: "", list: [] }); p.sorties++; p[e.night ? "night" : "day"] += e.mins; if (e.day > p.last) p.last = e.day; p.list.push(e); }
+  const blank = n => ({ name: n, sorties: 0, day: 0, night: 0, last: "", list: [] });
+  // Every active aircrew on the Go / No-Go crew list shows, even with no hours yet (Gordon, 10 Oct); plus anyone else who flew.
+  for (const c of (typeof OB !== "undefined" ? OB.crew : []).filter(c => c.active)) { const n = opsNorm(c.name); if (n && !people[n]) people[n] = blank(n); }
+  for (const e of ents) { const p = people[e.name] || (people[e.name] = blank(e.name)); p.sorties++; p[e.night ? "night" : "day"] += e.mins; if (e.day > p.last) p.last = e.day; p.list.push(e); }
   const groups = typeof OB_GROUPS !== "undefined" ? OB_GROUPS : [];
   const gi = n => { const c = crewOf(n), i = c ? groups.indexOf(c.grp) : -1; return i < 0 ? 99 : i; };
   const list = Object.values(people).sort(sort === "hours" ? (a, b) => (b.day + b.night) - (a.day + a.night) || a.name.localeCompare(b.name) : (a, b) => gi(a.name) - gi(b.name) || (crewOf(a.name)?.sort ?? 999) - (crewOf(b.name)?.sort ?? 999) || a.name.localeCompare(b.name));
@@ -434,13 +437,14 @@ function renderHours(v) {
   const fd = d => new Date(d + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   const rows = list.map(p => {
     const open = OPS.hrsOpen && OPS.hrsOpen[p.name];
-    return `<tr class="hrrow${mine.has(p.name) ? " me" : ""}" data-hrs-p="${esc(p.name)}"><td><b>${esc(p.name)}</b> <span class="hint">${open ? "▲" : "▼"}</span></td><td class="hint">${esc(grpOf(p.name))}</td><td class="n">${p.sorties}</td><td class="n">${opsHrs(p.day)}</td><td class="n">${opsHrs(p.night)}</td><td class="n"><b>${opsHrs(p.day + p.night)}</b></td><td class="hint">${fd(p.last)}</td></tr>`
+    if (!p.sorties) return `<tr class="hrrow none${mine.has(p.name) ? " me" : ""}"><td><b>${esc(p.name)}</b></td><td class="hint">${esc(grpOf(p.name) || "Not on crew list")}</td><td class="n">0</td><td class="n">0.0</td><td class="n">0.0</td><td class="n"><b>0.0</b></td><td class="hint">–</td></tr>`;
+    return `<tr class="hrrow${mine.has(p.name) ? " me" : ""}" data-hrs-p="${esc(p.name)}"><td><b>${esc(p.name)}</b> <span class="hint">${open ? "▲" : "▼"}</span></td><td class="hint">${esc(grpOf(p.name) || "Not on crew list")}</td><td class="n">${p.sorties}</td><td class="n">${opsHrs(p.day)}</td><td class="n">${opsHrs(p.night)}</td><td class="n"><b>${opsHrs(p.day + p.night)}</b></td><td class="hint">${fd(p.last)}</td></tr>`
       + (open ? `<tr class="hrdet"><td colspan="7"><table class="opst"><thead><tr><th>Date</th><th>Wave</th><th>Callsign</th><th>Seat</th><th>With</th><th>Mission</th><th>A/C</th><th>T/O–LDG (Z)</th><th>Hrs</th></tr></thead><tbody>${p.list.slice().sort((a, b) => b.day.localeCompare(a.day)).map(e => `<tr><td>${fd(e.day)}</td><td>${esc(e.wave)}</td><td>${esc([e.callsign, e.ac].filter(Boolean).join(" "))}</td><td>${e.seat}</td><td>${esc(e.mate)}</td><td>${esc(e.mission)}</td><td>${esc(e.tail)}</td><td>${esc(e.to)}–${esc(e.ldg)}</td><td class="n">${opsHrs(e.mins)}</td></tr>`).join("")}</tbody></table></td></tr>` : "");
   }).join("");
   v.innerHTML = `<div class="opsbar"><label class="hrsper">Period <select data-hrs="per">${HRS_PERIODS.map(([k, l]) => `<option value="${k}" ${k === per ? "selected" : ""}>${l}</option>`).join("")}</select></label>
       <span class="hint">${per === "all" ? "" : `${fd(from)} – ${fd(to > todayStr() ? todayStr() : to)}`}</span><span class="grow"></span>
       <button class="btn small${sort === "group" ? " primary" : ""}" data-hrs="sort" data-v="group">By group</button><button class="btn small${sort === "hours" ? " primary" : ""}" data-hrs="sort" data-v="hours">Most hours</button></div>
-    <section class="card opscard"><div class="opshead"><h2>Hours flown</h2><span class="opsmeta">${ents.length} crew-sorties · ${opsHrs(tot) || "0.0"} h in total</span></div>
+    <section class="card opscard"><div class="opshead"><h2>Hours flown</h2><span class="opsmeta">${list.length} aircrew · ${ents.length} crew-sorties · ${opsHrs(tot) || "0.0"} h in total</span></div>
     ${list.length ? `<div class="tablewrap"><table class="opst hrst"><thead><tr><th>Name</th><th>Group</th><th class="n">Sorties</th><th class="n">Day</th><th class="n">Night</th><th class="n">Total h</th><th>Last flown</th></tr></thead><tbody>${rows}</tbody></table></div>`
       : `<p class="hint">No flown times logged in this period yet. Ops log them on the Flying program with <b>Log flown times</b> after the aircrew land.</p>`}
     <p class="hint" style="margin:8px 0 0">From the take-off / landing times logged on each day's flying program. Both crew on a line get the hours (front and back seat). Night waves count as night. Tap a name for their sorties.</p></section>`;
@@ -1015,6 +1019,7 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .hrsper{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:.9rem}.hrsper select{width:auto;margin:0}
 .hrst td.n,.hrst th.n{text-align:right;font-variant-numeric:tabular-nums}
 .hrst tr.hrrow{cursor:pointer}.hrst tr.hrrow:hover td{background:color-mix(in srgb,var(--muted) 8%,transparent)}
+.hrst tr.none{cursor:default}.hrst tr.none td{color:var(--muted)}
 .hrst tr.me td{background:color-mix(in srgb,var(--in) 10%,transparent)}
 .hrst tr.hrdet>td{padding:4px 8px 12px 24px}.hrst tr.hrdet table{font-size:.85rem}
 .tvspd{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:.85rem;color:var(--muted)}
