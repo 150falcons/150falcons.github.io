@@ -338,16 +338,20 @@ const opsView = {
   },
   duties(d) {
     const fl = opsGet("flying"), sim = opsGet("sim"), waves = fl.waves || [];
-    const gs = (d.groups || []).filter(g => (g.rows || []).length);
-    return gs.map(g => `<h3 class="opssub">${esc(g.name)}</h3><div class="tablewrap"><table class="opst opsnarrow"><thead><tr><th></th><th>Name</th>${waves.map(w => `<th>${esc(w.name)}</th>`).join("")}${g.hours ? "<th>Prev out</th><th>In</th><th>Rest</th><th>Out</th><th>Duty</th>" : ""}</tr></thead><tbody>${g.rows.map((r, i) => {
+    const gs = (d.groups || []).filter(x => (x.rows || []).length);
+    // Compact tables side by side so everyone fits on one screen; tokens coloured so flying / SIMS / SXO stand out.
+    const tok = t => { const c = t === "#" ? "fly" : t === "(#)" ? "add" : t === "SIMS" ? "sim" : /^(SXO|OPS O)$/.test(t) ? "duty" : "txt"; return `<span class="dt dt-${c}">${esc(t)}</span>`; };
+    const cell = (auto, manual) => [...auto, ...(manual ? String(manual).split(/\s*\/\s*/) : [])].filter(Boolean).map(tok).join("");
+    const short = w => esc(String(w.name || "").replace(/^NIGHT WAVE\s*/i, "N").replace(/^WAVE\s*/i, "W"));
+    return `<div class="opsduty">${gs.map(g => `<div class="opsdutyg${g.hours ? " hrs" : ""}"><h3 class="opssub">${esc(g.name)} <span class="hint">${g.rows.length}</span></h3><div class="tablewrap"><table class="opst opsdt"><thead><tr><th></th><th>Name</th>${waves.map(w => `<th title="${esc(w.name)}">${short(w)}</th>`).join("")}${g.hours ? `<th title="Previous day's out time">Prev</th><th>In</th><th>Rest</th><th>Out</th><th>Duty</th>` : ""}</tr></thead><tbody>${g.rows.map((r, i) => {
       const auto = opsAuto(r.name, fl, sim);
       let hrs = "";
       if (g.hours) {
         const prev = opsPrevOut(g.name, r.name), pi = opsMin(prev), ii = opsMin(r.inTime), oo = opsMin(r.outTime);
-        hrs = `<td>${esc(prev)}</td><td>${esc(r.inTime)}</td><td>${pi != null && ii != null ? opsHM(ii + 1440 - pi) : ""}</td><td>${esc(r.outTime)}</td><td>${ii != null && oo != null ? opsHM(opsSpan(ii, oo)) : ""}</td>`;
+        hrs = `<td class="t">${esc(prev)}</td><td class="t">${esc(r.inTime)}</td><td class="t">${pi != null && ii != null ? opsHM(ii + 1440 - pi) : ""}</td><td class="t">${esc(r.outTime)}</td><td class="t"><b>${ii != null && oo != null ? opsHM(opsSpan(ii, oo)) : ""}</b></td>`;
       }
-      return `<tr><td>${i + 1}</td><td>${opsX(r.name)}</td>${waves.map((w, j) => `<td>${esc(opsCell(auto[j] || [], (r.cells || [])[j]))}</td>`).join("")}${hrs}</tr>`;
-    }).join("")}</tbody></table></div>`).join("") + (gs.length ? `<p class="hint">#, (#) ops add, SIMS, SXO and OPS O fill in automatically from the programme.</p>` : "");
+      return `<tr><td class="i">${i + 1}</td><td class="nm">${opsX(r.name)}</td>${waves.map((w, j) => `<td class="c">${cell(auto[j] || [], (r.cells || [])[j])}</td>`).join("")}${hrs}</tr>`;
+    }).join("")}</tbody></table></div></div>`).join("")}</div>` + (gs.length ? `<p class="hint"><span class="dt dt-fly">#</span> flying · <span class="dt dt-add">(#)</span> ops add · <span class="dt dt-sim">SIMS</span> · <span class="dt dt-duty">SXO / OPS O</span> fill in automatically from the programme. W1, W2… = waves.</p>` : "");
   },
 };
 
@@ -626,6 +630,23 @@ table.opsfly td.rm{font-size:.8rem}
 table.opsfly tr.opsadd td:not(.rs),table.opsfly tbody.opsadd td{color:var(--muted);font-style:italic}
 .opsaddtag{display:inline-block;white-space:nowrap;font:700 .62rem var(--body);font-style:normal;letter-spacing:.03em;padding:1px 4px;border-radius:3px;border:1px dashed var(--muted);color:var(--muted)}
 mark.opsme{white-space:nowrap}
+/* Duties: compact tables that sit side by side */
+.opsduty{display:flex;flex-wrap:wrap;gap:4px 22px;align-items:flex-start}
+.opsdutyg{flex:0 1 auto;min-width:0;max-width:100%}
+.opsdutyg .opssub{margin:8px 0 4px}
+table.opsdt{width:auto;min-width:0;border-collapse:collapse}
+table.opsdt th,table.opsdt td{padding:3px 8px;white-space:nowrap;font-size:.84rem}
+table.opsdt td.i{color:var(--muted);text-align:right;padding-right:4px}
+table.opsdt td.nm{font-weight:600;padding-right:14px}
+table.opsdt td.c{min-width:64px}
+table.opsdt td.t{font-variant-numeric:tabular-nums;text-align:right}
+table.opsdt tbody tr:nth-child(even){background:color-mix(in srgb,var(--muted) 7%,transparent)}
+.dt{display:inline-block;padding:0 5px;border-radius:3px;font-size:.78rem;font-weight:600;margin-right:3px;line-height:1.5}
+.dt-fly{background:color-mix(in srgb,var(--in) 22%,transparent);color:var(--ink)}
+.dt-add{border:1px dashed var(--muted);color:var(--muted)}
+.dt-sim{background:color-mix(in srgb,#8b5cf6 25%,transparent);color:var(--ink)}
+.dt-duty{background:color-mix(in srgb,var(--out) 30%,transparent);color:var(--ink)}
+.dt-txt{background:color-mix(in srgb,var(--muted) 16%,transparent);color:var(--ink)}
 @media (min-width:1200px){.opsrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 14px;align-items:stretch}.opsrow>:only-child{grid-column:1/-1}
   .opsrow>.card{margin-bottom:14px}.opsrow>.opsmine{grid-column:span 1}
   #ops-header .opsdl{grid-template-columns:max-content 1fr max-content 1fr;column-gap:20px}
