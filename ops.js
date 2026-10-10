@@ -6,7 +6,7 @@
    Loaded before the main script and uses its helpers at call time
    ($, esc, S, toast, ask, errMsg, who, me, active, todayStr).
    ===================================================================== */
-const OPS = { day: null, rowsDay: null, rows: {}, prevDuties: null, edit: null, loading: false };
+const OPS = { day: null, rowsDay: null, rows: {}, prevDuties: null, lastDuties: null, namesOpen: false, edit: null, loading: false };
 const OPS_TITLES = {
   header: "Day details", flying: "Flying program", sim: "Simulator program", ground: "Ground program",
   airfield: "Airfield restrictions", notes: "Currencies & aircraft restrictions", duties: "Duties",
@@ -26,6 +26,8 @@ const opsTpl = {
   acr: () => ({ ac: "", note: "" }),
   dgroup: (n, hours) => ({ name: n || "", hours: !!hours, rows: [] }),
   drow: name => ({ name: name || "", cells: [], inTime: "", outTime: "" }),
+  // People not on the standing duty list who are on today's programme (auditors, visitors…): names typed per day.
+  xgroup: () => ({ name: "ADDITIONAL (AUDITORS ETC.)", extra: true, hours: false, rows: [] }),
 };
 const opsBlank = {
   header: () => ({ inTime: "", lateIn: "", wxBrief: "", modb: "", nightBrief: "", sqnSii: "", emer: "", dailyReq: "", tower: "", di: "", sdo: "", tdo: "", gym: "", plannedBy: "", vettedBy: "", currencyBy: "" }),
@@ -46,7 +48,13 @@ const OPS_HEADER_FIELDS = [
 /* ---------- helpers ---------- */
 const opsClone = o => JSON.parse(JSON.stringify(o));
 const opsData = sec => { const r = OPS.rows[sec]; return r && r.data && Object.keys(r.data).length ? r.data : null; };
-const opsGet = sec => { const d = (OPS.edit && OPS.edit.section === sec) ? OPS.edit.data : (opsData(sec) || opsBlank[sec]()); if (sec === "flying") opsNameWaves(d); return d; };
+const opsGet = sec => { const d = (OPS.edit && OPS.edit.section === sec) ? OPS.edit.data : (opsData(sec) || (sec === "duties" && opsSeedDuties()) || opsBlank[sec]()); if (sec === "flying") opsNameWaves(d); return d; };
+// The duty list is a standing list of the squadron's people: a day with no duties yet starts with the names
+// (not the notes or times) from the latest earlier day. Additional people are added per day.
+function opsSeedDuties() {
+  const src = OPS.lastDuties; if (!src || !(src.groups || []).some(g => (g.rows || []).length)) return null;
+  return { groups: src.groups.filter(g => !g.extra).map(g => ({ name: g.name, hours: !!g.hours, rows: (g.rows || []).map(r => opsTpl.drow(r.name)) })).concat([opsTpl.xgroup()]) };
+}
 // Waves are numbered by order: WAVE 1, WAVE 2… and NIGHT WAVE 1, NIGHT WAVE 2… (older data: "night" read from the name).
 function opsNameWaves(fl) {
   let day = 0, night = 0;
@@ -153,12 +161,14 @@ async function opsLoad(day) {
     S.sb.from("ops_sections").select("*").eq("day", day),
     S.sb.from("ops_sections").select("data").eq("day", opsShift(day, -1)).eq("section", "duties").maybeSingle(),
   ]);
+  const r3 = await S.sb.from("ops_sections").select("data").lt("day", day).eq("section", "duties").order("day", { ascending: false }).limit(1);
   OPS.loading = false;
   if (OPS.day !== day) return;
   if (r1.error) { toast("Couldn't load the programme: " + errMsg(r1.error)); return; }
   OPS.rows = {};
   for (const r of r1.data || []) OPS.rows[r.section] = r;
   OPS.prevDuties = r2.data ? r2.data.data : null;
+  OPS.lastDuties = r3.data && r3.data[0] ? r3.data[0].data : null;
   OPS.rowsDay = day;
   if (S.tab === "ops") renderOps($("#view"));
 }
@@ -394,14 +404,21 @@ const opsEd = {
   },
   duties(d) {
     const fl = opsGet("flying"), sim = opsGet("sim"), waves = fl.waves || [];
-    return (d.groups || []).map((g, gi) => `<div class="blk"><div class="tools"><label style="flex:1">Group${oI(`groups.${gi}.name`, g.name)}</label>${oC(`groups.${gi}.hours`, g.hours, "Duty hours")}${oTools("groups", gi)}</div>
-      <div class="tablewrap"><table><thead><tr><th>Name</th>${waves.map(w => `<th>${esc(w.name)}</th>`).join("")}${g.hours ? "<th>In</th><th>Out</th>" : ""}<th></th></tr></thead><tbody>${(g.rows || []).map((r, ri) => {
+    if (!(d.groups || []).some(g => g.extra)) (d.groups = d.groups || []).push(opsTpl.xgroup());
+    const open = OPS.namesOpen;
+    return (d.groups || []).map((g, gi) => {
+      const free = open || g.extra; // standing names are fixed unless "Change standing names" is on
+      return `<div class="blk${g.extra ? " opsextra" : ""}"><div class="tools">${open && !g.extra ? `<label style="flex:1">Group${oI(`groups.${gi}.name`, g.name)}</label>${oC(`groups.${gi}.hours`, g.hours, "Duty hours")}${oTools("groups", gi)}` : `<h3 class="opssub" style="flex:1;margin:0">${esc(g.name)}</h3>`}</div>
+      ${g.extra ? `<p class="hint" style="margin:0 0 4px">Anyone else on today's programme who isn't on the standing list (auditors, visitors…). Only for this day.</p>` : ""}
+      <div class="tablewrap"><table><thead><tr><th>Name</th>${waves.map(w => `<th>${esc(w.name)}</th>`).join("")}${g.hours ? "<th>In</th><th>Out</th>" : ""}${free ? "<th></th>" : ""}</tr></thead><tbody>${(g.rows || []).map((r, ri) => {
         const q = `groups.${gi}.rows.${ri}`, auto = opsAuto(r.name, fl, sim);
-        return `<tr><td>${oP(q + ".name", r.name, "120px")}</td>${waves.map((w, j) => `<td>${oI(`${q}.cells.${j}`, (r.cells || [])[j], "110px")}${auto[j] && auto[j].length ? `<div class="opsauto">+ ${esc(auto[j].join(" / "))}</div>` : ""}</td>`).join("")}${g.hours ? `<td>${oI(q + ".inTime", r.inTime, "60px")}</td><td>${oI(q + ".outTime", r.outTime, "60px")}</td>` : ""}<td>${oTools(`groups.${gi}.rows`, ri)}</td></tr>`;
+        return `<tr><td>${free ? oP(q + ".name", r.name, "120px") : `<b class="opsfixed">${esc(r.name)}</b>`}</td>${waves.map((w, j) => `<td>${oI(`${q}.cells.${j}`, (r.cells || [])[j], "110px")}${auto[j] && auto[j].length ? `<div class="opsauto">+ ${esc(auto[j].join(" / "))}</div>` : ""}</td>`).join("")}${g.hours ? `<td>${oI(q + ".inTime", r.inTime, "60px")}</td><td>${oI(q + ".outTime", r.outTime, "60px")}</td>` : ""}${free ? `<td>${g.extra ? oB("del", `groups.${gi}.rows`, ri, "✕", "", "Remove") : oTools(`groups.${gi}.rows`, ri)}</td>` : ""}</tr>`;
       }).join("")}</tbody></table></div>
-      <div class="tools">${oB("add", `groups.${gi}.rows`, "", "+ Person", "drow")}${oB("roster", `groups.${gi}.rows`, "", "+ All trainees on roster")}</div></div>`).join("")
-      + oB("add", "groups", "", "+ Group", "dgroup")
-      + `<p class="hint">Only type what isn't in the programme (LATE IN, ACAD, PARADE+RUN…). #, SIMS, SXO and OPS O are added automatically (shown under each box). In / Out as 0530.</p>`;
+      ${free ? `<div class="tools">${oB("add", `groups.${gi}.rows`, "", "+ Person", "drow")}${open && !g.extra ? oB("roster", `groups.${gi}.rows`, "", "+ All trainees on roster") : ""}</div>` : ""}</div>`;
+    }).join("")
+      + (open ? oB("add", "groups", "", "+ Group", "dgroup") : "")
+      + `<p class="hint">Only type what isn't in the programme (LATE IN, ACAD, PARADE+RUN…). #, SIMS, SXO and OPS O are added automatically (shown under each box). In / Out as 0530.</p>
+      <p class="hint">The names are the squadron's standing list and carry over to each new day. <a href="#" data-ops="names">${open ? "Done changing names" : "Change standing names"}</a> (when someone is posted in or out).</p>`;
   },
 };
 function opsPath(obj, path) { return path.split(".").reduce((o, k) => (o == null ? o : o[k]), obj); }
@@ -411,6 +428,7 @@ function opsSetPath(obj, path, val) {
   parent[last] = val;
 }
 function opsRerenderEdit() {
+  if (!OPS.edit) return;
   const sec = OPS.edit.section, card = $("#ops-" + sec);
   if (!card) return renderOps($("#view"));
   const y = window.scrollY; card.outerHTML = opsSection(sec, true); window.scrollTo(0, y);
@@ -423,7 +441,8 @@ document.addEventListener("input", e => {
 document.addEventListener("change", e => {
   const el = e.target; if (!OPS.edit || !el.dataset || !el.dataset.p || !el.closest("#opsEdit")) return;
   opsSetPath(OPS.edit.data, el.dataset.p, el.type === "checkbox" ? el.checked : el.value);
-  if (el.type === "checkbox" || (OPS.edit.section === "duties" && el.dataset.p.endsWith(".name"))) opsRerenderEdit();
+  // Re-draw after the browser finishes the blur that fired this change (re-drawing mid-blur throws).
+  if (el.type === "checkbox" || (OPS.edit.section === "duties" && el.dataset.p.endsWith(".name"))) setTimeout(opsRerenderEdit);
 });
 document.addEventListener("click", async e => {
   const op = e.target.closest("#opsEdit [data-op]");
@@ -447,9 +466,11 @@ document.addEventListener("click", async e => {
   else if (a === "today") opsGo(todayStr());
   else if (a === "edit") {
     const sec = el.dataset.sec;
-    OPS.edit = { section: sec, data: opsClone(opsData(sec) || opsBlank[sec]()), version: OPS.rows[sec] ? OPS.rows[sec].version : 0 };
+    OPS.namesOpen = false;
+    OPS.edit = { section: sec, data: opsClone(opsData(sec) || (sec === "duties" && opsSeedDuties()) || opsBlank[sec]()), version: OPS.rows[sec] ? OPS.rows[sec].version : 0 };
     renderOps($("#view")); const c = $("#ops-" + sec); if (c) c.scrollIntoView({ block: "start" });
-  } else if (a === "cancel") { OPS.edit = null; renderOps($("#view")); }
+  } else if (a === "names") { e.preventDefault(); OPS.namesOpen = !OPS.namesOpen; opsRerenderEdit(); }
+  else if (a === "cancel") { OPS.edit = null; renderOps($("#view")); }
   else if (a === "save") opsSave(el);
   else if (a === "copy") opsCopy();
   else if (a === "pdf") opsPrint();
@@ -593,6 +614,7 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .opsed .opschk{display:flex;align-items:center;gap:4px;margin:0;color:var(--ink);white-space:nowrap}
 .opsed .opschk input{width:auto;margin:0}
 .opsauto{font-size:.7rem;color:var(--muted);margin-top:1px}
+.opsfixed{white-space:nowrap;display:inline-block;padding:4px 6px 4px 0}
 .opswavename{font:700 1.1rem var(--cond);margin-right:8px}
 #opsPrint{display:none}
 @media print{
