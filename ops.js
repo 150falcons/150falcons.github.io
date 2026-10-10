@@ -233,15 +233,41 @@ function renderFlyTv(v) {
       <span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 19).replace(/:/g, ""))}Z</small></span>
       <span class="grow"></span><span>${st.sorties} sorties · ${st.hours} h · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>
       <button class="btn small" data-tab="ops">Exit TV</button></div>
-    ${OPS_ORDER.some(opsData) ? `<div class="flytv"><div class="flytvl"><section class="card opscard">${tw.note ? `<div class="flytvnote">${esc(tw.note)}</div>` : ""}${opsView.flying(tw.fl, tw.n0) || `<p class="hint" style="display:block;margin:0">No flights.</p>`}</section></div>
+    ${OPS_ORDER.some(opsData) ? `<div class="flytv"><div class="flytvl"><section class="card opscard"></section></div>
       <div class="flytvr">${card(OPS_TITLES.sim, opsView.sim(opsGet("sim")))}${card(OPS_TITLES.ground, opsFlyTvGround(opsGet("ground")))}</div></div>`
       : `<div class="empty"><strong>No programme for today yet</strong></div>`}</div>`;
-  // Save height so everything can be shown bigger: wave remarks sit on the wave band, column headings only once.
-  v.querySelectorAll(".flytvl .opsrmk").forEach(r => { const w = r.previousElementSibling; if (w && w.classList.contains("opswave")) { r.classList.add("inband"); w.insertBefore(r, w.querySelector(".opswavest")); } });
-  v.querySelectorAll(".flytvl table.opsfly").forEach((t, i) => { if (i) t.querySelector("thead")?.remove(); });
-  v.querySelectorAll(".flytvl .tablewrap").forEach(w => { w.style.flexGrow = w.querySelectorAll("tbody tr").length || 1; }); // extra height shared by rows
+  // Text size is set by the ~3 waves (tw); when there are more, all of them are then shown and the screen pans (Gordon, 10 Oct).
+  OPS.tvLeft = { part: (tw.note ? `<div class="flytvnote">${esc(tw.note)}</div>` : "") + (opsView.flying(tw.fl, tw.n0) || `<p class="hint" style="display:block;margin:0">No flights.</p>`),
+    all: tw.more ? opsView.flying(tw.all) : "" };
+  opsFlyTvLeft(false);
   requestAnimationFrame(opsFlyTvFit); setTimeout(opsFlyTvFit, 1200);
 }
+// Fill the left card: the ~3-wave part (used to size the text) or every wave (scroll mode).
+function opsFlyTvLeft(all) {
+  const c = document.querySelector(".flytvl > .card"), g = document.querySelector(".flytv"); if (!c || !OPS.tvLeft) return;
+  c.innerHTML = all ? OPS.tvLeft.all : OPS.tvLeft.part;
+  g.classList.toggle("flyscroll", !!all); document.body.classList.toggle("tvscroll", !!all);
+  // Save height so everything can be shown bigger: wave remarks sit on the wave band, column headings only once.
+  c.querySelectorAll(".opsrmk").forEach(r => { const w = r.previousElementSibling; if (w && w.classList.contains("opswave")) { r.classList.add("inband"); w.insertBefore(r, w.querySelector(".opswavest")); } });
+  c.querySelectorAll("table.opsfly").forEach((t, i) => { if (i) t.querySelector("thead")?.remove(); });
+  c.querySelectorAll(".tablewrap").forEach(w => { w.style.flexGrow = w.querySelectorAll("tbody tr").length || 1; }); // extra height shared by rows
+}
+// Slow up-and-down pan when everything doesn't fit; scrolling by hand (wheel, touch, keys) pauses it for 20 s.
+const FLYPAN = { dir: 1, pos: null, pause: 0, user: 0, last: 0, raf: 0 };
+function opsFlyPan(t) {
+  if (S.tab !== "flytv" || !document.body.classList.contains("tvscroll")) { FLYPAN.raf = 0; return; }
+  const el = document.scrollingElement, max = el.scrollHeight - innerHeight, dt = Math.min(100, t - (FLYPAN.last || t));
+  FLYPAN.last = t;
+  if (max > 4 && t > FLYPAN.pause && Date.now() > FLYPAN.user) {
+    if (FLYPAN.pos == null) FLYPAN.pos = el.scrollTop;
+    FLYPAN.pos += FLYPAN.dir * dt * (FLYPAN.dir > 0 ? 0.035 : 0.12); // px per ms: slow down, quicker back up
+    if (FLYPAN.pos >= max) { FLYPAN.pos = max; FLYPAN.dir = -1; FLYPAN.pause = t + 8000; }
+    if (FLYPAN.pos <= 0) { FLYPAN.pos = 0; FLYPAN.dir = 1; FLYPAN.pause = t + 10000; }
+    el.scrollTop = FLYPAN.pos;
+  }
+  FLYPAN.raf = requestAnimationFrame(opsFlyPan);
+}
+for (const ev of ["wheel", "touchstart", "keydown", "mousedown"]) addEventListener(ev, () => { if (S.tab === "flytv") { FLYPAN.user = Date.now() + 20000; FLYPAN.pos = null; } }, { passive: true });
 // TV shows about 3 waves (Gordon, 10 Oct): empty waves are left out; from the first wave not yet finished, 3 waves
 // (or the last 3 once the day is nearly over). Line numbers carry on from the hidden earlier waves.
 const OPS_TV_WAVES = 3;
@@ -255,11 +281,12 @@ function opsFlyTvWaves(fl) {
   let n0 = 0; for (const w of used.slice(0, i)) for (const f of w.flights || []) for (const a of f.ac || []) if (!opsIsAdd(f, a) && opsLineUsed(a)) n0++;
   const before = used.slice(0, i).map(w => w.name), after = used.slice(i + OPS_TV_WAVES).map(w => w.name);
   const note = [before.length ? `Done: ${before.join(", ")}` : "", after.length ? `Later: ${after.join(", ")}` : ""].filter(Boolean).join(" · ");
-  return { fl: { ...fl, waves: shown }, n0, note };
+  return { fl: { ...fl, waves: shown }, n0, note, more: used.length > shown.length, all: { ...fl, waves: used } };
 }
 // Pick the left/right split (around 2/3 for the flying lines) that lets the whole screen be shown biggest.
 function opsFlyTvFit() {
   const g = document.querySelector(".flytv"); if (!g || S.tab !== "flytv") return obTvFit();
+  const st0 = document.querySelector(".tvstage"); st0.classList.remove("noautofit"); if (OPS.tvLeft && OPS.tvLeft.all) opsFlyTvLeft(false);
   if (innerWidth / innerHeight < 1) { g.style.gridTemplateColumns = ""; return obTvFit(); }
   let best = null;
   for (const r of [2.2, 2, 1.8, 1.65]) {
@@ -268,6 +295,11 @@ function opsFlyTvFit() {
     if (!best || z > best.z + 0.005) best = { r, z };
   }
   g.style.gridTemplateColumns = `minmax(0,${best.r}fr) minmax(0,1fr)`; obTvFit();
+  if (OPS.tvLeft && OPS.tvLeft.all) { // more waves than fit: keep this text size, show them all and pan
+    opsFlyTvLeft(true); document.querySelector(".tvstage").classList.add("noautofit");
+    if (FLYPAN.pos != null) document.scrollingElement.scrollTop = FLYPAN.pos;
+    if (!FLYPAN.raf) FLYPAN.raf = requestAnimationFrame(opsFlyPan);
+  }
 }
 window.addEventListener("resize", () => { if (S.tab !== "flytv") return; clearTimeout(opsFlyTvFit.t); opsFlyTvFit.t = setTimeout(opsFlyTvFit, 300); });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (S.tab === "flytv") opsFlyTvFit(); });
@@ -810,6 +842,11 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .flytv{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:12px;align-items:stretch}
 /* Fill the screen: the shorter side stretches to the taller one and its rows share the extra height (Gordon: "maximise the space") */
 .flytvl,.flytvr{display:flex;flex-direction:column}
+body.tvmode.tvscroll{overflow:auto}
+.flytv.flyscroll{align-items:start}
+.flytv.flyscroll .flytvl>.card>.tablewrap{flex-grow:0!important}
+.flytv.flyscroll table{height:auto!important}
+.flytv.flyscroll .flytvr>.card:last-child{flex:0 0 auto}
 .flytvnote{font-size:.8rem;color:var(--muted);margin:0 0 6px;text-align:right}
 .flytvl>.card{flex:1;display:flex;flex-direction:column;margin-bottom:0}
 .flytvl>.card>.tablewrap{flex:1 1 auto}

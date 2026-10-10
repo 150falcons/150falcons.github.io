@@ -735,7 +735,7 @@ function obTvColumns(v) {
 }
 // Fit the whole TV dashboard on one screen: find the largest zoom at which it fits the window height (the layout reflows at each zoom).
 function obTvFit() {
-  const st = document.querySelector(".tvstage"); if (!st || !document.body.classList.contains("tvmode")) return;
+  const st = document.querySelector(".tvstage"); if (!st || !document.body.classList.contains("tvmode") || st.classList.contains("noautofit")) return;
   const cols = st.querySelector(".tvcols"); if (cols) cols.style.minHeight = "";
   st.style.zoom = 1;
   const avail = window.innerHeight - st.getBoundingClientRect().top - 4;
@@ -751,7 +751,7 @@ function obTvFit() {
 // Web fonts change text sizes after they load: fit again then.
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => obTvFit());
 window.addEventListener("resize", () => { clearTimeout(obTvFit.t); obTvFit.t = setTimeout(obTvFit, 150); });
-const obLeaveTv = () => { document.body.classList.remove("tvmode"); if (obWake) { obWake.release().catch(() => {}); obWake = null; } };
+const obLeaveTv = () => { document.body.classList.remove("tvmode", "tvscroll"); if (obWake) { obWake.release().catch(() => {}); obWake = null; } };
 
 /* ---------- editors (board, aircraft, gonogo) ---------- */
 const bI = (p, v, w, ph) => `<input data-bp="${p}" value="${esc(v ?? "")}"${w ? ` style="width:${w}"` : ""}${ph ? ` placeholder="${esc(ph)}"` : ""}>`;
