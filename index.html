@@ -379,11 +379,9 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
    ===================================================================== */
 const SUPABASE_URL = "https://ighnqntkupzqisstzmpy.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlnaG5xbnRrdXB6cWlzc3R6bXB5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMjcxMTcsImV4cCI6MjEwNjgwMzExN30.K9rQENntu1S__EVchIe4MiwlqJUMMRVCDzen4QczV-M";
-// Random temporary password for new logins and resets (never a fixed value in the page's code).
-function tempPw() {
-  const a = "abcdefghjkmnpqrstuvwxyz23456789", r = crypto.getRandomValues(new Uint32Array(8));
-  return "Falcon-" + [...r].map(x => a[x % a.length]).join("");
-}
+// New logins and resets use the squad's standard temporary password, which lives in the admin-users
+// edge function (never in this public page). A blank password means "the standard one"; the function
+// sends back the password it used so the page can show it.
 // Usernames are stored as <username>@<LOGIN_DOMAIN> behind the scenes. No emails are ever sent.
 const LOGIN_DOMAIN = "150sqn.local";
 
@@ -511,7 +509,7 @@ async function fetchAll() {
   const sb = S.sb;
   const res = await Promise.all([
     sb.from("trainees").select("*").order("course").order("name"),
-    sb.from("profiles").select("id,email,display_name,role,trainee_id,must_change_password,appointment,ops_editor,eng_editor,no_geo,callsign"),
+    sb.from("profiles").select("id,email,display_name,role,trainee_id,must_change_password,appointment,ops_editor,eng_editor,no_geo,callsign,staff_role"),
     sb.from("vehicles").select("*").order("description"),
     sb.from("movements").select("*").in("status", ["out", "pending"]),
     sb.from("movements").select("*").order("out_at", { ascending: false }).limit(300),
@@ -552,11 +550,11 @@ async function startSession(session) {
   S.session = session;
   $("#btnSignOut").hidden = false;
   const { data, error } = await S.sb.from("profiles").select("*").eq("id", session.user.id).single();
-  if (error || !data) { toast("Your account isn't set up yet. Ask an instructor."); await S.sb.auth.signOut(); return; }
+  if (error || !data) { toast("Your account isn't set up yet. Ask a QFI."); await S.sb.auth.signOut(); return; }
   // Accounts an admin has exempted (e.g. the ops room laptop, which blocks location) skip the France check.
   if (!data.no_geo && !await franceGate()) return;
   S.me = data;
-  if (isOpsAssistant(S.me)) S.tab = S.me.ops_editor ? "opsboard" : "aircraft";
+  if (isOpsAssistant(S.me)) S.tab = S.me.eng_editor && !S.me.ops_editor ? "aircraft" : "opsboard";
   if (S.me.must_change_password) { render(); return; }
   await fetchAll(); subscribe(); obLoad();
 }
@@ -636,19 +634,19 @@ function renderHome(v) {
 
 function renderLogin(v) {
   v.innerHTML = `<div class="card authcard"><h2>Sign in</h2>
-    <p class="hint">Use the username and password your instructor gave you.</p>
+    <p class="hint">Use the username and password your QFI gave you.</p>
     <label>Username<input id="lEmail" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="e.g. limj"></label>
     <label>Password<input id="lPw" type="password" autocomplete="current-password"></label>
     <div class="err" id="lErr"></div>
     <button class="btn primary" id="btnLogin" style="width:100%">Sign in</button>
-    <p class="hint">Forgot your password? Ask an instructor to reset it.</p></div>`;
+    <p class="hint">Forgot your password? Ask a QFI to reset it.</p></div>`;
   const go = async () => {
     const email = toLogin($("#lEmail").value), password = $("#lPw").value;
     if (!$("#lEmail").value.trim() || !password) return $("#lErr").textContent = "Enter your username and password.";
     $("#btnLogin").disabled = true; $("#lErr").textContent = "";
     const { data, error } = await S.sb.auth.signInWithPassword({ email, password });
     $("#btnLogin").disabled = false;
-    if (error) return $("#lErr").textContent = /banned/i.test(error.message) ? "This account has been disabled. Ask an instructor." : "Wrong username or password.";
+    if (error) return $("#lErr").textContent = /banned/i.test(error.message) ? "This account has been disabled. Ask a QFI." : "Wrong username or password.";
     await startSession(data.session);
   };
   $("#btnLogin").onclick = go;
@@ -684,12 +682,12 @@ function renderBoard(v) {
   const now = Date.now(), ob = openByTrainee();
   const mine = me();
   if (!active().length) {
-    v.innerHTML = `<div class="empty"><strong>No trainees on the roster yet</strong>${isAdmin() ? `Post in your course on the <a href="#" data-tab="roster">Admin</a> tab.` : "Ask an instructor to add the course."}</div>`;
+    v.innerHTML = `<div class="empty"><strong>No trainees on the roster yet</strong>${isAdmin() ? `Post in your course on the <a href="#" data-tab="roster">Admin</a> tab.` : "Ask a QFI to add the course."}</div>`;
     return;
   }
   let idCard = "";
   if (mine) idCard = `<p class="hint idline">Signed in as <strong>${esc(mine.name)}</strong>${mine.can_drive === false ? " (non-driver)" : ""}.</p>`;
-  else if (!isAdmin() && !S.me.ops_editor && !S.me.eng_editor) idCard = `<div class="card idcard"><h2>Account not linked</h2><p class="hint">Your login isn't linked to a name on the roster yet. Ask an instructor to fix it.</p></div>`;
+  else if (!isAdmin() && !S.me.ops_editor && !S.me.eng_editor && !S.me.staff_role) idCard = `<div class="card idcard"><h2>Account not linked</h2><p class="hint">Your login isn't linked to a name on the roster yet. Ask a QFI to fix it.</p></div>`;
 
   const pend = S.open.filter(isPend).sort((a, b) => ms(a.etd) - ms(b.etd));
   const pendHtml = pend.map(m => {
@@ -1166,7 +1164,7 @@ function renderVehicles(v) {
       <label id="vOwnerWrap" hidden>Owner<select id="vOwnerSel">${ownerOpts}</select></label>
       <div style="display:flex;justify-content:flex-end"><button class="btn primary" id="btnAddVeh">Add car</button></div>
       <p class="hint">Cars already booked out show as in use, so the same car can't be booked twice.</p>`
-      : `<p class="hint">Your login isn't linked to a trainee yet, so you can't add cars. Ask an instructor.</p>`}
+      : `<p class="hint">Your login isn't linked to a trainee yet, so you can't add cars. Ask a QFI.</p>`}
     </div></div>`;
   if (canAdd) {
     $("#vType").onchange = e => { const c = e.target.value === "course"; $("#vCourseWrap").hidden = !c; $("#vOwnerWrap").hidden = c; };
@@ -1270,22 +1268,22 @@ function renderAdmin(v) {
       <div class="card"><h2>Post in trainees</h2>
         <p class="hint">One per line: name, course, handphone, username. Handphone and username are optional, e.g. <em>TAN WEI MING, Course 24, +33 612345678, tanwm</em>. Leave it out and one is made from the name. Add <em>non-driver</em> to the line for trainees who can't drive.</p>
         <textarea id="addList" placeholder="LIM J, Course 24, limj&#10;ONG K, Course 24, non-driver"></textarea>
-        <label style="margin-top:8px">Temporary password for new logins<input id="tmpPw" value="${esc(tempPw())}"></label>
+        <label style="margin-top:8px">Temporary password for new logins<input id="tmpPw" value="" placeholder="Leave blank for the standard password"></label>
         <div style="display:flex;justify-content:flex-end"><button class="btn primary" id="btnAdd">Post in</button></div>
         <p class="hint">Every trainee gets a login straight away. They sign in with their username and the temporary password, then must set their own password.</p></div>
-      <div class="card"><h2>Instructors (${admins.length})</h2><ul class="rlist">${alist}</ul>
-        <p class="hint" style="margin-top:10px">Add an instructor login:</p>
+      <div class="card"><h2>QFI (${admins.length})</h2><ul class="rlist">${alist}</ul>
+        <p class="hint" style="margin-top:10px">Add a QFI login:</p>
         <label>Name (as on the flying lines)<input id="iName" maxlength="60" placeholder="e.g. LEE G"></label>
         <label>Callsign (leave blank if none)<input id="iCall" maxlength="30" placeholder="e.g. Brut"></label>
         <label>Username<input id="iEmail" autocapitalize="none" placeholder="e.g. tanjh"></label>
-        <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddAdmin">Add instructor</button></div></div>
-      <div class="card"><h2>Ops &amp; engineering logins (${opsAsst.length})</h2>
-        ${opsAsst.length ? `<ul class="rlist">${opsAsst.map(p => `<li><span><strong>${esc(pLabel(p))}</strong>${p.ops_editor ? ` <span class="tag open">Ops</span>` : ""}${p.eng_editor ? ` <span class="tag open">Aircraft</span>` : ""}${p.ops_editor || p.eng_editor ? "" : ` <span class="tag nd">Can't edit</span>`}${p.no_geo ? ` <span class="tag nd">No location check</span>` : ""}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.must_change_password ? " (temporary password)" : ""}</span></span>
+        <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddAdmin">Add QFI</button></div></div>
+      <div class="card"><h2>AOSX, ATCO &amp; engineer logins (${opsAsst.length})</h2>
+        ${opsAsst.length ? `<ul class="rlist">${opsAsst.map(p => `<li><span><strong>${esc(pLabel(p))}</strong>${p.staff_role ? ` <span class="tag">${esc(STAFF_LABEL[p.staff_role] || p.staff_role)}</span>` : ""}${p.ops_editor ? ` <span class="tag open">Ops</span>` : ""}${p.eng_editor ? ` <span class="tag open">Aircraft</span>` : ""}${p.ops_editor || p.eng_editor ? "" : ` <span class="tag nd">Can't edit</span>`}${p.no_geo ? ` <span class="tag nd">No location check</span>` : ""}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.must_change_password ? " (temporary password)" : ""}</span></span>
           <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button><button class="btn small" data-act="resetpw" data-id="${esc(p.id)}">Reset password</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button></span></li>`).join("")}</ul>` : ""}
-        <p class="hint" style="margin-top:6px">Logins without instructor admin rights. An ops assistant edits the flying program, ops board and Go / No-Go; an engineer edits aircraft status only. The CO, DYCO and OCs can always edit; tick other instructors under Edit.</p>
-        <label>Type<select id="oaType"><option value="ops">Ops assistant</option><option value="eng">Engineer (aircraft status)</option></select></label>
-        <label>Name<input id="oaName" maxlength="60" placeholder="e.g. OPS ASST or ENG"></label>
-        <label>Username<input id="oaUser" autocapitalize="none" placeholder="e.g. opsasst"></label>
+        <p class="hint" style="margin-top:6px">Logins without QFI admin rights. The AOSX edits the flying program, ops board and Go / No-Go; an ATCO can view everything (tick "Can edit the ops board" under Edit if they should change it); an engineer edits aircraft status only. The CO, DYCO and OCs can always edit; tick other QFIs under Edit.</p>
+        <label>Type<select id="oaType"><option value="AOSX">AOSX (ops assistant)</option><option value="ATCO">ATCO (air traffic controller)</option><option value="ENG">Engineer (aircraft status)</option></select></label>
+        <label>Name<input id="oaName" maxlength="60" placeholder="e.g. TAN M"></label>
+        <label>Username<input id="oaUser" autocapitalize="none" placeholder="e.g. tanm"></label>
         <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddOps">Add login</button></div></div>
       <div class="card"><h2>Telegram</h2>
         ${isOC() ? `<p class="hint">Get travel requests in your own Telegram and approve or reject them there. <span id="tgLinkState"></span></p>
@@ -1314,7 +1312,8 @@ async function postIn() {
   const lines = $("#addList").value.split("\n").map(l => l.trim()).filter(Boolean);
   const tmp = $("#tmpPw").value.trim();
   if (!lines.length) return toast("Enter at least one name.");
-  if (tmp.length < 6) return toast("Temporary password must be at least 6 characters.");
+  if (tmp && tmp.length < 6) return toast("Temporary password must be at least 6 characters.");
+  let usedPw = tmp;
   const b = $("#btnAdd"); b.disabled = true; b.textContent = "Posting in…";
   let n = 0, logins = 0; const fails = [], made = [];
   for (const l of lines) {
@@ -1330,59 +1329,59 @@ async function postIn() {
     const user = (userIn || suggestUser(name)).toLowerCase();
     if (!validUser(user)) { fails.push(`${name}: username "${user}" can only use letters, numbers, dots, dashes (3-30 characters)`); continue; }
     try {
-      await adminApi({ action: "create", email: toLogin(user), password: tmp, display_name: name, role: "user", trainee_id: data.id });
+      const r = await adminApi({ action: "create", email: toLogin(user), password: tmp, display_name: name, role: "user", trainee_id: data.id });
+      if (r && r.password) usedPw = r.password;
       S.profiles.push({ email: toLogin(user) }); logins++; made.push(`${name}: ${user}`);
     } catch (e) { fails.push(`${name} (login ${user}): ${e.message}`); }
   }
   b.disabled = false; b.textContent = "Post in";
   if (n) $("#addList").value = "";
   await fetchAll();
-  const madeTxt = made.length ? ` Usernames: ${made.join("; ")}. Temporary password: ${tmp}.` : "";
+  const madeTxt = made.length ? ` Usernames: ${made.join("; ")}. Temporary password: ${usedPw}.` : "";
   await ask(fails.length ? "Some lines need attention" : "Posted in", `Posted in ${n}, created ${logins} login${logins === 1 ? "" : "s"}.${madeTxt}${fails.length ? " Problems: " + fails.join("; ") : ""}`, "OK");
 }
 async function makeLogin(tid) {
   const t = S.roster.find(x => x.id === tid); if (!t) return;
-  const pw = tempPw();
-  const user = await ask(`Create login for ${t.name}`, `They'll sign in with this username and the temporary password "${pw}", then set their own.`, "Create login", { type: "text", value: suggestUser(t.name), placeholder: "username" });
+  const user = await ask(`Create login for ${t.name}`, `They'll sign in with this username and the standard temporary password, then set their own.`, "Create login", { type: "text", value: suggestUser(t.name), placeholder: "username" });
   if (!user) return;
   if (!validUser(user.toLowerCase())) return toast("Usernames can only use letters, numbers, dots and dashes (3-30 characters).");
   const email = toLogin(user);
-  try { await adminApi({ action: "create", email, password: pw, display_name: t.name, role: "user", trainee_id: t.id }); fetchAll(); await ask("Login created", `${t.name}: username ${showLogin(email)}, temporary password ${pw}. Pass these on; they must set their own password at first sign-in.`, "OK"); }
+  try { const r = await adminApi({ action: "create", email, display_name: t.name, role: "user", trainee_id: t.id }); fetchAll(); await ask("Login created", `${t.name}: username ${showLogin(email)}, temporary password ${r.password}. Pass these on; they must set their own password at first sign-in.`, "OK"); }
   catch (e) { toast(e.message); }
 }
 async function resetPw(uid) {
   const p = profOf(uid); if (!p) return;
-  const pw = await ask(`Reset password for ${pLabel(p)}`, "Give them this temporary password. They must set their own the next time they sign in.", "Reset password", { value: tempPw() });
-  if (!pw) return;
-  try { await adminApi({ action: "reset_password", user_id: uid, password: pw }); toast("Password reset."); fetchAll(); }
+  const pw = await ask(`Reset password for ${pLabel(p)}`, "Their password goes back to the standard temporary password (or type a different one). They must set their own the next time they sign in.", "Reset password", { value: "", placeholder: "Blank = standard password" });
+  if (pw === null) return;
+  try { const r = await adminApi({ action: "reset_password", user_id: uid, password: pw }); fetchAll(); await ask("Password reset", `${pLabel(p)}: temporary password ${r.password}.`, "OK"); }
   catch (e) { toast(e.message); }
 }
 async function addInstructor() {
   const name = $("#iName").value.trim(), user = $("#iEmail").value.trim().toLowerCase();
-  if (!name || !user) return toast("Enter the instructor's name and a username.");
+  if (!name || !user) return toast("Enter the QFI's name and a username.");
   if (!validUser(user)) return toast("Usernames can only use letters, numbers, dots and dashes (3-30 characters).");
   const email = toLogin(user);
-  const pw = tempPw();
   const call = $("#iCall").value.trim();
   try {
-    const r = await adminApi({ action: "create", email, password: pw, display_name: name, role: "admin" });
+    const r = await adminApi({ action: "create", email, display_name: name, role: "admin" });
     if (call && r && r.user_id) { const { error } = await S.sb.rpc("set_callsign", { p_user: r.user_id, p_callsign: call }); if (error) toast(errMsg(error)); }
-    fetchAll(); await ask("Instructor added", `${call ? call + " (" + name + ")" : name}: username ${user}, temporary password ${pw}. They must set their own password at first sign-in.`, "OK"); }
+    fetchAll(); await ask("QFI added", `${call ? call + " (" + name + ")" : name}: username ${user}, temporary password ${r.password}. They must set their own password at first sign-in.`, "OK"); }
   catch (e) { toast(e.message); }
 }
 // Ops assistant: a non-admin, non-trainee login with ops_editor on.
 const isOpsAssistant = p => !!p && p.role !== "admin" && !p.trainee_id;
+const STAFF_LABEL = { AOSX: "AOSX", ATCO: "ATCO", ENG: "Engineer" };
 async function addOpsAssistant() {
   const name = $("#oaName").value.trim(), user = $("#oaUser").value.trim().toLowerCase();
   if (!name || !user) return toast("Enter a name and a username.");
   if (!validUser(user)) return toast("Usernames can only use letters, numbers, dots and dashes (3-30 characters).");
-  const pw = tempPw();
   try {
-    const eng = $("#oaType").value === "eng";
-    const r = await adminApi({ action: "create", email: toLogin(user), password: pw, display_name: name, role: "user" });
-    const { error } = await S.sb.rpc(eng ? "set_eng_editor" : "set_ops_editor", { p_user: r.user_id, p_on: true });
-    if (error) throw error;
-    fetchAll(); await ask(eng ? "Engineer login added" : "Ops assistant added", `${name}: username ${user}, temporary password ${pw}. They must set their own password at first sign-in.`, "OK");
+    const type = $("#oaType").value;
+    const r = await adminApi({ action: "create", email: toLogin(user), display_name: name, role: "user" });
+    const { error: e1 } = await S.sb.rpc("set_staff_role", { p_user: r.user_id, p_role: type });
+    if (e1) throw e1;
+    if (type !== "ATCO") { const { error } = await S.sb.rpc(type === "ENG" ? "set_eng_editor" : "set_ops_editor", { p_user: r.user_id, p_on: true }); if (error) throw error; }
+    fetchAll(); await ask(`${STAFF_LABEL[type]} login added`, `${name}: username ${user}, temporary password ${r.password}. They must set their own password at first sign-in.`, "OK");
   } catch (e) { toast(e.message); }
 }
 async function removeInstructor(uid) {
