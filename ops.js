@@ -239,6 +239,7 @@ function renderFlyTv(v) {
   // Save height so everything can be shown bigger: wave remarks sit on the wave band, column headings only once.
   v.querySelectorAll(".flytvl .opsrmk").forEach(r => { const w = r.previousElementSibling; if (w && w.classList.contains("opswave")) { r.classList.add("inband"); w.insertBefore(r, w.querySelector(".opswavest")); } });
   v.querySelectorAll(".flytvl table.opsfly").forEach((t, i) => { if (i) t.querySelector("thead")?.remove(); });
+  v.querySelectorAll(".flytvl .tablewrap").forEach(w => { w.style.flexGrow = w.querySelectorAll("tbody tr").length || 1; }); // extra height shared by rows
   requestAnimationFrame(opsFlyTvFit); setTimeout(opsFlyTvFit, 1200);
 }
 // Pick the left/right split (around 2/3 for the flying lines) that lets the whole screen be shown biggest.
@@ -394,7 +395,7 @@ const opsView = {
       const ac = (s.ac || []).length ? s.ac : [opsTpl.simac("")], span = ac.length;
       ac.forEach((a, i) => {
         out += `<tr class="${i === 0 ? "first" : ""}"><td>${opsLineUsed(a) ? String(++n).padStart(2, "0") : ""}</td>${i === 0 ? `<td rowspan="${span}">${esc(s.etd)}</td><td rowspan="${span}">${esc(s.eta)}</td>` : ""}
-          <td>${esc([i === 0 ? s.callsign : "", a.n].filter(Boolean).join(" "))}</td><td>${opsX(a.crew1)}</td><td>${opsX(a.crew2 || "")}</td><td>${esc(a.mission)}</td><td>${esc(a.fms)}</td><td>${esc(a.config)}</td><td>${opsNl(a.rmks)}</td></tr>`;
+          <td>${esc([i === 0 ? s.callsign : "", a.n].filter(Boolean).join(" "))}</td><td class="nm">${opsX(a.crew1)}</td><td class="nm">${opsX(a.crew2 || "")}</td><td>${esc(a.mission)}</td><td>${esc(a.fms)}</td><td>${esc(a.config)}</td><td>${opsNl(a.rmks)}</td></tr>`;
       });
     }
     return out + `</tbody></table></div>`;
@@ -791,7 +792,17 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .opsed .tools{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .opsed .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 10px}
 .opsed label{margin-bottom:6px}
-.flytv{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:12px;align-items:start}
+.flytv{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:12px;align-items:stretch}
+/* Fill the screen: the shorter side stretches to the taller one and its rows share the extra height (Gordon: "maximise the space") */
+.flytvl,.flytvr{display:flex;flex-direction:column}
+.flytvl>.card{flex:1;display:flex;flex-direction:column;margin-bottom:0}
+.flytvl>.card>.tablewrap{flex:1 1 auto}
+.flytvl>.card>.tablewrap>table{height:100%}
+.flytvr>.card:last-child{flex:1;display:flex;flex-direction:column;margin-bottom:0}
+.flytvr>.card:last-child>table,.flytvr>.card:last-child>.tablewrap{flex:1 1 auto}
+.flytvr>.card:last-child table{height:100%}
+body.tvmode .flytv.measuring,body.tvmode .flytv.measuring *{flex-grow:0!important}
+body.tvmode .flytv.measuring table{height:auto!important}
 .flytv .card{margin:0 0 12px;padding:10px 12px}
 .flytvr{display:flex;flex-direction:column}
 body.tvmode .flytv td,body.tvmode .flytv th{padding:3px 6px!important;line-height:1.25}
@@ -806,7 +817,8 @@ body.tvmode .flytv .opswave:first-child{margin-top:0}
 body.tvmode .flytv .opsrmk.inband{margin:0;padding:1px 8px;font-size:.85rem}
 body.tvmode .flytv .opscard h2{margin:0 0 4px}
 .flytvg tr.grp td{font:700 .8rem var(--cond);letter-spacing:.04em;text-transform:uppercase;color:var(--in);padding-top:6px!important;border-bottom:1px solid var(--line)}
-.flytvr table{min-width:0!important;width:100%}.flytvr td,.flytvr th{white-space:normal!important}
+.flytvr table{min-width:0!important;width:100%}
+body.tvmode .flytvr td.nm{white-space:nowrap!important}.flytvr td,.flytvr th{white-space:normal!important}
 @media (max-aspect-ratio:1/1){.flytv{grid-template-columns:minmax(0,1fr)}}
 .opsed input.opsauto{color:var(--muted);font-style:italic}
 .opsed input.opsman{border-color:var(--out);color:var(--ink);font-weight:600}
