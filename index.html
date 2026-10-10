@@ -1274,6 +1274,7 @@ function renderAdmin(v) {
       <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button>${p.id === S.me.id ? "" : `<button class="btn small" data-act="resetpw" data-id="${esc(p.id)}" title="Reset password">Reset pw</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button>`}</span></li>`).join("");
 
   const opsAsst = S.profiles.filter(isOpsAssistant);
+  const engs = opsAsst.filter(p => p.staff_role === "ENG"), perm = opsAsst.filter(p => p.staff_role !== "ENG");
   v.innerHTML = `<div class="roster">
     <div class="card"><h2>Current trainees (${cur.length})</h2>${list ? `<ul class="rlist">${list}</ul>` : `<p class="hint">No trainees yet. Post in your course on the right.</p>`}</div>
     <div class="stack">
@@ -1283,21 +1284,23 @@ function renderAdmin(v) {
         <label style="margin-top:8px">Temporary password for new logins<input id="tmpPw" value="${esc(S.defPw || "")}" placeholder="Standard password"></label>
         <div style="display:flex;justify-content:flex-end"><button class="btn primary" id="btnAdd">Post in</button></div>
         <p class="hint">Every trainee gets a login straight away. They sign in with their username and the temporary password, then must set their own password.</p></div>
-      <div class="card"><h2>QFI (${admins.length})</h2><ul class="rlist">${alist}</ul>
-        <p class="hint" style="margin-top:10px">Add a QFI login:</p>
+      <div class="card"><h2>Perm staff (${admins.length + perm.length})</h2><ul class="rlist">
+        <li class="chead">QFI<span>${admins.length}</span></li>${alist}
+        ${["CEN", "AOSX", "ATCO"].map(t => { const g = perm.filter(p => (p.staff_role || "AOSX") === t); return g.length ? `<li class="chead">${t}<span>${g.length}</span></li>${g.map(staffRow).join("")}` : ""; }).join("")}</ul>
+        <p class="hint" style="margin-top:10px">QFI are instructors (the CO, DYCO and OCs approve travel; tick other QFI under Edit to let them edit the ops board). The AOSX edits the flying program, ops board and Go / No-Go. CEN and ATCO can view everything; tick "Can edit the ops board" under Edit if they should change it.</p>
+        <p class="hint" style="margin-top:10px">Add perm staff:</p>
+        <label>Type<select id="psType"><option value="QFI">QFI (instructor)</option><option value="CEN">CEN (contracts &amp; squadron logistics)</option><option value="AOSX">AOSX (ops assistant)</option><option value="ATCO">ATCO (air traffic controller)</option></select></label>
         <label>Name (as on the flying lines)<input id="iName" maxlength="60" placeholder="e.g. LEE G"></label>
-        <label>Callsign (leave blank if none)<input id="iCall" maxlength="30" placeholder="e.g. Brut"></label>
-        <label>QFI CAT<select id="iCat"><option value="">-</option><option>A</option><option>B1</option><option>B2</option><option>C</option></select></label>
+        <div id="psQfi"><label>Callsign (leave blank if none)<input id="iCall" maxlength="30" placeholder="e.g. Brut"></label>
+        <label>QFI CAT<select id="iCat"><option value="">-</option><option>A</option><option>B1</option><option>B2</option><option>C</option></select></label></div>
         <label>Username<input id="iEmail" autocapitalize="none" placeholder="e.g. tanjh"></label>
-        <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddAdmin">Add QFI</button></div></div>
-      <div class="card"><h2>Staff logins: AOSX, ATCO, CEN &amp; engineers (${opsAsst.length})</h2>
-        ${opsAsst.length ? `<ul class="rlist">${opsAsst.map(p => `<li><span><strong>${esc(pLabel(p))}</strong>${p.staff_role ? ` <span class="tag">${esc(STAFF_LABEL[p.staff_role] || p.staff_role)}</span>` : ""}${p.ops_editor ? ` <span class="tag open">Ops</span>` : ""}${p.eng_editor ? ` <span class="tag open">Aircraft</span>` : ""}${p.ops_editor || p.eng_editor ? "" : ` <span class="tag nd">Can't edit</span>`}${p.no_geo ? ` <span class="tag nd">No location check</span>` : ""}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.must_change_password ? " (temporary password)" : ""}</span></span>
-          <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button><button class="btn small" data-act="resetpw" data-id="${esc(p.id)}">Reset password</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button></span></li>`).join("")}</ul>` : ""}
-        <p class="hint" style="margin-top:6px">Logins without QFI admin rights. The AOSX edits the flying program, ops board and Go / No-Go; ATCO and CEN can view everything (tick "Can edit the ops board" under Edit if they should change it); an engineer edits aircraft status only. The CO, DYCO and OCs can always edit; tick other QFIs under Edit.</p>
-        <label>Type<select id="oaType"><option value="AOSX">AOSX (ops assistant)</option><option value="ATCO">ATCO (air traffic controller)</option><option value="CEN">CEN (contracts &amp; squadron logistics)</option><option value="ENG">Engineer (aircraft status)</option></select></label>
-        <label>Name<input id="oaName" maxlength="60" placeholder="e.g. TAN M"></label>
-        <label>Username<input id="oaUser" autocapitalize="none" placeholder="e.g. tanm"></label>
-        <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddOps">Add login</button></div></div>
+        <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddAdmin">Add perm staff</button></div></div>
+      <div class="card"><h2>Engineers (${engs.length})</h2>
+        ${engs.length ? `<ul class="rlist">${engs.map(staffRow).join("")}</ul>` : ""}
+        <p class="hint" style="margin-top:6px">Engineers edit aircraft status only.</p>
+        <label>Name<input id="oaName" maxlength="60" placeholder="e.g. ENG TAN"></label>
+        <label>Username<input id="oaUser" autocapitalize="none" placeholder="e.g. engtan"></label>
+        <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddOps">Add engineer</button></div></div>
       <div class="card"><h2>Telegram</h2>
         ${isOC() ? `<p class="hint">Get travel requests in your own Telegram and approve or reject them there. <span id="tgLinkState"></span></p>
         <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn primary" data-act="tglink">Link Telegram</button></div>` : ""}
@@ -1307,10 +1310,11 @@ function renderAdmin(v) {
         ${glist ? `<ul class="rlist">${glist}</ul><p class="hint">Their past movements stay in the log.</p>` : `<p class="hint">Trainees you post out appear here. Their login is disabled and their history is kept.</p>`}</div>
     </div></div>`;
   $("#btnAdd").onclick = postIn;
-  $("#btnAddAdmin").onclick = addInstructor;
+  $("#btnAddAdmin").onclick = () => $("#psType").value === "QFI" ? addInstructor() : addStaff($("#psType").value, $("#iName"), $("#iEmail"));
   // Fill in the standard temporary password (fetched from the server so it isn't written in this public page).
   if (!S.defPw) adminApi({ action: "default_password" }).then(r => { S.defPw = r && r.password; const i = $("#tmpPw"); if (i && !i.value && S.defPw) i.value = S.defPw; }).catch(() => {});
-  $("#btnAddOps").onclick = addOpsAssistant;
+  $("#btnAddOps").onclick = () => addStaff("ENG", $("#oaName"), $("#oaUser"));
+  $("#psType").onchange = () => { $("#psQfi").hidden = $("#psType").value !== "QFI"; };
   if (isOC()) S.sb.rpc("tg_link_status").then(({ data }) => { const s = $("#tgLinkState"); if (s) s.textContent = data ? "Linked." : "Not linked yet."; });
 }
 // OC A / OC B can link their Telegram to approve requests from the bot.
@@ -1388,12 +1392,16 @@ async function addInstructor() {
 // Ops assistant: a non-admin, non-trainee login with ops_editor on.
 const isOpsAssistant = p => !!p && p.role !== "admin" && !p.trainee_id;
 const STAFF_LABEL = { AOSX: "AOSX", ATCO: "ATCO", CEN: "CEN", ENG: "Engineer" };
-async function addOpsAssistant() {
-  const name = $("#oaName").value.trim(), user = $("#oaUser").value.trim().toLowerCase();
+// A staff row (CEN / AOSX / ATCO / engineer) in the same two-line style as the QFI rows.
+const staffRow = p => `<li class="qrow">
+      <span class="qname"><strong>${esc(pLabel(p))}</strong><span class="qtags">${p.ops_editor ? `<span class="tag open">Ops</span>` : ""}${p.eng_editor ? `<span class="tag open">Aircraft</span>` : ""}${p.ops_editor || p.eng_editor ? "" : `<span class="tag nd">View only</span>`}</span></span>
+      <span class="hint qlogin">Login: ${esc(showLogin(p.email))}${p.must_change_password ? " (temp pw)" : ""}${p.no_geo ? " · no location check" : ""}</span>
+      <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button><button class="btn small" data-act="resetpw" data-id="${esc(p.id)}" title="Reset password">Reset pw</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button></span></li>`;
+async function addStaff(type, nameEl, userEl) {
+  const name = nameEl.value.trim(), user = userEl.value.trim().toLowerCase();
   if (!name || !user) return toast("Enter a name and a username.");
   if (!validUser(user)) return toast("Usernames can only use letters, numbers, dots and dashes (3-30 characters).");
   try {
-    const type = $("#oaType").value;
     const r = await adminApi({ action: "create", email: toLogin(user), display_name: name, role: "user" });
     const { error: e1 } = await S.sb.rpc("set_staff_role", { p_user: r.user_id, p_role: type });
     if (e1) throw e1;
