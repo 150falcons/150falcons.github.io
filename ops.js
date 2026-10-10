@@ -36,7 +36,7 @@ const opsBlank = {
   ground: () => ({ groups: ["GROUND PROGRAM", "QFI GROUND PROGRAM"].map(opsTpl.group) }),
   airfield: () => ({ rows: [], sunset: "" }),
   notes: () => ({ currencies: [], aircraft: [] }),
-  duties: () => ({ groups: [opsTpl.dgroup("QFI", true), opsTpl.dgroup("PGF"), opsTpl.dgroup("TRAINEES"), opsTpl.dgroup("ATCO / AOSX")] }),
+  duties: () => ({ groups: [opsTpl.dgroup("QFI", true), opsTpl.dgroup("TRAINEES"), opsTpl.dgroup("ATCO / AOSX")] }),
 };
 const OPS_HEADER_FIELDS = [
   ["inTime", "In time", 3], ["lateIn", "Late in", 2], ["wxBrief", "WX/NTM brief"], ["modb", "MODB"], ["nightBrief", "Night ops brief"],
@@ -119,8 +119,10 @@ function opsWindows(fl) {
     return { s, e: e ?? s };
   });
 }
-function opsSimWave(sim, wins) {
-  const t = opsMin(sim.etd); if (t == null) return -1;
+const opsSimWave = (sim, wins) => opsTimeWave(sim.etd, wins);
+// The wave whose time window (brief to last landing) a time falls in, or the nearest one.
+function opsTimeWave(time, wins) {
+  const t = opsMin(time); if (t == null) return -1;
   let best = -1, bd = Infinity;
   wins.forEach((w, i) => {
     if (w.s == null) return;
@@ -129,8 +131,22 @@ function opsSimWave(sim, wins) {
   });
   return best;
 }
-// What the programme already says a person does in each wave: # (flying), (#) ops add, SXO, OPS O, SIMS.
-function opsAuto(name, fl, sim) {
+// Short duty-table label for a ground event (as the squadron writes it on the duty sheet).
+const OPS_SHORT = [[/\bTDM\b|MEETING|\bMTG\b/i, "MTG"], [/IN[- ]?BRIEF/i, "IN BRIEF"], [/\bPUBS\b/i, "PUBS"], [/INDUCTION/i, "IND"], [/\bLSS\b/i, "LSS"], [/\bACP\b/i, "ACP"]];
+const opsShortEvent = ev => { const e = String(ev || "").trim(); const m = OPS_SHORT.find(([re]) => re.test(e)); return m ? m[1] : e.toUpperCase(); };
+// Is this person in a ground event's personnel? Names, or a course ("203 FWC") meaning everyone on that course.
+function opsGroundHas(personnel, n) {
+  n = opsNorm(n); if (!n) return false;
+  // whole entries only: "LIM J, TAN B" must not match "J TAN"
+  const parts = String(personnel || "").split(/[,;&\/]|\bAND\b/i).map(p => opsNorm(p.replace(/\(.*?\)/g, ""))).filter(Boolean);
+  if (parts.includes(n)) return true;
+  const t = (typeof active === "function" ? active() : []).find(x => opsNorm(x.name) === n);
+  return !!(t && t.course && parts.includes(opsNorm(t.course)));
+}
+// What the programme already says a person does in each wave: # (flying), (#) ops add, SXO, OPS O, SIMS,
+// and ground events from the ground programme (placed in the wave whose time window they fall in; course
+// ground programmes show as ACAD).
+function opsAuto(name, fl, sim, ground) {
   const waves = fl.waves || [], out = waves.map(() => []), n = opsNorm(name);
   if (!n) return out;
   waves.forEach((w, i) => {
@@ -144,9 +160,17 @@ function opsAuto(name, fl, sim) {
     const i = opsSimWave(s, wins);
     if (i >= 0 && !out[i].includes("SIMS")) out[i].push("SIMS");
   }
+  for (const g of (ground || opsGet("ground")).groups || []) {
+    const acad = /\b(FWC|WSO|COURSE|PGF)\b/i.test(g.name || "");
+    for (const r of g.rows || []) {
+      if (!opsGroundHas(r.personnel, n)) continue;
+      const i = opsTimeWave(r.time, wins), lab = acad ? "ACAD" : opsShortEvent(r.event);
+      if (i >= 0 && lab && !out[i].includes(lab)) out[i].push(lab);
+    }
+  }
   return out;
 }
-const opsCell = (auto, manual) => [...auto, manual].filter(Boolean).join(" / ");
+const opsCell = (auto, manual) => [...new Set([...auto, ...(manual ? String(manual).split(/\s*\/\s*/) : [])].map(s => s.trim().toUpperCase()).filter(Boolean))].join(" / ");
 function opsPrevOut(groupName, name) {
   const g = ((OPS.prevDuties || {}).groups || []).find(g => opsNorm(g.name) === opsNorm(groupName));
   const r = g && (g.rows || []).find(r => opsNorm(r.name) === opsNorm(name));
@@ -258,7 +282,7 @@ function opsMyItems(get) {
     items.push(`<li><b>SIM</b> ${esc(s.etd)}–${esc(s.eta)}Z · ${esc([s.callsign, a.n].filter(Boolean).join(" "))} · ${esc(a.mission)}${mate ? " with " + esc(mate) : ""}</li>`);
   }
   for (const g of opsGet("ground").groups || []) for (const r of g.rows || [])
-    if (names.some(n => opsHas(r.personnel, n))) items.push(`<li><b>${esc(r.time)}</b> ${esc(r.event)}${r.venue ? " · " + esc(r.venue) : ""}</li>`);
+    if (names.some(n => opsGroundHas(r.personnel, n))) items.push(`<li><b>${esc(r.time)}</b> ${esc(r.event)}${r.venue ? " · " + esc(r.venue) : ""}</li>`);
   (fl.waves || []).forEach(w => {
     if (names.some(n => opsHas(w.sxo, n))) items.push(`<li><b>${esc(w.name)}</b> SXO</li>`);
     if (names.some(n => opsHas(w.opsO, n))) items.push(`<li><b>${esc(w.name)}</b> OPS O</li>`);
@@ -341,7 +365,7 @@ const opsView = {
     const gs = (d.groups || []).filter(x => (x.rows || []).length);
     // Compact tables side by side so everyone fits on one screen; tokens coloured so flying / SIMS / SXO stand out.
     const tok = t => { const c = t === "#" ? "fly" : t === "(#)" ? "add" : t === "SIMS" ? "sim" : /^(SXO|OPS O)$/.test(t) ? "duty" : "txt"; return `<span class="dt dt-${c}">${esc(t)}</span>`; };
-    const cell = (auto, manual) => [...auto, ...(manual ? String(manual).split(/\s*\/\s*/) : [])].filter(Boolean).map(tok).join("");
+    const cell = (auto, manual) => [...new Set([...auto, ...(manual ? String(manual).split(/\s*\/\s*/) : [])].map(s => s.trim().toUpperCase()).filter(Boolean))].map(tok).join("");
     const short = w => esc(String(w.name || "").replace(/^NIGHT WAVE\s*/i, "N").replace(/^WAVE\s*/i, "W"));
     return `<div class="opsduty">${gs.map(g => `<div class="opsdutyg${g.hours ? " hrs" : ""}"><h3 class="opssub">${esc(g.name)} <span class="hint">${g.rows.length}</span></h3><div class="tablewrap"><table class="opst opsdt"><thead><tr><th></th><th>Name</th>${waves.map(w => `<th title="${esc(w.name)}">${short(w)}</th>`).join("")}${g.hours ? `<th title="Previous day's out time">Prev</th><th>In</th><th>Rest</th><th>Out</th><th>Duty</th>` : ""}</tr></thead><tbody>${g.rows.map((r, i) => {
       const auto = opsAuto(r.name, fl, sim);
@@ -351,7 +375,7 @@ const opsView = {
         hrs = `<td class="t">${esc(prev)}</td><td class="t">${esc(r.inTime)}</td><td class="t">${pi != null && ii != null ? opsHM(ii + 1440 - pi) : ""}</td><td class="t">${esc(r.outTime)}</td><td class="t"><b>${ii != null && oo != null ? opsHM(opsSpan(ii, oo)) : ""}</b></td>`;
       }
       return `<tr><td class="i">${i + 1}</td><td class="nm">${opsX(r.name)}</td>${waves.map((w, j) => `<td class="c">${cell(auto[j] || [], (r.cells || [])[j])}</td>`).join("")}${hrs}</tr>`;
-    }).join("")}</tbody></table></div></div>`).join("")}</div>` + (gs.length ? `<p class="hint"><span class="dt dt-fly">#</span> flying · <span class="dt dt-add">(#)</span> ops add · <span class="dt dt-sim">SIMS</span> · <span class="dt dt-duty">SXO / OPS O</span> fill in automatically from the programme. W1, W2… = waves.</p>` : "");
+    }).join("")}</tbody></table></div></div>`).join("")}</div>` + (gs.length ? `<p class="hint"><span class="dt dt-fly">#</span> flying · <span class="dt dt-add">(#)</span> ops add · <span class="dt dt-sim">SIMS</span> · <span class="dt dt-duty">SXO / OPS O</span> and ground events (MTG, IN BRIEF, ACAD…) fill in automatically from the programme. W1, W2… = waves.</p>` : "");
   },
 };
 
@@ -431,7 +455,7 @@ const opsEd = {
       ${free ? `<div class="tools">${oB("add", `groups.${gi}.rows`, "", "+ Person", "drow")}${open && !g.extra ? oB("roster", `groups.${gi}.rows`, "", "+ All trainees on roster") : ""}</div>` : ""}</div>`;
     }).join("")
       + (open ? oB("add", "groups", "", "+ Group", "dgroup") : "")
-      + `<p class="hint">Only type what isn't in the programme (LATE IN, ACAD, PARADE+RUN…). #, SIMS, SXO and OPS O are added automatically (shown under each box). In / Out as 0530.</p>
+      + `<p class="hint">Only type what isn't in the programme (LATE IN, ACAD, PARADE+RUN…). #, SIMS, SXO, OPS O and ground-programme events (MTG, IN BRIEF, ACAD…) are added automatically (shown under each box). In / Out as 0530.</p>
       <p class="hint">The names are the squadron's standing list and carry over to each new day. <a href="#" data-ops="names">${open ? "Done changing names" : "Change standing names"}</a> (when someone is posted in or out).</p>`;
   },
 };
