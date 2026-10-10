@@ -496,13 +496,13 @@ function renderGoNoGo(v) {
   // status: one compact block per group, side by side; big groups spread over columns
   const crew = OB.crew.filter(c => c.active), tg = obTodayGet();
   const goCount = crew.filter(c => !obOutstanding(c.id).length).length;
-  const soonNg = crew.filter(c => obOutstanding(c.id).length && obSoon(c.name, tg)).length;
-  html += obCard("ob-go", "Aircrew status", `${soonNg ? `<b class="obsoonhd">${soonNg} NO-GO on the programme within 3 h</b> · ` : ""}${goCount} of ${crew.length} GO${gm.miac ? ` · MIAC 4 effective till ${esc(fmtDay(gm.miac))}` : ""}`,
+  const watch = obWatchWaves(tg), soonNg = crew.filter(c => obOutstanding(c.id).length && obSoon(c.name, tg, watch)).length;
+  html += obCard("ob-go", "Aircrew status", `${soonNg ? `<b class="obsoonhd">${soonNg} NO-GO in ${esc(watch.map(x => x.name).join(" / "))}</b> · ` : ""}${goCount} of ${crew.length} GO${gm.miac ? ` · MIAC 4 effective till ${esc(fmtDay(gm.miac))}` : ""}`,
     crew.length ? `<div class="obgo">${obCrewGroups(crew).map(([g, list]) => {
       const ng = list.filter(c => obOutstanding(c.id).length).length;
       return `<div class="obgg" style="--r:${Math.ceil(list.length / Math.ceil(list.length / 8))}"><h3 class="opssub">${esc(obGrpLabel(g))} <span class="hint">${ng ? `${ng} NO-GO` : "all GO"}</span></h3><div class="obgl">${list.map(c => {
         const out = obOutstanding(c.id);
-        const so = out.length && obSoon(c.name, tg);
+        const so = out.length && obSoon(c.name, tg, watch);
         return `<div class="obgp${out.length ? " ng" : ""}${so ? " soon" : ""}"><span class="n">${opsX(c.name)}</span>${so ? obSoonTag(so) : ""}${out.length ? `<span class="hint">${esc(obCodes(out))}</span>` : ""}${obPill(out.length ? "r" : "g", out.length ? "NO-GO" : "GO")}</div>`;
       }).join("")}</div></div>`;
     }).join("")}</div>` : `<p class="hint">${can ? "Add the aircrew under Crew list below." : "No crew list yet."}</p>`);
@@ -540,33 +540,39 @@ function obTodayGet() {
   }
   return null;
 }
-// A person's first programme item today that is under way or starts within the next 3 hours (times in Z):
-// flights (from brief), sims, ground events (taken as 1 h), SXO / OPS O (the wave's window). Returns { t, what } or null.
-const OB_SOON_MIN = 180;
-function obSoon(name, get) {
-  if (!get) return null;
-  const n = opsNorm(name); if (!n) return null;
-  const d = new Date(), now = d.getUTCHours() * 60 + d.getUTCMinutes(), list = [];
-  const add = (s, e, what) => { if (s == null) return; e = e ?? s + 60; if (e < s) e += 1440; if (s <= now + OB_SOON_MIN && e >= now) list.push({ t: s, what }); };
-  const z4 = m => String(Math.floor(m / 60) % 24).padStart(2, "0") + String(m % 60).padStart(2, "0") + "Z";
+// The waves the ops officer checks (Gordon, 10 Oct): the wave(s) under way now and the next wave to start.
+// Each wave runs from its earliest brief / step / ETD to its last ETA (Z). Returns [{ name, s, e }] or [] when today's flying is done.
+function obWatchWaves(get) {
+  if (!get) return [];
   const fl = opsNameWaves(JSON.parse(JSON.stringify(get("flying") || {}))), wins = opsWindows(fl);
-  (fl.waves || []).forEach((w, i) => {
-    for (const f of w.flights || []) if ((f.ac || []).some(a => opsCrewHas(a, n))) {
+  const d = new Date(), now = d.getUTCHours() * 60 + d.getUTCMinutes();
+  const ws = (fl.waves || []).map((w, i) => ({ w, i, s: wins[i].s, e: wins[i].e })).filter(x => x.s != null);
+  const on = ws.filter(x => x.s <= now && now <= x.e), next = ws.filter(x => x.s > now).sort((a, b) => a.s - b.s)[0];
+  return [...on, ...(next ? [next] : [])].map(x => ({ ...x, name: x.w.name }));
+}
+// Is this person in one of the watched waves (flying, SXO / OPS O, or a sim in that wave's time window)? Returns { t, at, what } or null.
+function obSoon(name, get, watch) {
+  watch = watch || obWatchWaves(get);
+  const n = opsNorm(name); if (!n || !watch.length) return null;
+  const z4 = m => String(Math.floor(m / 60) % 24).padStart(2, "0") + String(m % 60).padStart(2, "0") + "Z";
+  const sim = (get("sim") || {}).rows || [], list = [];
+  for (const x of watch) {
+    for (const f of x.w.flights || []) if ((f.ac || []).some(a => opsCrewHas(a, n))) {
       const st = [f.brief, f.step, f.etd].map(opsMin).filter(m => m != null);
-      add(st.length ? Math.min(...st) : null, opsMin(f.eta), `${f.callsign || "Flight"} ${f.etd || ""}`.trim());
+      list.push({ t: st.length ? Math.min(...st) : x.s, what: `${x.name} · ${f.callsign || ""} ${f.etd || ""}`.trim() });
     }
-    if (opsHas(w.sxo, n)) add(wins[i].s, wins[i].e, "SXO " + w.name);
-    if (opsHas(w.opsO, n)) add(wins[i].s, wins[i].e, "OPS O " + w.name);
-  });
-  for (const r of (get("sim") || {}).rows || []) if ((r.ac || []).some(a => opsCrewHas(a, n))) add(opsMin(r.etd), opsMin(r.eta), "SIM " + (r.etd || ""));
-  for (const g of (get("ground") || {}).groups || []) for (const r of g.rows || []) if (opsGroundHas(r.personnel, n)) add(opsMin(r.time), null, opsShortEvent(r.event));
+    if (opsHas(x.w.sxo, n)) list.push({ t: x.s, what: `${x.name} · SXO` });
+    if (opsHas(x.w.opsO, n)) list.push({ t: x.s, what: `${x.name} · OPS O` });
+    for (const r of sim) { const t = opsMin(r.etd); if (t != null && t >= x.s && t <= x.e && (r.ac || []).some(a => opsCrewHas(a, n))) list.push({ t, what: `${x.name} · SIM ${r.etd}` }); }
+  }
   if (!list.length) return null;
   list.sort((a, b) => a.t - b.t);
-  return { t: list[0].t, what: list[0].what, at: z4(list[0].t) };
+  return { ...list[0], at: z4(list[0].t) };
 }
-// The 3-hour window moves with the clock: refresh the TV and the Go / No-Go page every 5 minutes.
+const obWatchLabel = watch => watch.map(x => `${x.name.replace("WAVE", "W").replace("NIGHT W", "NW")}`).join(" + ");
+// The watched waves move with the clock: refresh the TV and the Go / No-Go page every 5 minutes.
 setInterval(() => { if ((S.tab === "tv" || S.tab === "gonogo") && !/^(INPUT|SELECT|TEXTAREA)$/.test((document.activeElement || {}).tagName) && !document.querySelector("dialog[open]")) S.tab === "tv" ? render() : obRerender(); }, 5 * 60 * 1000);
-const obSoonTag = so => so ? `<span class="obsoon" title="${esc(so.what)}">⏱ ${esc(so.at)}</span>` : "";
+const obSoonTag = so => so ? `<span class="obsoon" title="${esc(so.what)}">${esc(so.what.split(" · ")[0].replace("NIGHT WAVE ", "NW").replace("WAVE ", "W"))} ⏱ ${esc(so.at)}</span>` : "";
 const obGrpLabel = g => g === "ST" ? "ST TOW" : g;
 // [[group, crew…]] in the standard group order (QFI, ST, PGF, TRAINEES, …), then any other groups.
 function obCrewGroups(crew) {
@@ -701,15 +707,16 @@ function renderTv(v) {
   obTvColumns(v);
   requestAnimationFrame(obTvFit); setTimeout(obTvFit, 1200);
 }
-// TV aircrew status: NO-GO people on the programme within 3 h first and loud (with their time); other NO-GO toned down.
+// TV aircrew status: NO-GO people in the wave under way / the next wave first and loud (with their time); other NO-GO toned down.
 function obTvGoCard(crew, nogo) {
   if (!nogo.length) return obCard("ob-tvgo", "Aircrew status", `${crew.length} of ${crew.length} GO`, `<p>${obPill("g", "ALL GO")}</p>`);
-  const tg = obTodayGet(), soon = [], later = [];
-  for (const c of nogo) { const so = obSoon(c.name, tg); (so ? soon : later).push([c, so]); }
+  const tg = obTodayGet(), watch = obWatchWaves(tg), soon = [], later = [];
+  for (const c of nogo) { const so = obSoon(c.name, tg, watch); (so ? soon : later).push([c, so]); }
+  const wl = watch.map(x => x.name).join(" / ");
   soon.sort((a, b) => a[1].t - b[1].t);
   const chip = ([c, so]) => `<span class="${so ? "obtvsoon" : "obtvlater"}">${obPill(so ? "r" : "", c.name)}${so ? ` <b>${esc(so.at)}</b>` : ""} <span class="hint">${esc(obCodes(obOutstanding(c.id)))}</span></span>`;
   return obCard("ob-tvgo", "Aircrew status", `${crew.length - nogo.length} of ${crew.length} GO`,
-    `<div class="obtvgo">${soon.length ? `<div class="obtvhd soon">NO-GO · on the programme within 3 h</div>${soon.map(chip).join("")}` : `<div class="obtvhd">${obPill("g", "No NO-GO crew on the programme in the next 3 h")}</div>`}
+    `<div class="obtvgo">${soon.length ? `<div class="obtvhd soon">NO-GO · ${esc(wl)}</div>${soon.map(chip).join("")}` : `<div class="obtvhd">${obPill(watch.length ? "g" : "", watch.length ? `${wl}: all crew GO` : "No more waves today")}</div>`}
       ${later.length ? `<div class="obtvhd">Other NO-GO (${later.length})</div>${later.map(chip).join("")}` : ""}</div>`);
 }
 // Spread the TV cards over balanced columns: each card goes to the currently shortest column.
