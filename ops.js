@@ -232,6 +232,7 @@ function renderFlyTv(v) {
   v.innerHTML = `<div class="tvstage"><div class="tvbar"><b>150 Falcon Det · Flying program</b><span>${esc(opsLongDay(OPS.day))}</span>
       <span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 19).replace(/:/g, ""))}Z</small></span>
       <span class="grow"></span><span>${st.sorties} sorties · ${st.hours} h · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>
+      <label class="tvspd">Auto-scroll <select data-flyspd aria-label="Auto-scroll speed">${Object.keys(OPS_TV_SPEEDS).map(k => `<option value="${k}" ${k === opsTvSpeed() ? "selected" : ""}>${k[0].toUpperCase() + k.slice(1)}</option>`).join("")}</select></label>
       <button class="btn small" data-tab="ops">Exit TV</button></div>
     ${OPS_ORDER.some(opsData) ? `<div class="flytv"><div class="flytvl">${pane("fly", "fly", "", "")}</div>
       <div class="flytvr">${pane("sim", "sim", OPS_TITLES.sim, opsView.sim(opsGet("sim")))}${pane("gnd", "gnd", OPS_TITLES.ground, opsFlyTvGround(opsGet("ground")))}</div></div>`
@@ -253,15 +254,25 @@ function opsFlyTvLeft(all) {
 // The page itself never scrolls: the flying, simulator and ground windows each scroll on their own when they hold more
 // than fits, panning slowly down and back up. Scrolling one by hand (wheel / touch / click) pauses it for 20 s; a key pauses all.
 const TVPANE = { st: {}, raf: 0, last: 0 };
+// Auto-scroll speed picked on the TV bar (Off stops it); remembered on that screen (Gordon, 10 Oct). Down speed in px per ms, up is 3× faster.
+const OPS_TV_SPEEDS = { off: 0, slow: 0.015, normal: 0.03, fast: 0.06 };
+const opsTvSpeed = () => { try { const v = localStorage.getItem("flyTvSpeed"); return v in OPS_TV_SPEEDS ? v : "normal"; } catch { return "normal"; } };
+document.addEventListener("change", e => {
+  if (!e.target.matches || !e.target.matches("[data-flyspd]")) return;
+  try { localStorage.setItem("flyTvSpeed", e.target.value); } catch {}
+  for (const p of Object.values(TVPANE.st)) { p.pos = null; p.user = 0; p.pause = 0; }
+  e.target.blur();
+});
 function opsPaneTick(t) {
   if (S.tab !== "flytv") { TVPANE.raf = 0; return; }
   const dt = Math.min(100, t - (TVPANE.last || t)); TVPANE.last = t;
   document.querySelectorAll(".flytv .tvpane").forEach(el => {
     const p = TVPANE.st[el.dataset.pane] || (TVPANE.st[el.dataset.pane] = { dir: 1, pos: null, pause: t + 6000, user: 0 });
     const max = el.scrollHeight - el.clientHeight;
-    if (max <= 2 || t < p.pause || Date.now() < p.user) return;
+    const v = OPS_TV_SPEEDS[opsTvSpeed()];
+    if (!v || max <= 2 || t < p.pause || Date.now() < p.user) return;
     if (p.pos == null) p.pos = el.scrollTop;
-    p.pos += p.dir * dt * (p.dir > 0 ? 0.03 : 0.1);
+    p.pos += p.dir * dt * (p.dir > 0 ? v : v * 3);
     if (p.pos >= max) { p.pos = max; p.dir = -1; p.pause = t + 8000; }
     if (p.pos <= 0) { p.pos = 0; p.dir = 1; p.pause = t + 10000; }
     el.scrollTop = p.pos;
@@ -272,7 +283,7 @@ for (const ev of ["wheel", "touchstart", "mousedown"]) addEventListener(ev, e =>
   const el = S.tab === "flytv" && e.target.closest && e.target.closest(".tvpane"); if (!el) return;
   const p = TVPANE.st[el.dataset.pane]; if (p) { p.user = Date.now() + 20000; p.pos = null; }
 }, { passive: true });
-addEventListener("keydown", () => { if (S.tab === "flytv") for (const p of Object.values(TVPANE.st)) { p.user = Date.now() + 20000; p.pos = null; } });
+addEventListener("keydown", e => { if (S.tab === "flytv" && !(e.target.matches && e.target.matches("select"))) for (const p of Object.values(TVPANE.st)) { p.user = Date.now() + 20000; p.pos = null; } });
 // TV shows about 3 waves (Gordon, 10 Oct): empty waves are left out; from the first wave not yet finished, 3 waves
 // (or the last 3 once the day is nearly over). Line numbers carry on from the hidden earlier waves.
 const OPS_TV_WAVES = 3;
@@ -841,6 +852,8 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .opsed .tools{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .opsed .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 10px}
 .opsed label{margin-bottom:6px}
+.tvspd{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:.85rem;color:var(--muted)}
+.tvspd select{width:auto;margin:0;padding:3px 6px;font-size:.85rem}
 .flytv{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(0,1fr);gap:12px}
 /* Fixed windows (Gordon, 10 Oct): the page doesn't scroll; each window scrolls inside itself. */
 .flytvl,.flytvr{display:flex;flex-direction:column;min-height:0}
