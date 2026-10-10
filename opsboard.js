@@ -322,19 +322,21 @@ function obBoardView(tv, extra) {
         <div>Parachute ${q ? `<select class="obsel obst-${obParaS(b.equip.parachute) || "n"}" data-obq="eqv" data-f="parachute" aria-label="Parachute">${[...new Set(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", String(b.equip.parachute ?? "")])].filter(x => x !== "").map(o => `<option ${o === String(b.equip.parachute) ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>` : obPill(obParaS(b.equip.parachute), b.equip.parachute ?? "-")}</div>
         <div>SAMAR ${q ? `<input class="obval obst-${obSamarS(b.equip.samar) || "n"}" style="width:64px" data-obq="eqv" data-f="samar" value="${esc(b.equip.samar || "")}" aria-label="SAMAR">` : obPill(obSamarS(b.equip.samar), b.equip.samar || "-")}</div></div>
         <p class="hint" style="margin:6px 0 0">Canopy and APU are worked out from the Cazaux wind and temperature.${q ? " Tap one to mark it Not available; Refresh METARs puts them back to auto." : ""}</p></section>
-      <section class="card opscard obwide"><h2>Restricted areas</h2>${obAreasView(b, q, z)}</section>
+      <section class="card opscard obwide"><h2>Restricted areas</h2>${obAreasView(b, q, z, tv)}</section>
       ${tv ? "" : obCallsignsCard()}${extra || ""}
     </div>`;
 }
-function obAreasView(b, q, z) {
+function obAreasView(b, q, z, tv) {
   const r = b.r115 || {}, czx = b.czx || {};
   const f = (k, w) => q ? `<input class="obval" style="width:${w}" data-obq="r115" data-f="${k}" value="${esc(r[k] || "")}" aria-label="R115 ${k}">` : esc(r[k] || "-");
   const wx = q ? `<select class="obcs ${obCsCls(r.wx)}" data-obq="r115" data-f="wx" aria-label="R115 WX colour state">${["", ...OB_FASF].map(v => `<option value="${v}" ${v === (r.wx || "") ? "selected" : ""}>${v || "-"}</option>`).join("")}</select>`
     : `<span class="obcs ${obCsCls(r.wx)}">${esc(r.wx || "-")}</span>`;
   const restr = q ? `<input class="obval" style="width:100%;min-width:140px" data-obq="r115" data-f="restr" value="${esc(r.restr || "")}" placeholder="e.g. G1, G3, RADAR" aria-label="R115 restrictions">` : esc(r.restr || "-");
   const areas = (b.areas || []).map((x, j) => `<div class="obarea"><span>${esc(x.item)}</span>${obValCell(q, "aval", `data-j="${j}"`, x.val, obValS(x.val, x.s), x.s)}</div>`).join("");
-  return `<div class="tablewrap"><table class="opst obt"><thead><tr><th>Item</th><th>TGT</th><th>WX</th><th>Before</th><th>After</th><th>Restrictions</th></tr></thead><tbody>
-      <tr><td><b>R115 (CAPTIEUX)</b> <button class="btn small" data-ob="chart" data-k="captieux">Map</button></td><td>${f("tgt", "70px")}</td><td>${wx}</td><td>${f("before", "70px")}</td><td>${f("after", "70px")}</td><td>${restr}</td></tr></tbody></table></div>
+  const r115 = tv ? `<div class="obr115"><b>R115 (CAPTIEUX)</b><span>TGT <b>${esc(r.tgt || "-")}</b></span><span>WX ${wx}</span><span>Before <b>${esc(r.before || "-")}</b></span><span>After <b>${esc(r.after || "-")}</b></span><span>Restr <b>${esc(r.restr || "-")}</b></span></div>`
+    : `<div class="tablewrap"><table class="opst obt"><thead><tr><th>Item</th><th>TGT</th><th>WX</th><th>Before</th><th>After</th><th>Restrictions</th></tr></thead><tbody>
+      <tr><td><b>R115 (CAPTIEUX)</b> <button class="btn small" data-ob="chart" data-k="captieux">Map</button></td><td>${f("tgt", "70px")}</td><td>${wx}</td><td>${f("before", "70px")}</td><td>${f("after", "70px")}</td><td>${restr}</td></tr></tbody></table></div>`;
+  return `${r115}
     <div class="obareas">${areas}
       <div class="obarea"><span>Immersion suit</span>${z.immersion ? obPill(z.immersion === "YES" ? "r" : "g", z.immersion) : `<span class="hint">-</span>`}</div>
       <div class="obarea"><span>Firing sch</span>${obValCell(q, "czxv", `data-f="firing"`, czx.firing, obValS(czx.firing, czx.firingS), czx.firingS)}</div>
@@ -570,7 +572,7 @@ function renderTv(v) {
       obCard("ob-tvgo", "Aircrew status", `${crew.length - nogo.length} of ${crew.length} GO`, nogo.length ? `<div class="obtvgo">${nogo.map(c => `<span>${obPill("r", c.name)} <span class="hint">${esc(obCodes(obOutstanding(c.id)))}</span></span>`).join("")}</div>` : `<p>${obPill("g", "ALL GO")}</p>`))}`;
   v.innerHTML = `<div class="tvstage">${v.innerHTML}</div>`;
   obTvColumns(v);
-  requestAnimationFrame(obTvFit);
+  requestAnimationFrame(obTvFit); setTimeout(obTvFit, 1200);
 }
 // Spread the TV cards over balanced columns: each card goes to the currently shortest column.
 function obTvColumns(v) {
@@ -579,19 +581,28 @@ function obTvColumns(v) {
   const wrap = document.createElement("div"); wrap.className = "tvcols"; wrap.style.gridTemplateColumns = `repeat(${n},minmax(0,1fr))`;
   const cols = Array.from({ length: n }, () => { const c = document.createElement("div"); c.className = "tvcol"; wrap.appendChild(c); return c; });
   const cards = [...grid.children].filter(c => !c.classList.contains("obafcard"));
-  grid.appendChild(wrap);
-  for (const c of cards) cols.reduce((a, b) => (b.offsetHeight < a.offsetHeight ? b : a)).appendChild(c);
+  wrap.classList.add("measuring"); grid.appendChild(wrap);
+  const used = col => [...col.children].reduce((h, x) => h + x.offsetHeight, 0); // columns stretch, so add up the cards
+  for (const c of cards) cols.reduce((a, b) => (used(b) < used(a) ? b : a)).appendChild(c);
+  wrap.classList.remove("measuring");
 }
 // Fit the whole TV dashboard on one screen: find the largest zoom at which it fits the window height (the layout reflows at each zoom).
 function obTvFit() {
   const st = document.querySelector(".tvstage"); if (!st || !document.body.classList.contains("tvmode")) return;
-  const avail = window.innerHeight - st.getBoundingClientRect().top - 6;
+  const cols = st.querySelector(".tvcols"); if (cols) cols.style.minHeight = "";
+  st.style.zoom = 1;
+  const avail = window.innerHeight - st.getBoundingClientRect().top - 4;
   const fits = z => { st.style.zoom = z; return st.getBoundingClientRect().height <= avail && document.documentElement.scrollWidth <= window.innerWidth; };
-  let lo = 0.3, hi = 2.2;
-  if (fits(hi)) return;
-  for (let k = 0; k < 9; k++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; }
-  st.style.zoom = lo;
+  let lo = 0.3, hi = 3;
+  if (!fits(hi)) { for (let k = 0; k < 10; k++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; } st.style.zoom = lo; } else lo = hi;
+  // Stretch the columns down to the bottom of the screen so there's no empty band (cards grow to fill it).
+  if (cols) {
+    const left = avail - st.getBoundingClientRect().height;
+    if (left > 1) { const r = cols.getBoundingClientRect(), k = r.height / cols.offsetHeight || lo; cols.style.minHeight = (r.height + left - 3) / k + "px"; }
+  }
 }
+// Web fonts change text sizes after they load: fit again then.
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => obTvFit());
 window.addEventListener("resize", () => { clearTimeout(obTvFit.t); obTvFit.t = setTimeout(obTvFit, 150); });
 const obLeaveTv = () => { document.body.classList.remove("tvmode"); if (obWake) { obWake.release().catch(() => {}); obWake = null; } };
 
@@ -942,8 +953,20 @@ body.tvmode{overflow:hidden}
 body.tvmode .wrap{padding:6px 12px}
 .tvstage{width:100%}
 body.tvmode .obgrid.tv{display:block}
-.tvcols{display:grid;gap:12px;align-items:start}
+.tvcols{display:grid;gap:12px;align-items:stretch}
 .tvcol{display:flex;flex-direction:column;gap:12px;min-width:0}
+/* cards fill their column; their content spreads out evenly instead of leaving a gap at the bottom */
+.tvcol>.card{display:flex;flex-direction:column;flex:1 1 auto}
+.tvcols.measuring{align-items:start}.tvcols.measuring .card{flex:none}
+.tvcol>.card>.opsdl,.tvcol>.card>.obareas,.tvcol>.card>.obeq,.tvcol>.card>.obwind,.tvcol>.card>.obtvgo{flex:1 1 auto;align-content:space-evenly}
+body.tvmode .tvcol .opst{width:100%}
+body.tvmode .tvcol .opst td,body.tvmode .tvcol .opst th{white-space:normal}
+.obr115{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;padding:6px 8px;border:1px solid var(--line);border-radius:4px}
+.obr115>b{flex:1 1 100%}
+.obr115 span{color:var(--muted)}.obr115 span b{color:var(--ink)}
+.tvcol>.card .obwind{align-items:center}
+body.tvmode .obareas{grid-template-columns:1fr 1fr;gap:4px 14px}
+body.tvmode .obarea{flex-wrap:wrap}
 body.tvmode .obgrid.tv .card{margin:0;padding:10px 12px}
 body.tvmode .obgrid.tv>.obafcard{display:grid;grid-template-columns:3fr 2fr;gap:0 12px;align-items:start;margin-bottom:12px}
 body.tvmode .obafcard>.tablewrap{margin-top:0!important}
