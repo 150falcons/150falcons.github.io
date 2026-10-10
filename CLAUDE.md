@@ -107,7 +107,7 @@ A book-in / book-out board for RSAF trainees at 150 Squadron (BA 120 Cazaux, Fra
 ## 5. Database (public schema)
 - **Tables:**
   - **`trainees`:** id, name, course, phone, active, posted_out_at, can_drive.
-  - **`profiles`:** id = auth user, email (`user@150sqn.local`), display_name, role admin|user, trainee_id, must_change_password, appointment (CO|DYCO|OC A|OC B|CC|QFI), ops_editor, eng_editor, no_geo, callsign, staff_role, qfi_cat (A|B1|B2|C, admin-only `set_qfi_cat(user, cat)`, shown as a "CAT …" tag in Admin → QFI; set in Add QFI / Edit), acting_oc/acting_for (unused).
+  - **`profiles`:** id = auth user, email (`user@150sqn.local`), display_name, role admin|user, trainee_id, must_change_password, appointment (CO|DYCO|OC A|OC B|CC|QFI), ops_editor, eng_editor, no_geo, callsign, staff_role, qfi_cat (A|B1|B2|C, admin-only `set_qfi_cat(user, cat)`, shown as a "CAT …" tag in Admin → QFI; set in Add QFI / Edit; the QFI list sorts by appointment CO > DYCO > OC A > OC B > CC > QFI, then CAT A > B1 > B2 > C > none, then callsign, two-line rows `.qrow`), acting_oc/acting_for (unused).
   - **`vehicles`:** description, plate, plate_key (generated), owner_type course|personal, course, owner_trainee, added_by, seats.
   - **`movements`:** one row per trip.
     - **People:** `members` jsonb (current crew: id, name, course, role driver|vcom|pax|person) and `member_ids` uuid[] (current crew), plus `orig_members` (original crew, set by a trigger) and `events` jsonb (per-person in / leave / moved / joined).

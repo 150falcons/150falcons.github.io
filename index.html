@@ -200,6 +200,14 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 .topbar .signout{background:none;border:1px solid var(--line);border-radius:4px;padding:4px 10px;font:500 .85rem var(--body);color:var(--muted);cursor:pointer;margin-left:6px}
 .topbar .signout:hover{color:var(--ink)}
 .rlist .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+/* QFI list: name + tags on the first line, login + buttons on the second, so nothing wraps awkwardly */
+.rlist li.qrow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:2px 10px;padding:8px 0}
+.qrow .qname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qrow .qtags{display:flex;gap:4px;justify-content:flex-end;flex-wrap:nowrap}
+.qrow .qtags .tag{margin:0}
+.qrow .qlogin{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.82rem}
+.qrow .acts{flex-wrap:nowrap}
+.qrow .acts .btn.small{padding:3px 9px;font-size:.8rem}
 .stack>*+*{margin-top:16px}
 .csec{display:flex;align-items:baseline;gap:8px;font:700 1rem var(--cond);color:var(--ink);margin:12px 0 6px;letter-spacing:.02em;text-transform:uppercase}
 .csec span{font:400 .82rem var(--body);color:var(--muted);text-transform:none;letter-spacing:0}
@@ -1258,9 +1266,13 @@ function renderAdmin(v) {
   const glist = gone.map(t => `<li><span><strong>${esc(t.name)}</strong> <span class="hint">${esc(t.course || "")}${t.posted_out_at ? ", posted out " + esc(fmt(t.posted_out_at)) : ""}</span></span>
       <span class="acts"><button class="btn small" data-act="restore" data-id="${esc(t.id)}">Restore</button><button class="btn small" data-act="deltrainee" data-id="${esc(t.id)}">Delete</button></span></li>`).join("");
   const admins = S.profiles.filter(p => p.role === "admin")
-    .sort((a, b) => (APPT_ORDER[a.appointment] ?? 9) - (APPT_ORDER[b.appointment] ?? 9) || pLabel(a).localeCompare(pLabel(b)));
-  const alist = admins.map(p => `<li><span><strong>${esc(pLabel(p))}</strong>${p.callsign && p.display_name && p.display_name !== p.callsign ? ` <span class="hint">${esc(p.display_name)}</span>` : p.callsign ? ` <span class="hint">(name not set)</span>` : ""}${apptText(p) ? ` <span class="tag open">${esc(apptText(p))}</span>` : ""}${p.qfi_cat ? ` <span class="tag">CAT ${esc(p.qfi_cat)}</span>` : ""}${p.ops_editor && !APPROVER(p) ? ` <span class="tag nd">Ops</span>` : ""}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.id === S.me.id ? " (you)" : ""}${p.no_geo ? " · no location check" : ""}</span></span>
-      <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button>${p.id === S.me.id ? "" : `<button class="btn small" data-act="resetpw" data-id="${esc(p.id)}">Reset password</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button>`}</span></li>`).join("");
+    // Management appointment first (CO, DYCO, OC A, OC B, CC, QFI), then QFI CAT (A, B1, B2, C), then callsign.
+    .sort((a, b) => (APPT_ORDER[a.appointment] ?? 9) - (APPT_ORDER[b.appointment] ?? 9) || (CAT_ORDER[a.qfi_cat] ?? 9) - (CAT_ORDER[b.qfi_cat] ?? 9) || pLabel(a).localeCompare(pLabel(b)));
+  const alist = admins.map(p => `<li class="qrow">
+      <span class="qname"><strong>${esc(pLabel(p))}</strong>${p.callsign && p.display_name && p.display_name !== p.callsign ? ` <span class="hint">${esc(p.display_name)}</span>` : p.callsign ? ` <span class="hint">(name not set)</span>` : ""}</span>
+      <span class="qtags">${apptText(p) ? `<span class="tag open">${esc(apptText(p))}</span>` : ""}${p.qfi_cat ? `<span class="tag qcat">CAT ${esc(p.qfi_cat)}</span>` : ""}${p.ops_editor && !APPROVER(p) ? `<span class="tag nd">Ops</span>` : ""}</span>
+      <span class="hint qlogin">Login: ${esc(showLogin(p.email))}${p.id === S.me.id ? " (you)" : ""}${p.no_geo ? " · no location check" : ""}</span>
+      <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button>${p.id === S.me.id ? "" : `<button class="btn small" data-act="resetpw" data-id="${esc(p.id)}" title="Reset password">Reset pw</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button>`}</span></li>`).join("");
 
   const opsAsst = S.profiles.filter(isOpsAssistant);
   v.innerHTML = `<div class="roster">
@@ -1424,6 +1436,7 @@ async function deleteTrainee(tid) {
 }
 /* ---------- edit name / login ---------- */
 const APPT_ORDER = { CO: 0, DYCO: 1, "OC A": 2, "OC B": 3, CC: 4, QFI: 5 };
+const CAT_ORDER = { A: 0, B1: 1, B2: 2, C: 3 };
 const SINGLE = ["CO", "DYCO", "OC A", "OC B", "CC"];
 const apptText = p => p.appointment || "";
 let editCtx = null;
