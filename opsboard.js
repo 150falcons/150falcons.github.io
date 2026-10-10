@@ -208,7 +208,7 @@ function obSun(day) {
 const OB_HELP = {
   sun: "Worked out for Cazaux from today's date (NOAA sun formula, about ±1 min): the moment the top of the sun crosses the horizon. Type a value under Edit board to override it.",
   rh: "Relative humidity from the METAR temperature and dewpoint (Magnus formula).",
-  icing: "YES when the temperature is below 6°C AND the humidity is above 50%. Otherwise NO.",
+  icing: "Auto: YES when the temperature is below 6°C AND the humidity is above 50%. Otherwise NO. Ops can set YES or NO by hand; Refresh METARs puts it back to auto.",
   sea: "Typed by ops from the FASF forecast. Yellow at 15.5°C or colder, green above. It also drives the immersion suit.",
   wind: "Governing wind = the higher of the mean wind and the gust. Headwind (or tailwind) and crosswind are the parts of the governing wind along and across the runway in use.",
   windHazard: "Picked by ops. A = yellow, B = amber, C and D = red.",
@@ -251,7 +251,8 @@ function obCzx() {
   const canopy = !w ? "" : (w.gov < 50 && (!c || (Math.abs(c.head) < 35 && c.cross < 35))) ? "g" : "r";
   return {
     m, w, rwy, c, t, rh, qnh: m ? obN(m.altim) : null, sun: obSun(todayStr()),
-    icing: t == null || rh == null ? "" : t < 6 && rh > 50 ? "YES" : "NO",
+    icingAuto: t == null || rh == null ? "" : t < 6 && rh > 50 ? "YES" : "NO",
+    icing: (b.czx && b.czx.icing) || (t == null || rh == null ? "" : t < 6 && rh > 50 ? "YES" : "NO"), // ops can override (Gordon, 10 Oct)
     immersion: sea == null ? "" : sea >= 16 ? "NO" : (sea < 15.5 && t != null && t < 22) ? "YES" : "NO",
     canopy: auto(b.equip.canopy) ? canopy : b.equip.canopy,
     apu1: auto(b.equip.apu1) ? apu(280) : b.equip.apu1,
@@ -393,14 +394,14 @@ function obBoardView(tv, extra) {
         <dt>Temperature</dt><dd>${z.t ?? "-"}°C</dd><dt>${obH("rh", "Humidity")}</dt><dd>${z.rh ?? "-"}%</dd><dt>QNH</dt><dd>${z.qnh ?? "-"}</dd>
         <dt>Runway surface</dt><dd>${q ? obQSel("rwySurface", czx.rwySurface, ["DRY", "DAMP", "WET", "FLOODED"]) : obPill(/FLOOD/i.test(czx.rwySurface) ? "r" : /WET|DAMP/i.test(czx.rwySurface) ? "a" : czx.rwySurface ? "g" : "", czx.rwySurface || "-")}</dd><dt>${obH("sea", "Sea surface")}</dt><dd>${q ? obQIn("seaTemp", czx.seaTemp, "°C", "64px", obSeaS(czx.seaTemp)) + " °C" : czx.seaTemp ? obPill(obSeaS(czx.seaTemp), czx.seaTemp + "°C") : "-"}</dd>
         <dt>Sea swell</dt><dd>${q ? obQIn("swell", czx.swell, "e.g. 1.6-1.9M", "110px") : esc(czx.swell || "-")}</dd><dt>Bird hazard</dt><dd>${q ? obQSel("bird", czx.bird, ["LOW (1)", "LOW (2)", "MED (2)", "HIGH (3)"]) : obPill(/HIGH/i.test(czx.bird) ? "r" : /MED/i.test(czx.bird) ? "a" : czx.bird ? "g" : "", czx.bird || "-")}</dd>
-        <dt>${obH("icing", "Icing conditions")}</dt><dd>${yn(z.icing, "YES")}</dd></dl>
+        <dt>${obH("icing", "Icing conditions")}</dt><dd>${q ? `<select class="obsel ${z.icing ? "obst-" + (z.icing === "YES" ? "r" : "g") : ""}" data-obq="czx" data-f="icing" aria-label="Icing conditions"><option value="">${esc(z.icingAuto || "-")} (auto)</option>${["YES", "NO"].map(o => `<option ${o === czx.icing ? "selected" : ""}>${o}</option>`).join("")}</select>` : yn(z.icing, "YES") + (czx.icing ? " ✎" : "")}</dd></dl>
         ${z.m ? `<p class="obraw">${esc(z.m.rawOb)}</p>` : `<p class="hint">No METAR yet.</p>`}</section>` : `<section class="card opscard obwx"><h2>Cazaux weather &amp; wind</h2><div class="obwxin"><div><dl class="opsdl">
         <dt>${obH("sun", "Sunrise / sunset")}</dt><dd>${czx.sun ? esc(czx.sun) : `${esc(z.sun.rise)} / ${esc(z.sun.set)}`}</dd>
         <dt>Icing band</dt><dd>${q ? obQIn("icingBand", czx.icingBand, "e.g. FL120 - FL170", "130px") : esc(czx.icingBand || "-")}</dd>
         <dt>Temperature</dt><dd>${z.t ?? "-"}°C</dd><dt>${obH("rh", "Humidity")}</dt><dd>${z.rh ?? "-"}%</dd><dt>QNH</dt><dd>${z.qnh ?? "-"}</dd>
         <dt>Runway surface</dt><dd>${q ? obQSel("rwySurface", czx.rwySurface, ["DRY", "DAMP", "WET", "FLOODED"]) : obPill(/FLOOD/i.test(czx.rwySurface) ? "r" : /WET|DAMP/i.test(czx.rwySurface) ? "a" : czx.rwySurface ? "g" : "", czx.rwySurface || "-")}</dd><dt>${obH("sea", "Sea surface")}</dt><dd>${q ? obQIn("seaTemp", czx.seaTemp, "°C", "64px", obSeaS(czx.seaTemp)) + " °C" : czx.seaTemp ? obPill(obSeaS(czx.seaTemp), czx.seaTemp + "°C") : "-"}</dd>
         <dt>Sea swell</dt><dd>${q ? obQIn("swell", czx.swell, "e.g. 1.6-1.9M", "110px") : esc(czx.swell || "-")}</dd><dt>Bird hazard</dt><dd>${q ? obQSel("bird", czx.bird, ["LOW (1)", "LOW (2)", "MED (2)", "HIGH (3)"]) : obPill(/HIGH/i.test(czx.bird) ? "r" : /MED/i.test(czx.bird) ? "a" : czx.bird ? "g" : "", czx.bird || "-")}</dd>
-        <dt>${obH("icing", "Icing conditions")}</dt><dd>${yn(z.icing, "YES")}</dd></dl></div><div class="obwxwind"><div class="obwind">${obRose(w, z.rwy)}<div><div class="obbig">${esc(windTxt)}</div>
+        <dt>${obH("icing", "Icing conditions")}</dt><dd>${q ? `<select class="obsel ${z.icing ? "obst-" + (z.icing === "YES" ? "r" : "g") : ""}" data-obq="czx" data-f="icing" aria-label="Icing conditions"><option value="">${esc(z.icingAuto || "-")} (auto)</option>${["YES", "NO"].map(o => `<option ${o === czx.icing ? "selected" : ""}>${o}</option>`).join("")}</select>` : yn(z.icing, "YES") + (czx.icing ? " ✎" : "")}</dd></dl></div><div class="obwxwind"><div class="obwind">${obRose(w, z.rwy)}<div><div class="obbig">${esc(windTxt)}</div>
         ${comp ? `<div>${obH("wind", comp.head < 0 ? "Tailwind" : "Headwind")} <b>${Math.abs(comp.head).toFixed(1)}</b> KT</div><div>${obH("wind", "Crosswind")} <b>${comp.cross.toFixed(1)}</b> KT</div><div class="hint">RWY ${esc(String(z.rwy / 10).padStart(2, "0"))} · ${obH("wind", "governing wind")} ${w.gov} KT</div>` : ""}
         <div>${obH("windHazard", "Wind hazard")} ${q ? `<select class="obsel ${obHazS(czx.windHazard) ? "obst-" + obHazS(czx.windHazard) : ""}" data-obq="czx" data-f="windHazard" aria-label="Wind hazard">${["", "A", "B", "C", "D"].map(o => `<option value="${o}" ${o === (czx.windHazard || "") ? "selected" : ""}>${o || "-"}</option>`).join("")}</select>` : czx.windHazard ? obPill(obHazS(czx.windHazard), czx.windHazard) : "-"}</div></div></div></div></div>
         ${z.m ? `<p class="obraw">${esc(z.m.rawOb)}</p>` : `<p class="hint">No METAR yet.</p>`}</section>`}
@@ -1015,7 +1016,7 @@ document.addEventListener("click", async e => {
     if (e2) { el.disabled = false; el.textContent = "Refresh METARs"; return toast(errMsg(e2)); }
     OB.wxLive = {}; for (const r of rows) OB.wxLive[r.station] = r;
     await obQuick(d => {
-      d.wxSnap = OB.wxLive; d.bingo = "AUTO"; d.equip = { ...d.equip, canopy: "", apu1: "", apu2: "" };
+      d.wxSnap = OB.wxLive; d.bingo = "AUTO"; d.equip = { ...d.equip, canopy: "", apu1: "", apu2: "" }; d.czx = { ...(d.czx || {}), icing: "" };
       (d.airfields || []).forEach(x => { x.rsaf = "AUTO"; if (OB_FASF_AUTO.includes(x.icao)) x.fasf = "AUTO"; x.wx = ""; });
     });
     if (!error) toast("Board updated with the latest METARs.");
