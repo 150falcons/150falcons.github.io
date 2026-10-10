@@ -1059,11 +1059,17 @@ select.obcs option{background:var(--paper);color:var(--ink)}
 .obchart>.btn:first-child{flex:1 1 100%;text-align:left}.obchart .btn.small{flex:0 0 auto;width:auto}
 .obup{cursor:pointer;margin-left:auto}
 #dlgChart{width:min(1100px,calc(100vw - 16px))}
-body.tvmode #dlgChart{width:calc(100vw - 40px);max-width:none;height:calc(100vh - 40px);max-height:none}
-body.tvmode #dlgChart .obchartview iframe{height:calc(100vh - 140px)}
-body.tvmode #dlgChart .obchartview{text-align:center}
+/* TV: the chart window hugs the chart (Gordon, 10 Oct), on a dimmed TV */
+body.tvmode #dlgChart{width:fit-content;max-width:calc(100vw - 40px);height:auto;max-height:calc(100vh - 24px);padding:0;overflow:hidden}
+body.tvmode #dlgChart::backdrop{background:rgba(0,0,0,.72)}
+body.tvmode #dlgChart .dlg{padding:10px 12px 12px}
+body.tvmode #dlgChart .opshead{margin:0 0 6px;gap:12px}
+body.tvmode #dlgChart .opshead h2{margin:0;font-size:1.1rem}
+body.tvmode #dlgChart .dlg>p.hint{margin:0 0 6px!important;font-size:.8rem}
+body.tvmode #dlgChart .obchartview{text-align:center;line-height:0}
+body.tvmode #dlgChart .obchartview iframe{width:min(1400px,calc(100vw - 70px));height:calc(100vh - 110px)}
 body.tvmode #dlgChart .obchartimg{display:inline-block;max-width:100%}
-body.tvmode #dlgChart .obchartimg img{height:calc(100vh - 150px);width:auto;max-width:100%;object-fit:contain}
+body.tvmode #dlgChart .obchartimg img{height:calc(100vh - 140px);width:auto;max-width:calc(100vw - 70px);object-fit:contain;border-radius:6px}
 .tvcharts{display:inline-flex;gap:6px;align-items:center;font-size:.85rem;color:var(--muted)}
 .tvcharts .btn.stale{opacity:.55}
 .obchartview iframe{width:100%;height:75vh;border:0;background:#fff}
