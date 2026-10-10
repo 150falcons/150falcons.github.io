@@ -388,7 +388,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 
 <div class="toast" id="toast" hidden></div>
 
-<script src="ops.js?v=18"></script>
+<script src="ops.js?v=19"></script>
 <script src="opsboard.js?v=30"></script>
 <script>
 /* =====================================================================
@@ -620,7 +620,7 @@ function render() {
   document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.area === area));
   document.querySelector('#tabs [data-tab="roster"]').textContent = isAdmin() ? "Admin" : "Roster";
   renderTally();
-  if (S.tab !== "tv") obLeaveTv();
+  if (S.tab !== "tv" && S.tab !== "flytv") obLeaveTv();
   if (S.tab === "home") renderHome(v);
   else if (S.tab === "board") renderBoard(v);
   else if (S.tab === "log") renderLog(v);
@@ -630,11 +630,12 @@ function render() {
   else if (S.tab === "gonogo") renderGoNoGo(v);
   else if (S.tab === "aircraft") renderAircraft(v);
   else if (S.tab === "tv") renderTv(v);
+  else if (S.tab === "flytv") renderFlyTv(v);
   else if (isAdmin()) renderAdmin(v); else renderRoster(v);
 }
 
 // Top-level areas (top bar) and their pages (sub-tabs).
-const AREA = { home: "home", board: "move", log: "move", vehicles: "move", ops: "ops", opsboard: "ops", gonogo: "ops", aircraft: "ops", tv: "ops", roster: "admin" };
+const AREA = { home: "home", board: "move", log: "move", vehicles: "move", ops: "ops", opsboard: "ops", gonogo: "ops", aircraft: "ops", tv: "ops", flytv: "ops", roster: "admin" };
 const SUBTABS = { move: [["board", "Board"], ["log", "Log"], ["vehicles", "Vehicles"]], ops: [["opsboard", "Ops board"], ["ops", "Flying program"], ["gonogo", "Go / No-Go"], ["aircraft", "Aircraft"]] };
 function renderHome(v) {
   const now = Date.now(), ob = openByTrainee(); let i = 0, o = 0, l = 0, lv = 0;
@@ -1608,7 +1609,7 @@ $("#btnSignOut").onclick = signOut;
 
 /* ---------- start ---------- */
 renderClock();
-setInterval(() => { if (S.ready && ["board", "home", "tv", "opsboard"].includes(S.tab) && !OB.edit && !obTyping() && !document.querySelector("dialog[open]")) render(); else if (S.ready) renderTally(); }, 30000);
+setInterval(() => { if (S.ready && ["board", "home", "tv", "flytv", "opsboard"].includes(S.tab) && !OB.edit && !obTyping() && !document.querySelector("dialog[open]")) render(); else if (S.ready) renderTally(); }, 30000);
 // After sign-in, the board only opens for phones in France: location must be shared, and inside metropolitan France
 // (rough box incl. Corsica). Runs in the browser, so it keeps casual outsiders out, not determined ones.
 const inFrance = l => l.lat >= 41.3 && l.lat <= 51.15 && l.lng >= -5.2 && l.lng <= 9.6;

@@ -195,7 +195,7 @@ async function opsLoad(day) {
   const ld = (r3.data || []).find(r => r.data && (r.data.groups || []).length); // skip cleared days
   OPS.lastDuties = ld ? ld.data : null;
   OPS.rowsDay = day;
-  if (S.tab === "ops") renderOps($("#view"));
+  if (S.tab === "ops") renderOps($("#view")); else if (S.tab === "flytv") render();
 }
 // Realtime: another editor saved a section.
 function opsRealtime(p) {
@@ -209,6 +209,25 @@ function opsRealtime(p) {
   }
   if (OPS.edit) { OPS.rows[r.section] = p.new; return; } // keep the editor open; other sections refresh on save
   opsLoad(OPS.day);
+}
+
+/* ---------- TV mode (Gordon, 10 Oct): today's flying lines on the left (2/3), sim and ground programme on the right ---------- */
+function renderFlyTv(v) {
+  document.body.classList.add("tvmode");
+  if ("wakeLock" in navigator && !obWake) navigator.wakeLock.request("screen").then(l => { obWake = l; l.addEventListener("release", () => obWake = null); }).catch(() => {});
+  const day = todayStr();
+  if (OPS.day !== day && !OPS.edit) { OPS.day = day; OPS.rowsDay = null; }
+  if (OPS.rowsDay !== OPS.day) { v.innerHTML = `<div class="empty">Loading today's programme…</div>`; if (!OPS.loading) opsLoad(OPS.day); return; }
+  const fl = opsGet("flying"), st = opsStats(fl), n = new Date();
+  const card = (title, body) => `<section class="card opscard"><div class="opshead"><h2>${title}</h2></div>${body || `<p class="hint" style="display:block;margin:0">Nothing entered.</p>`}</section>`;
+  v.innerHTML = `<div class="tvstage"><div class="tvbar"><b>150 Falcon Det · Flying program</b><span>${esc(opsLongDay(OPS.day))}</span>
+      <span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 19).replace(/:/g, ""))}Z</small></span>
+      <span class="grow"></span><span>${st.sorties} sorties · ${st.hours} h · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>
+      <button class="btn small" data-tab="ops">Exit TV</button></div>
+    ${OPS_ORDER.some(opsData) ? `<div class="flytv"><div class="flytvl">${card(OPS_TITLES.flying, opsView.flying(fl))}</div>
+      <div class="flytvr">${card(OPS_TITLES.sim, opsView.sim(opsGet("sim")))}${card(OPS_TITLES.ground, opsView.ground(opsGet("ground")))}</div></div>`
+      : `<div class="empty"><strong>No programme for today yet</strong></div>`}</div>`;
+  requestAnimationFrame(obTvFit); setTimeout(obTvFit, 1200);
 }
 
 /* ---------- view ---------- */
@@ -246,7 +265,7 @@ function opsBar() {
     <button class="btn small" data-ops="today">Today</button>
     <span class="grow"></span>
     ${opsCanEdit() ? `<button class="btn small" data-ops="copy">Copy from…</button>${OPS.rowsDay === OPS.day && OPS_ORDER.some(opsData) && !OPS.edit ? `<button class="btn small danger" data-ops="clear">Clear day</button>` : ""}` : ""}
-    <button class="btn small" data-ops="pdf">PDF</button></div>`;
+    <button class="btn small" data-ops="pdf">PDF</button>${OPS.edit ? "" : `<button class="btn small primary" data-tab="flytv">TV mode</button>`}</div>`;
 }
 function opsGo(day) {
   if (OPS.edit && !confirm("Discard your unsaved changes?")) { const d = $("#opsDate"); if (d) d.value = OPS.day; return; }
@@ -738,6 +757,11 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .opsed .tools{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .opsed .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 10px}
 .opsed label{margin-bottom:6px}
+.flytv{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:12px;align-items:start}
+.flytv .card{margin:0 0 12px;padding:10px 12px}
+.flytvr{display:flex;flex-direction:column}
+.flytvr table{min-width:0!important;width:100%}.flytvr td,.flytvr th{white-space:normal!important}
+@media (max-aspect-ratio:1/1){.flytv{grid-template-columns:minmax(0,1fr)}}
 .opsed input.opsauto{color:var(--muted);font-style:italic}
 .opsed input.opsman{border-color:var(--out);color:var(--ink);font-weight:600}
 .opsed input.opsetd{border:2px solid var(--in);font-weight:700}
