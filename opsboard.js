@@ -257,19 +257,21 @@ function renderOpsBoard(v) {
   v.innerHTML = top + (editing ? obCard("ob-board", "Ops board", "", obEditor("board")) : obBoardView(false) + obChartsCard() + `<p class="opsmeta" style="justify-content:flex-end">${obMeta("board")} ${obEditBtn("board", can, "Edit ops board")}</p>`);
   if (!editing) obPageColumns(v);
 }
-// Wide screens: airfields across the top, then the smaller cards (weather, wind, equipment, callsigns, charts)
-// in balanced columns, then the restricted areas across the bottom, so there are no half-empty rows.
+// Wide screens: airfields across the top, then one full-width panel with weather | wind | canopy & equipment
+// side by side (canopy and APU come from the wind anyway), then the restricted areas, then charts with the
+// callsigns beside them. Nothing is left half empty.
 function obPageColumns(v) {
   const grid = v.querySelector(".obgrid:not(.tv)"); if (!grid || innerWidth < 1200) return;
-  const n = innerWidth >= 1700 ? 3 : 2, ra = grid.querySelector("#ob-ra"), charts = v.querySelector("#ob-charts");
-  const cards = [...grid.children].filter(c => !c.classList.contains("obafcard") && c !== ra);
-  if (charts) cards.push(charts);
-  const wrap = document.createElement("div"); wrap.className = "obcols measuring"; wrap.style.gridTemplateColumns = `repeat(${n},minmax(0,1fr))`;
-  const cols = Array.from({ length: n }, () => { const c = document.createElement("div"); c.className = "obpcol"; wrap.appendChild(c); return c; });
-  grid.insertBefore(wrap, ra || null);
-  const used = col => [...col.children].reduce((h, x) => h + x.offsetHeight, 0);
-  for (const c of cards) cols.reduce((a, b2) => (used(b2) < used(a) ? b2 : a)).appendChild(c);
-  wrap.classList.remove("measuring");
+  const wx = grid.querySelector(".obwx"), eq = grid.querySelector("#ob-eq");
+  if (wx && eq) {
+    const col = document.createElement("div"); col.className = "obwxeq";
+    col.innerHTML = `<h3 class="opssub" style="margin-top:0">Canopy / equipment</h3>`;
+    [...eq.children].filter(c => c.tagName !== "H2").forEach(c => col.appendChild(c));
+    wx.querySelector(".obwxin").appendChild(col); wx.classList.add("three"); eq.remove();
+    wx.querySelector("h2").textContent = "Cazaux weather, wind & equipment";
+  }
+  const cs = grid.querySelector("#ob-bcs"), charts = v.querySelector("#ob-charts");
+  if (cs && charts) { const pair = document.createElement("div"); pair.className = "obpair"; charts.before(pair); pair.append(charts, cs); }
 }
 let obResizeT; window.addEventListener("resize", () => { if (S.tab !== "opsboard") return; clearTimeout(obResizeT); obResizeT = setTimeout(() => { if (!obTyping()) obRerender(); }, 200); });
 // Colours used by the Excel's conditional formats.
@@ -333,7 +335,7 @@ function obBoardView(tv, extra) {
       <section class="card opscard obwide obafcard"><div class="tablewrap"><table class="opst obt"><thead><tr><th>Airfield</th><th>P</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS</th><th>Restrictions</th><th>Aids</th></tr></thead><tbody>${main.map(([a, i]) => afRow(a, i)).join("")}</tbody></table></div>
         ${alt.length ? `<div class="tablewrap" style="margin-top:8px"><table class="opst obt"><thead><tr><th>Airfield</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS</th><th>Restrictions</th></tr></thead><tbody>${alt.map(([a, i]) => afRow(a, i)).join("")}</tbody></table></div>` : ""}
         ${b.zrt ? `<p class="obnote">${esc(b.zrt)}</p>` : ""}</section>
-      <section class="card opscard"><h2>Cazaux weather</h2><dl class="opsdl">
+      ${tv ? `<section class="card opscard"><h2>Cazaux weather</h2><dl class="opsdl">
         <dt>Sunrise / sunset</dt><dd>${czx.sun ? esc(czx.sun) : `${esc(z.sun.rise)} / ${esc(z.sun.set)}`}</dd>
         <dt>Icing band</dt><dd>${q ? obQIn("icingBand", czx.icingBand, "e.g. FL120 - FL170", "130px") : esc(czx.icingBand || "-")}</dd>
         <dt>Temperature</dt><dd>${z.t ?? "-"}°C</dd><dt>Humidity</dt><dd>${z.rh ?? "-"}%</dd><dt>QNH</dt><dd>${z.qnh ?? "-"}</dd>
@@ -343,8 +345,17 @@ function obBoardView(tv, extra) {
         ${z.m ? `<p class="obraw">${esc(z.m.rawOb)}</p>` : `<p class="hint">No METAR yet.</p>`}</section>
       <section class="card opscard"><h2>Wind (CZX)</h2><div class="obwind">${obRose(w, z.rwy)}<div><div class="obbig">${esc(windTxt)}</div>
         ${comp ? `<div>${comp.head < 0 ? "Tailwind" : "Headwind"} <b>${Math.abs(comp.head).toFixed(1)}</b> KT</div><div>Crosswind <b>${comp.cross.toFixed(1)}</b> KT</div><div class="hint">RWY ${esc(String(z.rwy / 10).padStart(2, "0"))} · governing wind ${w.gov} KT</div>` : ""}
-        <div>Wind hazard ${q ? `<select class="obsel ${obHazS(czx.windHazard) ? "obst-" + obHazS(czx.windHazard) : ""}" data-obq="czx" data-f="windHazard" aria-label="Wind hazard">${["", "A", "B", "C", "D"].map(o => `<option value="${o}" ${o === (czx.windHazard || "") ? "selected" : ""}>${o || "-"}</option>`).join("")}</select>` : czx.windHazard ? obPill(obHazS(czx.windHazard), czx.windHazard) : "-"}</div></div></div></section>
-      <section class="card opscard"><h2>Canopy / equipment</h2><div class="obeq">
+        <div>Wind hazard ${q ? `<select class="obsel ${obHazS(czx.windHazard) ? "obst-" + obHazS(czx.windHazard) : ""}" data-obq="czx" data-f="windHazard" aria-label="Wind hazard">${["", "A", "B", "C", "D"].map(o => `<option value="${o}" ${o === (czx.windHazard || "") ? "selected" : ""}>${o || "-"}</option>`).join("")}</select>` : czx.windHazard ? obPill(obHazS(czx.windHazard), czx.windHazard) : "-"}</div></div></div></section>` : `<section class="card opscard obwx"><h2>Cazaux weather &amp; wind</h2><div class="obwxin"><div><dl class="opsdl">
+        <dt>Sunrise / sunset</dt><dd>${czx.sun ? esc(czx.sun) : `${esc(z.sun.rise)} / ${esc(z.sun.set)}`}</dd>
+        <dt>Icing band</dt><dd>${q ? obQIn("icingBand", czx.icingBand, "e.g. FL120 - FL170", "130px") : esc(czx.icingBand || "-")}</dd>
+        <dt>Temperature</dt><dd>${z.t ?? "-"}°C</dd><dt>Humidity</dt><dd>${z.rh ?? "-"}%</dd><dt>QNH</dt><dd>${z.qnh ?? "-"}</dd>
+        <dt>Runway surface</dt><dd>${q ? obQSel("rwySurface", czx.rwySurface, ["DRY", "DAMP", "WET", "FLOODED"]) : obPill(/FLOOD/i.test(czx.rwySurface) ? "r" : /WET|DAMP/i.test(czx.rwySurface) ? "a" : czx.rwySurface ? "g" : "", czx.rwySurface || "-")}</dd><dt>Sea surface</dt><dd>${q ? obQIn("seaTemp", czx.seaTemp, "°C", "64px", obSeaS(czx.seaTemp)) + " °C" : czx.seaTemp ? obPill(obSeaS(czx.seaTemp), czx.seaTemp + "°C") : "-"}</dd>
+        <dt>Sea swell</dt><dd>${q ? obQIn("swell", czx.swell, "e.g. 1.6-1.9M", "110px") : esc(czx.swell || "-")}</dd><dt>Bird hazard</dt><dd>${q ? obQSel("bird", czx.bird, ["LOW (1)", "LOW (2)", "MED (2)", "HIGH (3)"]) : obPill(/HIGH/i.test(czx.bird) ? "r" : /MED/i.test(czx.bird) ? "a" : czx.bird ? "g" : "", czx.bird || "-")}</dd>
+        <dt>Icing conditions</dt><dd>${yn(z.icing, "YES")}</dd></dl></div><div class="obwxwind"><div class="obwind">${obRose(w, z.rwy)}<div><div class="obbig">${esc(windTxt)}</div>
+        ${comp ? `<div>${comp.head < 0 ? "Tailwind" : "Headwind"} <b>${Math.abs(comp.head).toFixed(1)}</b> KT</div><div>Crosswind <b>${comp.cross.toFixed(1)}</b> KT</div><div class="hint">RWY ${esc(String(z.rwy / 10).padStart(2, "0"))} · governing wind ${w.gov} KT</div>` : ""}
+        <div>Wind hazard ${q ? `<select class="obsel ${obHazS(czx.windHazard) ? "obst-" + obHazS(czx.windHazard) : ""}" data-obq="czx" data-f="windHazard" aria-label="Wind hazard">${["", "A", "B", "C", "D"].map(o => `<option value="${o}" ${o === (czx.windHazard || "") ? "selected" : ""}>${o || "-"}</option>`).join("")}</select>` : czx.windHazard ? obPill(obHazS(czx.windHazard), czx.windHazard) : "-"}</div></div></div></div></div>
+        ${z.m ? `<p class="obraw">${esc(z.m.rawOb)}</p>` : `<p class="hint">No METAR yet.</p>`}</section>`}
+      <section class="card opscard" id="ob-eq"><h2>Canopy / equipment</h2><div class="obeq">
         ${[["canopy", "Canopy"], ["apu1", "APU (A11–15)"], ["apu2", "APU (A16–23)"]].map(([f, l]) => obEqCell(b, z, f, l, q)).join("")}
         <div>Parachute ${q ? `<select class="obsel obst-${obParaS(b.equip.parachute) || "n"}" data-obq="eqv" data-f="parachute" aria-label="Parachute">${[...new Set(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", String(b.equip.parachute ?? "")])].filter(x => x !== "").map(o => `<option ${o === String(b.equip.parachute) ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>` : obPill(obParaS(b.equip.parachute), b.equip.parachute ?? "-")}</div>
         <div>SAMAR ${q ? `<input class="obval obst-${obSamarS(b.equip.samar) || "n"}" style="width:64px" data-obq="eqv" data-f="samar" value="${esc(b.equip.samar || "")}" aria-label="SAMAR">` : obPill(obSamarS(b.equip.samar), b.equip.samar || "-")}</div></div>
@@ -976,10 +987,13 @@ body.tvmode{font-size:17px}
 .tvbar{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-bottom:10px}
 .tvbar b{font:700 1.5rem var(--cond)} .tvclock{font:700 1.5rem var(--cond);font-variant-numeric:tabular-nums;min-width:12ch} .tvbar .grow{flex:1}
 /* Ops board page on wide screens (obPageColumns) */
-.obcols{display:grid;gap:0 14px;align-items:stretch;grid-column:1/-1}
-.obpcol{display:flex;flex-direction:column;min-width:0}
-.obpcol>.card{flex:0 0 auto}.obpcol>.card:last-child{flex:1 1 auto}
-.obcols.measuring{align-items:start}.obcols.measuring .card{flex:none!important}
+@media (min-width:1200px){#ob-charts .obcharts{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.obwxin{display:grid;grid-template-columns:minmax(0,1fr);gap:8px 24px}
+@media (min-width:700px){.obwxin{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:start}.obwxwind{border-left:1px solid var(--line);padding-left:20px}}
+@media (min-width:1200px){.obwx .obrose{width:150px;height:150px}.obwx .obbig{font-size:2rem}
+  .obwx.three .obwxin{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(0,1fr)}.obwxeq{border-left:1px solid var(--line);padding-left:20px}
+  .obwxeq .obeq{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+  .obpair{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:0 14px;align-items:stretch}.obpair>.card{margin-bottom:14px}}
 @media (min-width:1200px){.obgrid:not(.tv){grid-template-columns:minmax(0,1fr)}.obgrid:not(.tv) .obwide{grid-column:1/-1}}
 @media (min-width:1500px){.obgrid:not(.tv) .obafcard{display:grid;grid-template-columns:3fr 2fr;gap:0 12px;align-items:start}.obgrid:not(.tv) .obafcard>.tablewrap{margin-top:0!important}.obgrid:not(.tv) .obafcard>.obnote{grid-column:1/-1}}
 /* TV: everything on one screen. Airfields across the top (main and other side by side), the rest flows in columns; obTvFit zooms to fit. */
