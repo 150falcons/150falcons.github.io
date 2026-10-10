@@ -185,14 +185,15 @@ async function opsLoad(day) {
     S.sb.from("ops_sections").select("*").eq("day", day),
     S.sb.from("ops_sections").select("data").eq("day", opsShift(day, -1)).eq("section", "duties").maybeSingle(),
   ]);
-  const r3 = await S.sb.from("ops_sections").select("data").lt("day", day).eq("section", "duties").order("day", { ascending: false }).limit(1);
+  const r3 = await S.sb.from("ops_sections").select("data").lt("day", day).eq("section", "duties").order("day", { ascending: false }).limit(10);
   OPS.loading = false;
   if (OPS.day !== day) return;
   if (r1.error) { toast("Couldn't load the programme: " + errMsg(r1.error)); return; }
   OPS.rows = {};
   for (const r of r1.data || []) OPS.rows[r.section] = r;
   OPS.prevDuties = r2.data ? r2.data.data : null;
-  OPS.lastDuties = r3.data && r3.data[0] ? r3.data[0].data : null;
+  const ld = (r3.data || []).find(r => r.data && (r.data.groups || []).length); // skip cleared days
+  OPS.lastDuties = ld ? ld.data : null;
   OPS.rowsDay = day;
   if (S.tab === "ops") renderOps($("#view"));
 }
@@ -244,7 +245,7 @@ function opsBar() {
     <button class="btn small" data-ops="day" data-n="1" aria-label="Next day">›</button>
     <button class="btn small" data-ops="today">Today</button>
     <span class="grow"></span>
-    ${opsCanEdit() ? `<button class="btn small" data-ops="copy">Copy from…</button>` : ""}
+    ${opsCanEdit() ? `<button class="btn small" data-ops="copy">Copy from…</button>${OPS.rowsDay === OPS.day && OPS_ORDER.some(opsData) && !OPS.edit ? `<button class="btn small danger" data-ops="clear">Clear day</button>` : ""}` : ""}
     <button class="btn small" data-ops="pdf">PDF</button></div>`;
 }
 function opsGo(day) {
@@ -511,8 +512,20 @@ document.addEventListener("click", async e => {
   else if (a === "cancel") { OPS.edit = null; renderOps($("#view")); }
   else if (a === "save") opsSave(el);
   else if (a === "copy") opsCopy();
+  else if (a === "clear") opsClearDay(el);
   else if (a === "pdf") opsPrint();
 });
+// Clear the whole programme for the shown day (two warnings first). Sections are emptied, not deleted.
+async function opsClearDay(btn) {
+  const day = OPS.day, long = opsLongDay(day);
+  if (!await ask("Clear this day's programme?", `This empties everything for ${long}: header, flying, sims, ground, airfield, notes and duties.`, "Clear day")) return;
+  if (!await ask("Are you sure?", `You are about to clear the WHOLE programme for ${long}. Everyone will see it disappear. This can't be undone (you'd have to copy it in again).`, `Yes, clear ${long}`)) return;
+  btn.disabled = true;
+  const { error } = await S.sb.rpc("ops_clear_day", { p_day: day });
+  btn.disabled = false;
+  if (error) return toast(errMsg(error));
+  toast(`${long} cleared.`); OPS.edit = null; opsLoad(day);
+}
 async function opsSave(btn) {
   const ed = OPS.edit; if (!ed) return;
   btn.disabled = true;
@@ -654,6 +667,7 @@ table.opsfly td.rm{font-size:.8rem}
 table.opsfly tr.opsadd td:not(.rs),table.opsfly tbody.opsadd td{color:var(--muted);font-style:italic}
 .opsaddtag{display:inline-block;white-space:nowrap;font:700 .62rem var(--body);font-style:normal;letter-spacing:.03em;padding:1px 4px;border-radius:3px;border:1px dashed var(--muted);color:var(--muted)}
 mark.opsme{white-space:nowrap}
+.btn.danger{color:var(--late);border-color:color-mix(in srgb,var(--late) 60%,transparent)}.btn.danger:hover{background:color-mix(in srgb,var(--late) 15%,transparent)}
 /* Duties: compact tables that sit side by side */
 .opsduty{display:flex;flex-wrap:wrap;gap:4px 22px;align-items:flex-start}
 .opsdutyg{flex:0 1 auto;min-width:0;max-width:100%}
