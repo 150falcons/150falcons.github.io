@@ -208,7 +208,7 @@ function renderOps(v) {
   if (OPS.edit) { html += opsMyDay(); for (const sec of OPS_ORDER) html += opsSection(sec, canEdit); }
   else { // wide screens: pairs side by side so the page width is used; the flying program and duties stay full width
     const pair = (...xs) => `<div class="opsrow">${xs.join("")}</div>`, s = sec => opsSection(sec, canEdit);
-    html += pair(opsMyDay(), s("header")) + s("flying") + pair(s("sim"), s("ground")) + pair(s("airfield"), s("notes")) + s("duties");
+    html += opsMyDay() + s("header") + s("flying") + pair(s("sim"), s("ground")) + pair(s("airfield"), s("notes")) + s("duties");
   }
   v.innerHTML = html;
   const d = $("#opsDate"); if (d) d.onchange = e => { if (e.target.value) opsGo(e.target.value); };
@@ -283,7 +283,7 @@ const opsView = {
   flying(fl) {
     let n = 0, out = "";
     const z4 = m => String(Math.floor(m / 60) % 24).padStart(2, "0") + String(m % 60).padStart(2, "0");
-    const cols = `<colgroup><col style="width:62px"><col style="width:118px"><col style="width:96px"><col style="width:34px"><col style="width:170px"><col style="width:96px"><col style="width:112px"><col style="width:60px"><col style="width:52px"><col></colgroup>`;
+    const cols = `<colgroup>${[5, 10, 8, 3, 15, 9, 11, 6, 5, 28].map(p => `<col style="width:${p}%">`).join("")}</colgroup>`;
     for (const w of fl.waves || []) {
       const fs = w.flights || [], ws = opsStats({ waves: [w] });
       out += `<div class="opswave${w.night ? " night" : ""}"><b>${esc(w.name)}</b>${w.sxo ? `<span>SXO <strong>${opsX(w.sxo)}</strong></span>` : ""}${w.opsO ? `<span>OPS O <strong>${opsX(w.opsO)}</strong></span>` : ""}
@@ -299,7 +299,7 @@ const opsView = {
           const bs = [f.brief && f.brief !== "NA" ? "Brief " + f.brief : "", f.step && f.step !== "NA" ? "Step " + f.step : ""].filter(Boolean).join(" · ");
           out += `<tr class="${add ? "opsadd" : ""}"><td class="no">${no}</td>
             ${i === 0 ? `<td rowspan="${span}" class="tm rs"><b>${esc(f.etd)}–${esc(f.eta)}</b>${bs ? `<small>${esc(bs)}</small>` : ""}</td><td rowspan="${span}" class="cs rs">${esc(f.callsign)}</td>` : ""}
-            <td class="n">${esc(a.n)}</td><td class="crew">${opsX(a.crew1)}${a.crew2 ? `<span class="c2"> / ${opsX(a.crew2)}</span>` : ""}</td><td class="nw">${esc(a.mission)}</td>
+            <td class="n">${esc(a.n)}</td><td class="fcrew">${opsX(a.crew1)}${a.crew2 ? `<span class="c2"> / ${opsX(a.crew2)}</span>` : ""}</td><td class="nw">${esc(a.mission)}</td>
             ${i === 0 ? `<td rowspan="${span}" class="area rs">${esc(f.area)}${f.areaTime ? `<small>${esc(f.areaTime)}</small>` : ""}</td>` : ""}<td class="nw">${esc(a.tail)}</td><td class="nw">${esc(a.config)}</td><td class="rm">${opsNl(a.rmks)}</td></tr>`;
         });
         out += `</tbody>`;
@@ -608,7 +608,8 @@ function opsPrint() {
 .opswave{border-left:4px solid var(--in);padding:4px 0 4px 10px;background:color-mix(in srgb,var(--in) 8%,transparent);border-radius:0 4px 4px 0}
 .opswave.night{border-left-color:#8b5cf6;background:color-mix(in srgb,#8b5cf6 10%,transparent)}
 .opswavest{margin-left:auto;padding-right:10px;font-size:.8rem}
-table.opsfly{table-layout:fixed;min-width:880px;width:100%;border-collapse:collapse}
+table.opsfly{table-layout:fixed;min-width:940px;width:100%;border-collapse:collapse}
+table.opsfly td{font-family:var(--body)}
 table.opsfly td,table.opsfly th{vertical-align:top;padding:6px 8px}
 table.opsfly tbody.fl{border-top:2px solid var(--line)}
 table.opsfly tbody.fl:nth-of-type(even){background:color-mix(in srgb,var(--muted) 7%,transparent)}
@@ -618,15 +619,18 @@ table.opsfly td small{display:block;color:var(--muted);font-size:.74rem;white-sp
 table.opsfly td.cs{font:700 .95rem var(--cond);letter-spacing:.02em;white-space:nowrap}
 table.opsfly td.no{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600}
 table.opsfly td.n{color:var(--muted)}
-table.opsfly td.crew{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-table.opsfly td.crew{font-weight:600}table.opsfly td.crew .c2{font-weight:400}
+table.opsfly td.fcrew{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+table.opsfly td.fcrew{font-weight:600}table.opsfly td.fcrew .c2{font-weight:400}
 table.opsfly td.nw,table.opsfly td.area{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 table.opsfly td.rm{font-size:.8rem}
 table.opsfly tr.opsadd td:not(.rs),table.opsfly tbody.opsadd td{color:var(--muted);font-style:italic}
 .opsaddtag{display:inline-block;white-space:nowrap;font:700 .62rem var(--body);font-style:normal;letter-spacing:.03em;padding:1px 4px;border-radius:3px;border:1px dashed var(--muted);color:var(--muted)}
 mark.opsme{white-space:nowrap}
-@media (min-width:1200px){.opsrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 14px;align-items:start}.opsrow>:only-child{grid-column:1/-1}
-  #ops-header .opsdl{grid-template-columns:max-content 1fr max-content 1fr}}
+@media (min-width:1200px){.opsrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 14px;align-items:stretch}.opsrow>:only-child{grid-column:1/-1}
+  .opsrow>.card{margin-bottom:14px}.opsrow>.opsmine{grid-column:span 1}
+  #ops-header .opsdl{grid-template-columns:max-content 1fr max-content 1fr;column-gap:20px}
+  .opsmine ul{columns:2;column-gap:32px}.opsmine li{break-inside:avoid;margin:0 0 6px}}
+@media (min-width:1500px){#ops-header .opsdl{grid-template-columns:max-content 1fr max-content 1fr max-content 1fr}}
 .opssub{font:700 1rem var(--cond);margin:12px 0 4px;text-transform:uppercase}
 .opssub:first-child{margin-top:0}
 table.opst th,table.opst td{padding:5px 8px;font-size:.85rem}
