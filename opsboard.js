@@ -653,13 +653,15 @@ function renderAircraft(v) {
 const obFmt = t => esc(t).replace(/\[(r|y|g|b)\]([\s\S]*?)\[\/\1\]/gi, (m, c, x) => `<span class="fx-${c.toLowerCase()}">${x}</span>`).replace(/\[\/?[rygb]\]/gi, "");
 const obNoteLine = l => /^\s*(NTS|AMC|NPC|OJT|MAX FLY|CFH|CONTROL HOURS)\b/i.test(l.replace(/\[\/?[rygb]\]/gi, "")) ? `<span class="obamb">${obFmt(l)}</span>` : obFmt(l);
 function obAircraftView(tv) { return `<div class="obgrid ${tv ? "tv" : ""}">${obAircraftCards().join("")}</div>`; }
+// Tail with its CFH mark (Gordon, 10 Oct): CFH 3 → "#", CFH 2 → "@" (not doubled if already typed into the tail).
+const obTailMark = t => { const tl = String(t.tail || "").trim(), mk = t.cfh3 ? "#" : t.cfh2 ? "@" : ""; return mk && !tl.includes(mk) ? tl + mk : tl; };
 function obAircraftCards() {
   const a = obGet("aircraft"), tails = a.tails || [];
   const sv = tails.filter(t => t.status === "S").length;
   const tailsHtml = tails.length ? `<div class="tablewrap"><table class="opst obt"><thead><tr><th>Tail</th><th>Status</th><th>NPC</th><th>NTS</th><th>OJT</th><th>Significant ADDL / NPC / AMC</th></tr></thead><tbody>${tails.map(t => `<tr>
-      <td><b>${esc(t.tail)}</b></td><td>${obPill(t.status === "S" ? "g" : t.status === "US" ? "r" : "a", t.status === "S" ? "S" : t.status === "US" ? "U/S" : "MX")}</td>
+      <td><b>${esc(obTailMark(t))}</b></td><td>${obPill(t.status === "S" ? "g" : t.status === "US" ? "r" : "a", t.status === "S" ? "S" : t.status === "US" ? "U/S" : "MX")}</td>
       <td>${t.npc ? obPill("a", "NPC") : ""}</td><td>${t.nts ? obPill("a", "NTS") : ""}</td><td>${t.ojt ? obPill("a", "OJT") : ""}</td>
-      <td class="obnotes">${String(t.notes || "").split("\n").filter(Boolean).map(obNoteLine).join("<br>")}</td></tr>`).join("")}</tbody></table></div>` : `<p class="hint">No aircraft entered yet.</p>`;
+      <td class="obnotes">${String(t.notes || "").split("\n").filter(Boolean).map(obNoteLine).join("<br>")}</td></tr>`).join("")}</tbody></table></div>${tails.some(t => t.cfh2 || t.cfh3) ? `<p class="hint" style="margin:6px 0 0"># CFH 3 · @ CFH 2</p>` : ""}` : `<p class="hint">No aircraft entered yet.</p>`;
   const cs = a.callsigns || [];
   return [obCard("ob-tails", "Aircraft status", tails.length ? `${sv} of ${tails.length} serviceable` : "", tailsHtml).replace('class="card opscard"', 'class="card opscard obwide"'),
     obCard("ob-cs", "Callsigns", "", cs.length ? `<table class="opst obt"><thead><tr><th>Callsign</th><th>ETTS</th><th>Vehicle</th></tr></thead><tbody>${cs.map(c => `<tr><td>${esc(c.callsign)}</td><td>${esc(c.etts)}</td><td>${esc(c.vehicle)}</td></tr>`).join("")}</tbody></table>${a.vehicleCap ? `<p class="hint">Vehicle cap: ${esc(a.vehicleCap)}</p>` : ""}` : `<p class="hint">None entered.</p>`)];
@@ -765,7 +767,7 @@ const obTpl = {
   af: () => obAf("", "alt", false, "", []),
   aid: () => obAid("", "g"),
   ra: () => ({ item: "", val: "", s: "" }),
-  tail: () => ({ tail: "", status: "S", npc: false, nts: false, ojt: false, notes: "" }),
+  tail: () => ({ tail: "", status: "S", npc: false, nts: false, ojt: false, cfh2: false, cfh3: false, notes: "" }),
   cs: () => ({ callsign: "", etts: "", vehicle: "" }),
   leg: () => ({ code: "", label: "" }),
 };
@@ -797,7 +799,7 @@ function obEditor(k) {
   } else if (k === "aircraft") {
     body = `<div class="opsed">${(d.tails || []).map((t, i) => `<div class="obtail">
         <div class="obtailhead"><label>Tail${bI(`tails.${i}.tail`, t.tail, "90px", "e.g. 327#(W)")}</label><label>Status${bS(`tails.${i}.status`, t.status, [["S", "Serviceable"], ["US", "U/S"], ["MX", "Maintenance"]])}</label>
-          <span class="obflags">${bC(`tails.${i}.npc`, t.npc, "NPC")}${bC(`tails.${i}.nts`, t.nts, "NTS")}${bC(`tails.${i}.ojt`, t.ojt, "OJT")}</span><span class="grow"></span>${bTools("tails", i)}</div>
+          <span class="obflags">${bC(`tails.${i}.npc`, t.npc, "NPC")}${bC(`tails.${i}.nts`, t.nts, "NTS")}${bC(`tails.${i}.ojt`, t.ojt, "OJT")}${bC(`tails.${i}.cfh2`, t.cfh2, "CFH 2 (@)")}${bC(`tails.${i}.cfh3`, t.cfh3, "CFH 3 (#)")}</span><span class="grow"></span>${bTools("tails", i)}</div>
         <div class="obfxbar"><span class="hint">Significant ADDL / NPC / AMC (one per line) · select words, then:</span>${[["r", "Red"], ["y", "Amber"], ["g", "Green"], ["b", "Bold"]].map(([c, l]) => `<button type="button" class="btn small fxbtn fx-${c}" data-fx="${c}" data-ta="tails.${i}.notes">${l}</button>`).join("")}<button type="button" class="btn small" data-fx="x" data-ta="tails.${i}.notes">Clear colour</button></div>
         <textarea class="obnotesin" data-bp="tails.${i}.notes" rows="6">${esc(t.notes ?? "")}</textarea>
         <div class="obprev obnotes" data-prev="tails.${i}.notes">${obPrev(t.notes)}</div></div>`).join("")}${bB("add", "tails", "", "+ Aircraft", "tail")}
@@ -853,6 +855,9 @@ document.addEventListener("change", e => {
 document.addEventListener("input", e => {
   const el = e.target; if (!OB.edit || !el.dataset || !el.dataset.bp || !el.closest("#obEdit")) return;
   opsSetPath(OB.edit.data, el.dataset.bp, el.type === "checkbox" ? el.checked : el.value);
+  // CFH 2 and CFH 3 can't both be ticked.
+  const m = /^(tails\.\d+)\.cfh([23])$/.exec(el.dataset.bp);
+  if (m && el.checked) { const o = m[1] + ".cfh" + (m[2] === "2" ? "3" : "2"); opsSetPath(OB.edit.data, o, false); const ob = document.querySelector(`#obEdit [data-bp="${o}"]`); if (ob) ob.checked = false; }
 });
 document.addEventListener("change", async e => {
   const el = e.target;
@@ -1101,7 +1106,7 @@ table.obt{min-width:0}
 .obtail{border:1px solid var(--line);border-radius:6px;padding:10px;margin-bottom:10px;background:var(--field)}
 .obtailhead{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end}
 .obtailhead>label{display:flex;flex-direction:column;font-size:.8rem;color:var(--muted)}
-.obflags{display:flex;gap:10px}
+.obflags{display:flex;flex-wrap:wrap;gap:6px 10px}
 .obfxbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0 6px}
 .obfxbar .hint{flex:1 1 100%;font-size:.8rem}
 .fxbtn{min-width:56px}
