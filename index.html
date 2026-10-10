@@ -178,8 +178,8 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 .topbar nav.tabs button{color:var(--muted);border-bottom:2px solid transparent;margin:0;padding:0 12px;font:600 1rem var(--cond);min-height:48px}
 .topbar nav.tabs button:hover{color:var(--ink)}
 .topbar nav.tabs button[aria-selected="true"]{color:var(--ink);border-color:var(--ink)}
-.topbar .clock{display:flex;align-items:center;gap:8px;font:600 1rem/1 var(--cond);white-space:nowrap}
-.topbar .clock small{display:inline;font:400 .8rem var(--body);color:var(--muted)}
+.topbar .clock{display:flex;align-items:center;gap:8px;font:600 1rem/1 var(--cond);white-space:nowrap;font-variant-numeric:tabular-nums}
+.topbar .clock small{display:inline;font:400 .8rem var(--body);color:var(--muted);font-variant-numeric:tabular-nums}
 .topbar .clock .cdate{display:none}
 @media (max-width:640px){
   .topbar-in{flex-wrap:wrap;gap:0 12px;min-height:0}
@@ -389,7 +389,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 <div class="toast" id="toast" hidden></div>
 
 <script src="ops.js?v=14"></script>
-<script src="opsboard.js?v=19"></script>
+<script src="opsboard.js?v=20"></script>
 <script>
 /* =====================================================================
    SETUP: paste your Supabase Project URL and anon (public) key here.
@@ -587,12 +587,15 @@ async function signOut() {
 }
 
 /* ---------- top-level render ---------- */
+// Clock to the second (local hh:mm:ss and Zulu hhmmssZ), ticked every second; also drives the TV clock.
 function renderClock() {
   const n = new Date();
-  const loc = n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-  const z = n.toISOString().slice(11, 16).replace(":", "") + "Z";
-  $("#clock").innerHTML = `${esc(loc)} local <small>${esc(z)}</small>`;
+  const loc = n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const z = n.toISOString().slice(11, 19).replace(/:/g, "") + "Z";
+  const c = $("#clock"); if (c) c.innerHTML = `${esc(loc)} local <small>${esc(z)}</small>`;
+  const tv = document.querySelector(".tvclock"); if (tv) tv.innerHTML = `${esc(loc)}L <small>${esc(z)}</small>`;
 }
+setInterval(renderClock, 1000);
 function renderTally() {
   const now = Date.now(), ob = openByTrainee(); let i = 0, o = 0, l = 0, lv = 0;
   for (const t of active()) { const m = ob[t.id]; if (leaveOf(t.id)) lv++; else if (!m || isPend(m)) i++; else if (isLate(m, now)) l++; else o++; }
@@ -1605,7 +1608,7 @@ $("#btnSignOut").onclick = signOut;
 
 /* ---------- start ---------- */
 renderClock();
-setInterval(() => { renderClock(); if (S.ready && ["board", "home", "tv", "opsboard"].includes(S.tab) && !OB.edit && !obTyping() && !document.querySelector("dialog[open]")) render(); else if (S.ready) renderTally(); }, 30000);
+setInterval(() => { if (S.ready && ["board", "home", "tv", "opsboard"].includes(S.tab) && !OB.edit && !obTyping() && !document.querySelector("dialog[open]")) render(); else if (S.ready) renderTally(); }, 30000);
 // After sign-in, the board only opens for phones in France: location must be shared, and inside metropolitan France
 // (rough box incl. Corsica). Runs in the browser, so it keeps casual outsiders out, not determined ones.
 const inFrance = l => l.lat >= 41.3 && l.lat <= 51.15 && l.lng >= -5.2 && l.lng <= 9.6;

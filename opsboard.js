@@ -577,7 +577,7 @@ function renderTv(v) {
   const fl = OPS.rowsDay === todayStr() ? opsGet("flying") : null, st = fl ? opsStats(fl) : null;
   if (OPS.rowsDay !== todayStr() && !OPS.loading) { OPS.day = todayStr(); opsLoad(OPS.day); }
   const n = new Date();
-  v.innerHTML = `<div class="tvbar"><b>150 Falcon Det · Ops board</b><span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 16).replace(":", ""))}Z</small></span>
+  v.innerHTML = `<div class="tvbar"><b>150 Falcon Det · Ops board</b><span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 19).replace(/:/g, ""))}Z</small></span>
       <span class="grow"></span>${st ? `<span>Today: ${st.sorties} sorties · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>` : ""}<button class="btn small" data-ob="exittv">Exit TV</button></div>
     ${obBoardView(true, obAircraftCards().slice(1).join("") + // TV: no aircraft status table (Gordon, 10 Oct), callsigns only
       obCard("ob-tvgo", "Aircrew status", `${crew.length - nogo.length} of ${crew.length} GO`, nogo.length ? `<div class="obtvgo">${nogo.map(c => `<span>${obPill("r", c.name)} <span class="hint">${esc(obCodes(obOutstanding(c.id)))}</span></span>`).join("")}</div>` : `<p>${obPill("g", "ALL GO")}</p>`))}`;
@@ -958,7 +958,7 @@ body.tvmode .topbar,body.tvmode #subtabs,body.tvmode #tally{display:none!importa
 body.tvmode .wrap{max-width:none;padding:10px 16px}
 body.tvmode{font-size:17px}
 .tvbar{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-bottom:10px}
-.tvbar b{font:700 1.5rem var(--cond)} .tvclock{font:700 1.5rem var(--cond)} .tvbar .grow{flex:1}
+.tvbar b{font:700 1.5rem var(--cond)} .tvclock{font:700 1.5rem var(--cond);font-variant-numeric:tabular-nums;min-width:12ch} .tvbar .grow{flex:1}
 /* TV: everything on one screen. Airfields across the top (main and other side by side), the rest flows in columns; obTvFit zooms to fit. */
 body.tvmode{overflow:hidden}
 body.tvmode .wrap{padding:6px 12px}
