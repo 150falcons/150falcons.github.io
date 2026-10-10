@@ -1268,7 +1268,7 @@ function renderAdmin(v) {
       <div class="card"><h2>Post in trainees</h2>
         <p class="hint">One per line: name, course, handphone, username. Handphone and username are optional, e.g. <em>TAN WEI MING, Course 24, +33 612345678, tanwm</em>. Leave it out and one is made from the name. Add <em>non-driver</em> to the line for trainees who can't drive.</p>
         <textarea id="addList" placeholder="LIM J, Course 24, limj&#10;ONG K, Course 24, non-driver"></textarea>
-        <label style="margin-top:8px">Temporary password for new logins<input id="tmpPw" value="" placeholder="Leave blank for the standard password"></label>
+        <label style="margin-top:8px">Temporary password for new logins<input id="tmpPw" value="${esc(S.defPw || "")}" placeholder="Standard password"></label>
         <div style="display:flex;justify-content:flex-end"><button class="btn primary" id="btnAdd">Post in</button></div>
         <p class="hint">Every trainee gets a login straight away. They sign in with their username and the temporary password, then must set their own password.</p></div>
       <div class="card"><h2>QFI (${admins.length})</h2><ul class="rlist">${alist}</ul>
@@ -1295,6 +1295,8 @@ function renderAdmin(v) {
     </div></div>`;
   $("#btnAdd").onclick = postIn;
   $("#btnAddAdmin").onclick = addInstructor;
+  // Fill in the standard temporary password (fetched from the server so it isn't written in this public page).
+  if (!S.defPw) adminApi({ action: "default_password" }).then(r => { S.defPw = r && r.password; const i = $("#tmpPw"); if (i && !i.value && S.defPw) i.value = S.defPw; }).catch(() => {});
   $("#btnAddOps").onclick = addOpsAssistant;
   if (isOC()) S.sb.rpc("tg_link_status").then(({ data }) => { const s = $("#tgLinkState"); if (s) s.textContent = data ? "Linked." : "Not linked yet."; });
 }
@@ -1351,7 +1353,7 @@ async function makeLogin(tid) {
 }
 async function resetPw(uid) {
   const p = profOf(uid); if (!p) return;
-  const pw = await ask(`Reset password for ${pLabel(p)}`, "Their password goes back to the standard temporary password (or type a different one). They must set their own the next time they sign in.", "Reset password", { value: "", placeholder: "Blank = standard password" });
+  const pw = await ask(`Reset password for ${pLabel(p)}`, "Give them this temporary password (change it if you like). They must set their own the next time they sign in.", "Reset password", { value: S.defPw || "", placeholder: "Standard password" });
   if (pw === null) return;
   try { const r = await adminApi({ action: "reset_password", user_id: uid, password: pw }); fetchAll(); await ask("Password reset", `${pLabel(p)}: temporary password ${r.password}.`, "OK"); }
   catch (e) { toast(e.message); }
