@@ -368,11 +368,13 @@ function obAreasView(b, q, z, tv) {
   const f = (k, w) => q ? `<input class="obval" style="width:${w}" data-obq="r115" data-f="${k}" value="${esc(r[k] || "")}" aria-label="R115 ${k}">` : esc(r[k] || "-");
   const wx = q ? `<select class="obcs ${obCsCls(r.wx)}" data-obq="r115" data-f="wx" aria-label="R115 WX colour state">${["", ...OB_FASF].map(v => `<option value="${v}" ${v === (r.wx || "") ? "selected" : ""}>${v || "-"}</option>`).join("")}</select>`
     : `<span class="obcs ${obCsCls(r.wx)}">${esc(r.wx || "-")}</span>`;
-  const restr = q ? `<input class="obval" style="width:100%;min-width:140px" data-obq="r115" data-f="restr" value="${esc(r.restr || "")}" placeholder="e.g. G1, G3, RADAR" aria-label="R115 restrictions">` : esc(r.restr || "-");
+  const restr = q ? `<input class="obval" style="width:220px" data-obq="r115" data-f="restr" value="${esc(r.restr || "")}" placeholder="e.g. G1, G3, RADAR" aria-label="R115 restrictions">` : esc(r.restr || "-");
   const areas = (b.areas || []).map((x, j) => `<div class="obarea"><span>${esc(x.item)}</span>${obValCell(q, "aval", `data-j="${j}"`, x.val, obValS(x.val, x.s), x.s)}</div>`).join("");
   const r115 = tv ? `<div class="obr115"><b>R115 (CAPTIEUX)</b><span>TGT <b>${esc(r.tgt || "-")}</b></span><span>WX ${wx}</span><span>Before <b>${esc(r.before || "-")}</b></span><span>After <b>${esc(r.after || "-")}</b></span><span>Restr <b>${esc(r.restr || "-")}</b></span></div>`
-    : `<div class="tablewrap"><table class="opst obt"><thead><tr><th>Item</th><th>TGT</th><th>WX</th><th>Before</th><th>After</th><th>Restrictions</th></tr></thead><tbody>
-      <tr><td><b>R115 (CAPTIEUX)</b> <button class="btn small" data-ob="chart" data-k="captieux">Map</button></td><td>${f("tgt", "70px")}</td><td>${wx}</td><td>${f("before", "70px")}</td><td>${f("after", "70px")}</td><td>${restr}</td></tr></tbody></table></div>`;
+    : `<div class="obr115 ed"><b>R115 (CAPTIEUX)</b><button class="btn small" data-ob="chart" data-k="captieux">Map</button>
+      <label>TGT ${q ? f("tgt", "64px") : `<b>${esc(r.tgt || "-")}</b>`}</label><label>WX ${wx}</label>
+      <label>Before ${q ? f("before", "70px") : `<b>${esc(r.before || "-")}</b>`}</label><label>After ${q ? f("after", "70px") : `<b>${esc(r.after || "-")}</b>`}</label>
+      <label class="rs">Restr ${q ? restr : `<b>${restr}</b>`}</label></div>`; // compact, labels next to boxes (Gordon, 10 Oct)
   return `${r115}
     <div class="obareas">${areas}
       <div class="obarea"><span>Immersion suit</span>${z.immersion ? obPill(z.immersion === "YES" ? "r" : "g", z.immersion) : `<span class="hint">-</span>`}</div>
@@ -1187,6 +1189,12 @@ body.tvmode .tvcol .opst td,body.tvmode .tvcol .opst th{white-space:normal}
 .obr115{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;padding:6px 8px;border:1px solid var(--line);border-radius:4px}
 .obr115>b{flex:1 1 100%}
 .obr115 span{color:var(--muted)}.obr115 span b{color:var(--ink)}
+.obr115.ed>b{flex:0 0 auto}
+.obr115.ed label{display:inline-flex;align-items:center;gap:6px;margin:0;color:var(--muted);font-size:.85rem}
+.obr115.ed label b{color:var(--ink)}
+.obr115.ed label input,.obr115.ed label select{margin:0}
+/* page: areas packed in fixed-width cells, label right next to its box */
+.obgrid:not(.tv) .obareas{grid-template-columns:repeat(auto-fill,minmax(230px,280px));justify-content:start;gap:4px 22px}
 .tvcol>.card .obwind{align-items:center}
 body.tvmode .obareas{grid-template-columns:1fr 1fr;gap:4px 14px}
 body.tvmode .obarea{flex-wrap:wrap}
