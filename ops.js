@@ -209,6 +209,9 @@ async function opsLoad(day) {
 // Realtime: another editor saved a section.
 function opsRealtime(p) {
   const r = p.new && p.new.day ? p.new : p.old;
+  if (r && r.section === "flying") { OPS.hrs = null; if (S.tab === "hours") return render(); }
+  if (r && r.section === "flying" && r.day === OPS.day && p.new && OPS.rows.flying && p.new.version <= OPS.rows.flying.version) return; // our own save
+  if (document.activeElement && document.activeElement.dataset && document.activeElement.dataset.log) { OPS.pendingLoad = true; return; }
   if (!r || !OPS.day) return;
   if (r.day === opsShift(OPS.day, -1) && r.section === "duties") return opsLoad(OPS.day);
   if (r.day !== OPS.day) return;
@@ -325,6 +328,130 @@ function opsFlyTvGround(g) {
     `<tr class="grp"><td colspan="4">${esc(x.name || "")}</td></tr>` + x.rows.map(r => `<tr><td class="nw">${esc(r.time)}</td><td>${esc(r.event)}</td><td>${opsX(r.personnel || "")}</td><td>${esc(r.venue)}</td></tr>`).join("")).join("")}</tbody></table>`;
 }
 
+/* ---------- Flown times (Gordon, 10 Oct): after landing, ops log actual take-off / landing per aircraft line ---------- */
+// Stored on the line as a.log = { to, ldg, st: "flown" | "cx" } through ops_log_flight (no version clash with the programme editor).
+const opsLogMins = L => { if (!L || L.st !== "flown") return null; const a = opsMin(L.to), b = opsMin(L.ldg); return a == null || b == null ? null : (b - a + 1440) % 1440; };
+const opsHrs = m => m == null ? "" : (m / 60).toFixed(1);
+const opsLogTag = L => !L || !L.st ? "" : L.st === "cx" ? ` <span class="opscx">CX</span>` : ` <span class="opsflown">✓ ${esc(L.to || "?")}–${esc(L.ldg || "?")}${opsLogMins(L) != null ? ` · ${opsHrs(opsLogMins(L))} h` : ""}</span>`;
+const opsT4 = v => { const m = opsMin(String(v || "").replace(/[^0-9:]/g, "").replace(/^(\d{3})$/, "0$1")); return m == null ? "" : opsZ4(m); };
+const opsLogLine = k => { const [w, f, a] = k.split(".").map(Number); return (((((OPS.rows.flying || {}).data || {}).waves || [])[w] || {}).flights || [])[f]?.ac?.[a] || {}; };
+function opsLogCard() {
+  const fl = opsGet("flying"); let rows = "", logged = 0, lines = 0, mins = 0;
+  (fl.waves || []).forEach((w, wi) => {
+    let wr = "";
+    (w.flights || []).forEach((f, fi) => {
+      const ls = (f.ac || []).map((a, ai) => [a, ai]).filter(([a]) => opsLineUsed(a)); if (!ls.length) return;
+      ls.forEach(([a, ai], k) => {
+        const L = a.log || {}, key = `${wi}.${fi}.${ai}`, m = opsLogMins(L); lines++; if (L.st) logged++; if (m != null) mins += m;
+        wr += `<tr class="${L.st === "flown" ? "lgok" : L.st === "cx" ? "lgcx" : ""}${k === 0 ? " lgf" : ""}">
+          ${k === 0 ? `<td rowspan="${ls.length}" class="lgcs"><b>${esc(f.callsign || "-")}</b><small>${esc(f.etd || "?")}–${esc(f.eta || "?")}Z${opsIsAdd(f, {}) ? " · ops add" : ""}</small><button class="btn small" data-ops="logplan" data-k="${wi}.${fi}">✓ As planned</button></td>` : ""}
+          <td class="lgcrew">${esc(a.n || "")} <b>${opsX(a.crew1)}</b>${a.crew2 ? ` / ${opsX(a.crew2)}` : ""}<small>${esc([a.mission, opsTail(a.tail, OPS.day)].filter(Boolean).join(" · "))}${opsIsAdd(f, a) ? " · ops add" : ""}</small></td>
+          <td><input data-log="to" data-k="${key}" value="${esc(L.to || "")}" placeholder="${esc(f.etd || "T/O")}" inputmode="numeric" maxlength="5" aria-label="Take-off"></td>
+          <td><input data-log="ldg" data-k="${key}" value="${esc(L.ldg || "")}" placeholder="${esc(f.eta || "LDG")}" inputmode="numeric" maxlength="5" aria-label="Landing"></td>
+          <td class="lghrs" data-hrs="${key}">${m != null ? opsHrs(m) : ""}</td>
+          <td class="lgbtn"><button class="btn small${L.st === "cx" ? " danger" : ""}" data-ops="logcx" data-k="${key}" title="Cancelled: no hours">CX</button>${L.st ? `<button class="btn small" data-ops="logclr" data-k="${key}" title="Clear">✕</button>` : ""}</td></tr>`;
+      });
+    });
+    if (wr) rows += `<tr class="lgwv"><td colspan="6">${esc(w.name)}</td></tr>` + wr;
+  });
+  return `<section class="card opscard" id="ops-log"><div class="opshead"><h2>Flown times</h2><span class="opsmeta">${logged} of ${lines} lines logged · ${opsHrs(mins) || "0.0"} h flown</span></div>
+    <div class="tablewrap"><table class="opst opslog"><thead><tr><th>Flight</th><th>Aircrew</th><th>T/O (Z)</th><th>LDG (Z)</th><th>Hrs</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="hint" style="margin:6px 0 0">After landing, key in the actual take-off and landing times (Z, e.g. 0718). <b>✓ As planned</b> fills in the planned ETD / ETA for the whole flight; type over any that differ. <b>CX</b> = cancelled (no hours). Both crew on a line get the hours; they add up on the <b>Hours</b> tab.</p></section>`;
+}
+async function opsLogSave(k, to, ldg, st, rerender) {
+  const [w, f, a] = k.split(".").map(Number), line = opsLogLine(k);
+  const { data, error } = await S.sb.rpc("ops_log_flight", { p_day: OPS.day, p_w: w, p_f: f, p_a: a, p_crew1: line.crew1 || "", p_to: to || null, p_ldg: ldg || null, p_status: st });
+  if (error) { toast(errMsg(error)); if (/changed|no longer/i.test(error.message)) opsLoad(OPS.day); return false; }
+  if (!st && !to && !ldg) delete line.log; else line.log = { to: to || null, ldg: ldg || null, st };
+  OPS.rows.flying.version = data; OPS.hrs = null;
+  if (rerender) { const y = scrollY; renderOps($("#view")); scrollTo(0, y); }
+  else { // update the row in place so typing carries on
+    const m = opsLogMins(line.log), cell = document.querySelector(`[data-hrs="${k}"]`); if (cell) cell.textContent = m != null ? opsHrs(m) : "";
+    const tr = cell && cell.closest("tr"); if (tr) { tr.classList.toggle("lgok", st === "flown"); tr.classList.toggle("lgcx", st === "cx"); }
+  }
+  return true;
+}
+async function opsLogPlanned(btn) {
+  const [w, f] = btn.dataset.k.split(".").map(Number), fl = (OPS.rows.flying.data.waves[w] || {}).flights[f] || {};
+  const to = opsT4(fl.etd), ldg = opsT4(fl.eta); if (!to || !ldg) return toast("This flight has no planned ETD / ETA to copy.");
+  btn.disabled = true;
+  for (const [a, ai] of (fl.ac || []).map((a, ai) => [a, ai]).filter(([a]) => opsLineUsed(a)))
+    if (!await opsLogSave(`${w}.${f}.${ai}`, to, ldg, "flown", false)) break;
+  const y = scrollY; renderOps($("#view")); scrollTo(0, y);
+}
+document.addEventListener("change", e => {
+  const el = e.target; if (!el.dataset || !el.dataset.log) return;
+  const tr = el.closest("tr"), get = n => tr.querySelector(`[data-log="${n}"]`);
+  const to = opsT4(get("to").value), ldg = opsT4(get("ldg").value);
+  if (el.value.trim() && !opsT4(el.value)) return toast("Times are 4 digits in Z, e.g. 0718.");
+  get("to").value = to; get("ldg").value = ldg;
+  opsLogSave(el.dataset.k, to, ldg, to || ldg ? "flown" : "", false);
+});
+document.addEventListener("focusout", () => setTimeout(() => {
+  if (OPS.pendingLoad && !(document.activeElement && document.activeElement.dataset && document.activeElement.dataset.log)) { OPS.pendingLoad = false; opsLoad(OPS.day); }
+}, 300));
+
+/* ---------- Hours tab (Gordon, 10 Oct): hours flown per person from the logged times on every day's programme ---------- */
+const HRS_PERIODS = [["month", "This month"], ["lastmonth", "Last month"], ["30", "Last 30 days"], ["year", "This year"], ["all", "All time"]];
+function hrsRange(p) {
+  const t = todayStr(), y = +t.slice(0, 4), mo = +t.slice(5, 7), pad = n => String(n).padStart(2, "0");
+  if (p === "month") return [`${y}-${pad(mo)}-01`, t];
+  if (p === "lastmonth") { const ly = mo === 1 ? y - 1 : y, lm = mo === 1 ? 12 : mo - 1; return [`${ly}-${pad(lm)}-01`, `${ly}-${pad(lm)}-31`]; }
+  if (p === "30") return [opsShift(t, -29), t];
+  if (p === "year") return [`${y}-01-01`, t];
+  return ["0000-01-01", "9999-12-31"];
+}
+// Every flown line on every day → one entry per crew member.
+function hrsEntries(days) {
+  const out = [];
+  for (const r of days) {
+    const fl = opsNameWaves(opsClone(r.data || {}));
+    for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) {
+      const m = opsLogMins(a.log); if (m == null) continue;
+      [[a.crew1, a.crew2], [a.crew2, a.crew1]].forEach(([who, mate], seat) => {
+        const n = opsNorm(who); if (!n) return;
+        out.push({ name: n, day: r.day, wave: w.name, night: !!w.night, callsign: f.callsign, ac: a.n, tail: opsTail(a.tail, r.day), mission: a.mission, mate: mate || "", seat: seat ? "Back" : "Front", to: a.log.to, ldg: a.log.ldg, mins: m });
+      });
+    }
+  }
+  return out;
+}
+function renderHours(v) {
+  if (!OPS.hrs) {
+    v.innerHTML = `<div class="empty">Loading hours…</div>`;
+    if (!OPS.hrsLoading) { OPS.hrsLoading = true; S.sb.from("ops_sections").select("day,data").eq("section", "flying").order("day").then(({ data, error }) => { OPS.hrsLoading = false; if (error) return toast(errMsg(error)); OPS.hrs = { days: data || [] }; if (S.tab === "hours") render(); }); }
+    return;
+  }
+  const per = OPS.hrsPer || "month", [from, to] = hrsRange(per), sort = OPS.hrsSort || "group";
+  const ents = hrsEntries(OPS.hrs.days).filter(e => e.day >= from && e.day <= to);
+  const crewOf = n => (typeof OB !== "undefined" ? OB.crew : []).find(c => opsNorm(c.name) === n);
+  const people = {};
+  for (const e of ents) { const p = people[e.name] || (people[e.name] = { name: e.name, sorties: 0, day: 0, night: 0, last: "", list: [] }); p.sorties++; p[e.night ? "night" : "day"] += e.mins; if (e.day > p.last) p.last = e.day; p.list.push(e); }
+  const groups = typeof OB_GROUPS !== "undefined" ? OB_GROUPS : [];
+  const gi = n => { const c = crewOf(n), i = c ? groups.indexOf(c.grp) : -1; return i < 0 ? 99 : i; };
+  const list = Object.values(people).sort(sort === "hours" ? (a, b) => (b.day + b.night) - (a.day + a.night) || a.name.localeCompare(b.name) : (a, b) => gi(a.name) - gi(b.name) || (crewOf(a.name)?.sort ?? 999) - (crewOf(b.name)?.sort ?? 999) || a.name.localeCompare(b.name));
+  const mine = new Set(opsMyNames()), tot = list.reduce((s, p) => s + p.day + p.night, 0);
+  const grpOf = n => { const c = crewOf(n); return c ? (typeof obGrpLabel === "function" ? obGrpLabel(c.grp) : c.grp) : ""; };
+  const fd = d => new Date(d + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const rows = list.map(p => {
+    const open = OPS.hrsOpen && OPS.hrsOpen[p.name];
+    return `<tr class="hrrow${mine.has(p.name) ? " me" : ""}" data-hrs-p="${esc(p.name)}"><td><b>${esc(p.name)}</b> <span class="hint">${open ? "▲" : "▼"}</span></td><td class="hint">${esc(grpOf(p.name))}</td><td class="n">${p.sorties}</td><td class="n">${opsHrs(p.day)}</td><td class="n">${opsHrs(p.night)}</td><td class="n"><b>${opsHrs(p.day + p.night)}</b></td><td class="hint">${fd(p.last)}</td></tr>`
+      + (open ? `<tr class="hrdet"><td colspan="7"><table class="opst"><thead><tr><th>Date</th><th>Wave</th><th>Callsign</th><th>Seat</th><th>With</th><th>Mission</th><th>A/C</th><th>T/O–LDG (Z)</th><th>Hrs</th></tr></thead><tbody>${p.list.slice().sort((a, b) => b.day.localeCompare(a.day)).map(e => `<tr><td>${fd(e.day)}</td><td>${esc(e.wave)}</td><td>${esc([e.callsign, e.ac].filter(Boolean).join(" "))}</td><td>${e.seat}</td><td>${esc(e.mate)}</td><td>${esc(e.mission)}</td><td>${esc(e.tail)}</td><td>${esc(e.to)}–${esc(e.ldg)}</td><td class="n">${opsHrs(e.mins)}</td></tr>`).join("")}</tbody></table></td></tr>` : "");
+  }).join("");
+  v.innerHTML = `<div class="opsbar"><label class="hrsper">Period <select data-hrs="per">${HRS_PERIODS.map(([k, l]) => `<option value="${k}" ${k === per ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      <span class="hint">${per === "all" ? "" : `${fd(from)} – ${fd(to > todayStr() ? todayStr() : to)}`}</span><span class="grow"></span>
+      <button class="btn small${sort === "group" ? " primary" : ""}" data-hrs="sort" data-v="group">By group</button><button class="btn small${sort === "hours" ? " primary" : ""}" data-hrs="sort" data-v="hours">Most hours</button></div>
+    <section class="card opscard"><div class="opshead"><h2>Hours flown</h2><span class="opsmeta">${ents.length} crew-sorties · ${opsHrs(tot) || "0.0"} h in total</span></div>
+    ${list.length ? `<div class="tablewrap"><table class="opst hrst"><thead><tr><th>Name</th><th>Group</th><th class="n">Sorties</th><th class="n">Day</th><th class="n">Night</th><th class="n">Total h</th><th>Last flown</th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : `<p class="hint">No flown times logged in this period yet. Ops log them on the Flying program with <b>Log flown times</b> after the aircrew land.</p>`}
+    <p class="hint" style="margin:8px 0 0">From the take-off / landing times logged on each day's flying program. Both crew on a line get the hours (front and back seat). Night waves count as night. Tap a name for their sorties.</p></section>`;
+}
+document.addEventListener("click", e => {
+  const r = e.target.closest("[data-hrs-p]"); if (r && S.tab === "hours") { OPS.hrsOpen = OPS.hrsOpen || {}; OPS.hrsOpen[r.dataset.hrsP] = !OPS.hrsOpen[r.dataset.hrsP]; return render(); }
+  const b = e.target.closest('[data-hrs="sort"]'); if (b) { OPS.hrsSort = b.dataset.v; render(); }
+});
+document.addEventListener("change", e => { if (e.target.dataset && e.target.dataset.hrs === "per") { OPS.hrsPer = e.target.value; render(); } });
+
 /* ---------- view ---------- */
 function renderOps(v) {
   if (!OPS.day) OPS.day = todayStr();
@@ -347,7 +474,7 @@ function renderOps(v) {
   if (OPS.edit) { html += opsMyDay(); for (const sec of OPS_ORDER) html += opsSection(sec, canEdit); }
   else { // wide screens: pairs side by side so the page width is used; the flying program and duties stay full width
     const pair = (...xs) => `<div class="opsrow">${xs.join("")}</div>`, s = sec => opsSection(sec, canEdit);
-    html += opsMyDay() + s("header") + s("flying") + pair(s("sim"), s("ground")) + pair(s("airfield"), s("notes")) + s("duties");
+    html += opsMyDay() + s("header") + (OPS.logOpen && canEdit && opsData("flying") ? opsLogCard() : "") + s("flying") + pair(s("sim"), s("ground")) + pair(s("airfield"), s("notes")) + s("duties");
   }
   v.innerHTML = html;
   const d = $("#opsDate"); if (d) d.onchange = e => { if (e.target.value) opsGo(e.target.value); };
@@ -359,6 +486,7 @@ function opsBar() {
     <button class="btn small" data-ops="day" data-n="1" aria-label="Next day">›</button>
     <button class="btn small" data-ops="today">Today</button>
     <span class="grow"></span>
+    ${opsCanEdit() && OPS.rowsDay === OPS.day && opsData("flying") && !OPS.edit ? `<button class="btn small${OPS.logOpen ? " primary" : ""}" data-ops="log">${OPS.logOpen ? "Done logging" : "Log flown times"}</button>` : ""}
     ${opsCanEdit() ? `<button class="btn small" data-ops="copy">Copy from…</button>${OPS.rowsDay === OPS.day && OPS_ORDER.some(opsData) && !OPS.edit ? `<button class="btn small danger" data-ops="clear">Clear day</button>` : ""}` : ""}
     <button class="btn small" data-ops="pdf">PDF</button>${OPS.edit ? "" : `<button class="btn small primary" data-tab="flytv">TV mode</button>`}</div>`;
 }
@@ -439,7 +567,7 @@ const opsView = {
           out += `<tr class="${add ? "opsadd" : ""}"><td class="no">${no}</td>
             ${i === 0 ? `<td rowspan="${span}" class="tm rs"><b>${esc(f.etd)}–${esc(f.eta)}</b>${bs ? `<small>${esc(bs)}</small>` : ""}</td><td rowspan="${span}" class="cs rs">${esc(f.callsign)}</td>` : ""}
             <td class="n">${esc(a.n)}</td><td class="fcrew">${opsX(a.crew1)}${a.crew2 ? `<span class="c2"> / ${opsX(a.crew2)}</span>` : ""}</td><td class="nw">${esc(a.mission)}</td>
-            ${i === 0 ? `<td rowspan="${span}" class="area rs">${esc(f.area)}${f.areaTime ? `<small>${esc(f.areaTime)}</small>` : ""}</td>` : ""}<td class="nw">${esc(opsTail(a.tail, OPS.day))}</td><td class="nw">${esc(a.config)}</td><td class="rm">${opsNl(a.rmks)}</td></tr>`;
+            ${i === 0 ? `<td rowspan="${span}" class="area rs">${esc(f.area)}${f.areaTime ? `<small>${esc(f.areaTime)}</small>` : ""}</td>` : ""}<td class="nw">${esc(opsTail(a.tail, OPS.day))}</td><td class="nw">${esc(a.config)}</td><td class="rm">${opsNl(a.rmks)}${opsLogTag(a.log)}</td></tr>`;
         });
         out += `</tbody>`;
       }
@@ -659,6 +787,10 @@ document.addEventListener("click", async e => {
   else if (a === "copy") opsCopy();
   else if (a === "clear") opsClearDay(el);
   else if (a === "pdf") opsPrint();
+  else if (a === "log") { OPS.logOpen = !OPS.logOpen; renderOps($("#view")); if (OPS.logOpen) { const c = $("#ops-log"); if (c) c.scrollIntoView({ block: "start" }); } }
+  else if (a === "logplan") opsLogPlanned(el);
+  else if (a === "logcx") { const L = opsLogLine(el.dataset.k).log || {}; opsLogSave(el.dataset.k, null, null, L.st === "cx" ? "" : "cx", true); }
+  else if (a === "logclr") opsLogSave(el.dataset.k, null, null, "", true);
 });
 // Clear the whole programme for the shown day (two warnings first). Sections are emptied, not deleted.
 async function opsClearDay(btn) {
@@ -697,6 +829,7 @@ async function opsCopy() {
   for (const r of src) {
     const d = opsClone(r.data);
     if (r.section === "duties") for (const g of d.groups || []) for (const row of g.rows || []) { row.cells = []; row.inTime = ""; row.outTime = ""; }
+    if (r.section === "flying") for (const w of d.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) delete a.log; // flown times belong to their own day
     const cur = OPS.rows[r.section];
     const res = await S.sb.rpc("ops_save", { p_day: OPS.day, p_section: r.section, p_data: d, p_version: cur ? cur.version : 0 });
     if (res.error) fails.push(`${OPS_TITLES[r.section]}: ${errMsg(res.error)}`);
@@ -852,6 +985,29 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .opsed .tools{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .opsed .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 10px}
 .opsed label{margin-bottom:6px}
+.opslog td{vertical-align:middle;padding:4px 6px}
+.opslog td small{display:block;color:var(--muted);font-size:.75rem}
+.opslog td.lgcs{white-space:nowrap}.opslog td.lgcs .btn{margin-top:4px}
+.opslog input{width:72px;margin:0;padding:4px 6px;font-variant-numeric:tabular-nums}
+.opslog td.lghrs{font-weight:700;font-variant-numeric:tabular-nums;min-width:40px}
+.opslog td.lgbtn{white-space:nowrap}.opslog td.lgbtn .btn{margin-left:4px}
+.opslog tr.lgf td{border-top:2px solid var(--line)}
+.opslog tr.lgwv td{font:700 .95rem var(--cond);text-transform:uppercase;background:color-mix(in srgb,var(--in) 10%,transparent);padding:4px 8px}
+.opslog tr.lgok td.lgcrew{box-shadow:inset 3px 0 0 var(--ok,#1F8A4C)}
+.opslog tr.lgcx td.lgcrew{box-shadow:inset 3px 0 0 var(--late);opacity:.7}
+@media (max-width:700px){ /* phone: flight on its own line, then crew | T/O | LDG | hrs | buttons */
+  .opslog,.opslog tbody{display:block;min-width:0}.opslog thead{display:none}
+  .opslog tr{display:grid;grid-template-columns:minmax(0,1fr) 62px 62px 30px auto;align-items:center;gap:0 4px}
+  .opslog tr.lgwv{display:block}.opslog td.lgcs{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .opslog td.lgcs small{display:inline}.opslog td.lgcs .btn{margin:0 0 0 auto}
+  .opslog input{width:58px;padding:4px}.opslog td{padding:3px 2px}}
+.opsflown{display:inline-block;font-size:.75rem;font-weight:600;color:var(--ok,#1F8A4C);white-space:nowrap}
+.opscx{display:inline-block;font-size:.7rem;font-weight:700;color:var(--late);border:1px solid var(--late);border-radius:3px;padding:0 4px}
+.hrsper{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:.9rem}.hrsper select{width:auto;margin:0}
+.hrst td.n,.hrst th.n{text-align:right;font-variant-numeric:tabular-nums}
+.hrst tr.hrrow{cursor:pointer}.hrst tr.hrrow:hover td{background:color-mix(in srgb,var(--muted) 8%,transparent)}
+.hrst tr.me td{background:color-mix(in srgb,var(--in) 10%,transparent)}
+.hrst tr.hrdet>td{padding:4px 8px 12px 24px}.hrst tr.hrdet table{font-size:.85rem}
 .tvspd{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:.85rem;color:var(--muted)}
 .tvspd select{width:auto;margin:0;padding:3px 6px;font-size:.85rem}
 .flytv{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(0,1fr);gap:12px}

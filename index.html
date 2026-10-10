@@ -388,7 +388,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 
 <div class="toast" id="toast" hidden></div>
 
-<script src="ops.js?v=30"></script>
+<script src="ops.js?v=32"></script>
 <script src="opsboard.js?v=34"></script>
 <script>
 /* =====================================================================
@@ -631,12 +631,13 @@ function render() {
   else if (S.tab === "aircraft") renderAircraft(v);
   else if (S.tab === "tv") renderTv(v);
   else if (S.tab === "flytv") renderFlyTv(v);
+  else if (S.tab === "hours") renderHours(v);
   else if (isAdmin()) renderAdmin(v); else renderRoster(v);
 }
 
 // Top-level areas (top bar) and their pages (sub-tabs).
-const AREA = { home: "home", board: "move", log: "move", vehicles: "move", ops: "ops", opsboard: "ops", gonogo: "ops", aircraft: "ops", tv: "ops", flytv: "ops", roster: "admin" };
-const SUBTABS = { move: [["board", "Board"], ["log", "Log"], ["vehicles", "Vehicles"]], ops: [["opsboard", "Ops board"], ["ops", "Flying program"], ["gonogo", "Go / No-Go"], ["aircraft", "Aircraft"]] };
+const AREA = { home: "home", board: "move", log: "move", vehicles: "move", ops: "ops", opsboard: "ops", gonogo: "ops", aircraft: "ops", tv: "ops", flytv: "ops", hours: "ops", roster: "admin" };
+const SUBTABS = { move: [["board", "Board"], ["log", "Log"], ["vehicles", "Vehicles"]], ops: [["opsboard", "Ops board"], ["ops", "Flying program"], ["gonogo", "Go / No-Go"], ["aircraft", "Aircraft"], ["hours", "Hours"]] };
 function renderHome(v) {
   const now = Date.now(), ob = openByTrainee(); let i = 0, o = 0, l = 0, lv = 0;
   for (const t of active()) { const m = ob[t.id]; if (leaveOf(t.id)) lv++; else if (!m || isPend(m)) i++; else if (isLate(m, now)) l++; else o++; }
