@@ -228,46 +228,51 @@ function renderFlyTv(v) {
   if (OPS.day !== day && !OPS.edit) { OPS.day = day; OPS.rowsDay = null; }
   if (OPS.rowsDay !== OPS.day) { v.innerHTML = `<div class="empty">Loading today's programme…</div>`; if (!OPS.loading) opsLoad(OPS.day); return; }
   const fl = opsGet("flying"), st = opsStats(fl), n = new Date(), tw = opsFlyTvWaves(fl);
-  const card = (title, body) => `<section class="card opscard"><div class="opshead"><h2>${title}</h2></div>${body || `<p class="hint" style="display:block;margin:0">Nothing entered.</p>`}</section>`;
+  const pane = (cls, key, title, body) => `<section class="card opscard flypane ${cls}">${title ? `<div class="opshead"><h2>${title}</h2></div>` : ""}<div class="tvpane" data-pane="${key}">${body || `<p class="hint" style="display:block;margin:0">Nothing entered.</p>`}</div></section>`;
   v.innerHTML = `<div class="tvstage"><div class="tvbar"><b>150 Falcon Det · Flying program</b><span>${esc(opsLongDay(OPS.day))}</span>
       <span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 19).replace(/:/g, ""))}Z</small></span>
       <span class="grow"></span><span>${st.sorties} sorties · ${st.hours} h · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>
       <button class="btn small" data-tab="ops">Exit TV</button></div>
-    ${OPS_ORDER.some(opsData) ? `<div class="flytv"><div class="flytvl"><section class="card opscard"></section></div>
-      <div class="flytvr">${card(OPS_TITLES.sim, opsView.sim(opsGet("sim")))}${card(OPS_TITLES.ground, opsFlyTvGround(opsGet("ground")))}</div></div>`
+    ${OPS_ORDER.some(opsData) ? `<div class="flytv"><div class="flytvl">${pane("fly", "fly", "", "")}</div>
+      <div class="flytvr">${pane("sim", "sim", OPS_TITLES.sim, opsView.sim(opsGet("sim")))}${pane("gnd", "gnd", OPS_TITLES.ground, opsFlyTvGround(opsGet("ground")))}</div></div>`
       : `<div class="empty"><strong>No programme for today yet</strong></div>`}</div>`;
-  // Text size is set by the ~3 waves (tw); when there are more, all of them are then shown and the screen pans (Gordon, 10 Oct).
-  OPS.tvLeft = { part: (tw.note ? `<div class="flytvnote">${esc(tw.note)}</div>` : "") + (opsView.flying(tw.fl, tw.n0) || `<p class="hint" style="display:block;margin:0">No flights.</p>`),
-    all: tw.more ? opsView.flying(tw.all) : "" };
+  // Text size is set by the ~3 waves (tw.fl); the flying window then holds every wave and scrolls within itself (Gordon, 10 Oct).
+  OPS.tvLeft = { part: opsView.flying(tw.fl, tw.n0) || `<p class="hint" style="display:block;margin:0">No flights.</p>`, all: tw.more ? opsView.flying(tw.all) : "" };
   opsFlyTvLeft(false);
   requestAnimationFrame(opsFlyTvFit); setTimeout(opsFlyTvFit, 1200);
 }
-// Fill the left card: the ~3-wave part (used to size the text) or every wave (scroll mode).
+// Fill the flying window: the ~3-wave part (to size the text) or every wave.
 function opsFlyTvLeft(all) {
-  const c = document.querySelector(".flytvl > .card"), g = document.querySelector(".flytv"); if (!c || !OPS.tvLeft) return;
-  c.innerHTML = all ? OPS.tvLeft.all : OPS.tvLeft.part;
-  g.classList.toggle("flyscroll", !!all); document.body.classList.toggle("tvscroll", !!all);
+  const c = document.querySelector('.tvpane[data-pane="fly"]'); if (!c || !OPS.tvLeft) return;
+  c.innerHTML = all && OPS.tvLeft.all ? OPS.tvLeft.all : OPS.tvLeft.part;
   // Save height so everything can be shown bigger: wave remarks sit on the wave band, column headings only once.
   c.querySelectorAll(".opsrmk").forEach(r => { const w = r.previousElementSibling; if (w && w.classList.contains("opswave")) { r.classList.add("inband"); w.insertBefore(r, w.querySelector(".opswavest")); } });
   c.querySelectorAll("table.opsfly").forEach((t, i) => { if (i) t.querySelector("thead")?.remove(); });
-  c.querySelectorAll(".tablewrap").forEach(w => { w.style.flexGrow = w.querySelectorAll("tbody tr").length || 1; }); // extra height shared by rows
+  c.querySelectorAll(".tablewrap").forEach(w => { w.style.flexGrow = w.querySelectorAll("tbody tr").length || 1; }); // spare height shared by rows
 }
-// Slow up-and-down pan when everything doesn't fit; scrolling by hand (wheel, touch, keys) pauses it for 20 s.
-const FLYPAN = { dir: 1, pos: null, pause: 0, user: 0, last: 0, raf: 0 };
-function opsFlyPan(t) {
-  if (S.tab !== "flytv" || !document.body.classList.contains("tvscroll")) { FLYPAN.raf = 0; return; }
-  const el = document.scrollingElement, max = el.scrollHeight - innerHeight, dt = Math.min(100, t - (FLYPAN.last || t));
-  FLYPAN.last = t;
-  if (max > 4 && t > FLYPAN.pause && Date.now() > FLYPAN.user) {
-    if (FLYPAN.pos == null) FLYPAN.pos = el.scrollTop;
-    FLYPAN.pos += FLYPAN.dir * dt * (FLYPAN.dir > 0 ? 0.035 : 0.12); // px per ms: slow down, quicker back up
-    if (FLYPAN.pos >= max) { FLYPAN.pos = max; FLYPAN.dir = -1; FLYPAN.pause = t + 8000; }
-    if (FLYPAN.pos <= 0) { FLYPAN.pos = 0; FLYPAN.dir = 1; FLYPAN.pause = t + 10000; }
-    el.scrollTop = FLYPAN.pos;
-  }
-  FLYPAN.raf = requestAnimationFrame(opsFlyPan);
+// The page itself never scrolls: the flying, simulator and ground windows each scroll on their own when they hold more
+// than fits, panning slowly down and back up. Scrolling one by hand (wheel / touch / click) pauses it for 20 s; a key pauses all.
+const TVPANE = { st: {}, raf: 0, last: 0 };
+function opsPaneTick(t) {
+  if (S.tab !== "flytv") { TVPANE.raf = 0; return; }
+  const dt = Math.min(100, t - (TVPANE.last || t)); TVPANE.last = t;
+  document.querySelectorAll(".flytv .tvpane").forEach(el => {
+    const p = TVPANE.st[el.dataset.pane] || (TVPANE.st[el.dataset.pane] = { dir: 1, pos: null, pause: t + 6000, user: 0 });
+    const max = el.scrollHeight - el.clientHeight;
+    if (max <= 2 || t < p.pause || Date.now() < p.user) return;
+    if (p.pos == null) p.pos = el.scrollTop;
+    p.pos += p.dir * dt * (p.dir > 0 ? 0.03 : 0.1);
+    if (p.pos >= max) { p.pos = max; p.dir = -1; p.pause = t + 8000; }
+    if (p.pos <= 0) { p.pos = 0; p.dir = 1; p.pause = t + 10000; }
+    el.scrollTop = p.pos;
+  });
+  TVPANE.raf = requestAnimationFrame(opsPaneTick);
 }
-for (const ev of ["wheel", "touchstart", "keydown", "mousedown"]) addEventListener(ev, () => { if (S.tab === "flytv") { FLYPAN.user = Date.now() + 20000; FLYPAN.pos = null; } }, { passive: true });
+for (const ev of ["wheel", "touchstart", "mousedown"]) addEventListener(ev, e => {
+  const el = S.tab === "flytv" && e.target.closest && e.target.closest(".tvpane"); if (!el) return;
+  const p = TVPANE.st[el.dataset.pane]; if (p) { p.user = Date.now() + 20000; p.pos = null; }
+}, { passive: true });
+addEventListener("keydown", () => { if (S.tab === "flytv") for (const p of Object.values(TVPANE.st)) { p.user = Date.now() + 20000; p.pos = null; } });
 // TV shows about 3 waves (Gordon, 10 Oct): empty waves are left out; from the first wave not yet finished, 3 waves
 // (or the last 3 once the day is nearly over). Line numbers carry on from the hidden earlier waves.
 const OPS_TV_WAVES = 3;
@@ -283,23 +288,20 @@ function opsFlyTvWaves(fl) {
   const note = [before.length ? `Done: ${before.join(", ")}` : "", after.length ? `Later: ${after.join(", ")}` : ""].filter(Boolean).join(" · ");
   return { fl: { ...fl, waves: shown }, n0, note, more: used.length > shown.length, all: { ...fl, waves: used } };
 }
-// Pick the left/right split (around 2/3 for the flying lines) that lets the whole screen be shown biggest.
+// Size the text so ~3 waves fill the flying window (capped so a quiet day isn't huge), then fix the windows to the screen.
 function opsFlyTvFit() {
   const g = document.querySelector(".flytv"); if (!g || S.tab !== "flytv") return obTvFit();
-  const st0 = document.querySelector(".tvstage"); st0.classList.remove("noautofit"); if (OPS.tvLeft && OPS.tvLeft.all) opsFlyTvLeft(false);
-  if (innerWidth / innerHeight < 1) { g.style.gridTemplateColumns = ""; return obTvFit(); }
-  let best = null;
-  for (const r of [2.2, 2, 1.8, 1.65]) {
-    g.style.gridTemplateColumns = `minmax(0,${r}fr) minmax(0,1fr)`; obTvFit();
-    const z = parseFloat(document.querySelector(".tvstage").style.zoom) || 1;
-    if (!best || z > best.z + 0.005) best = { r, z };
-  }
-  g.style.gridTemplateColumns = `minmax(0,${best.r}fr) minmax(0,1fr)`; obTvFit();
-  if (OPS.tvLeft && OPS.tvLeft.all) { // more waves than fit: keep this text size, show them all and pan
-    opsFlyTvLeft(true); document.querySelector(".tvstage").classList.add("noautofit");
-    if (FLYPAN.pos != null) document.scrollingElement.scrollTop = FLYPAN.pos;
-    if (!FLYPAN.raf) FLYPAN.raf = requestAnimationFrame(opsFlyPan);
-  }
+  const st = document.querySelector(".tvstage");
+  st.classList.remove("noautofit"); g.classList.add("measure"); g.style.height = ""; opsFlyTvLeft(false);
+  obTvFit();
+  const cap = Math.min(innerWidth / 1920, innerHeight / 1080) * 1.15;
+  if ((parseFloat(st.style.zoom) || 1) > cap) st.style.zoom = cap;
+  const z = parseFloat(st.style.zoom) || 1;
+  opsFlyTvLeft(true); g.classList.remove("measure");
+  g.style.height = Math.max(200, innerHeight - g.getBoundingClientRect().top - 6) / z + "px";
+  st.classList.add("noautofit");
+  document.querySelectorAll(".flytv .tvpane").forEach(el => { const p = TVPANE.st[el.dataset.pane]; if (p && p.pos != null) el.scrollTop = p.pos; });
+  if (!TVPANE.raf) TVPANE.raf = requestAnimationFrame(opsPaneTick);
 }
 window.addEventListener("resize", () => { if (S.tab !== "flytv") return; clearTimeout(opsFlyTvFit.t); opsFlyTvFit.t = setTimeout(opsFlyTvFit, 300); });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (S.tab === "flytv") opsFlyTvFit(); });
@@ -839,29 +841,27 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .opsed .tools{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .opsed .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 10px}
 .opsed label{margin-bottom:6px}
-.flytv{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:12px;align-items:stretch}
-/* Fill the screen: the shorter side stretches to the taller one and its rows share the extra height (Gordon: "maximise the space") */
-.flytvl,.flytvr{display:flex;flex-direction:column}
-body.tvmode.tvscroll{overflow:auto}
-.flytv.flyscroll{align-items:start}
-.flytv.flyscroll .flytvl>.card>.tablewrap{flex-grow:0!important}
-.flytv.flyscroll table{height:auto!important}
-.flytv.flyscroll .flytvr>.card:last-child{flex:0 0 auto}
-.flytvnote{font-size:.8rem;color:var(--muted);margin:0 0 6px;text-align:right}
-.flytvl>.card{flex:1;display:flex;flex-direction:column;margin-bottom:0}
-.flytvl>.card>.tablewrap{flex:1 1 auto}
-.flytvl>.card>.tablewrap>table{height:100%}
-.flytvr>.card:last-child{flex:1;display:flex;flex-direction:column;margin-bottom:0}
-.flytvr>.card:last-child>table,.flytvr>.card:last-child>.tablewrap{flex:1 1 auto}
-.flytvr>.card:last-child table{height:100%}
-body.tvmode .flytv.measuring,body.tvmode .flytv.measuring *{flex-grow:0!important}
-body.tvmode .flytv.measuring table{height:auto!important}
-.flytv .card{margin:0 0 12px;padding:10px 12px}
-.flytvr{display:flex;flex-direction:column}
+.flytv{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(0,1fr);gap:12px}
+/* Fixed windows (Gordon, 10 Oct): the page doesn't scroll; each window scrolls inside itself. */
+.flytvl,.flytvr{display:flex;flex-direction:column;min-height:0}
+.flytv .card.flypane{display:flex;flex-direction:column;min-height:0;margin:0;padding:10px 12px}
+.flytvl .flypane{flex:1 1 auto}
+.flytvr .flypane.sim{flex:0 1 auto;margin-bottom:12px}
+.flytvr .flypane.gnd{flex:1 1 auto}
+.flytv .tvpane{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;display:flex;flex-direction:column}
+.flytv .tvpane>*{flex-shrink:0}
+.flytv .tvpane>.tablewrap{overflow:visible;flex:1 0 auto}
+.flytv .tvpane>.tablewrap>table,.flytv .flypane.gnd .tvpane>table{height:100%}
+.flytv .flypane.gnd .tvpane>table{flex:1 0 auto}
+.flytv.measure{height:auto!important}
+.flytv.measure .flytvr{visibility:hidden;height:0;overflow:hidden}
+.flytv.measure .tvpane{overflow:visible}
+.flytv.measure .tvpane>.tablewrap{flex-grow:0!important}
+.flytv.measure table{height:auto!important}
 body.tvmode .flytv td,body.tvmode .flytv th{padding:3px 6px!important;line-height:1.25}
 body.tvmode .flytv td{font-weight:500}
 body.tvmode .flytv table.opsfly{min-width:0}
-${[7, 10, 9, 3, 15, 9, 10, 5, 5, 27].map((w, i) => `body.tvmode .flytv table.opsfly col:nth-child(${i + 1}){width:${w}%!important}`).join("\n")}
+${[7, 10, 9, 3, 15, 9, 10, 6, 5, 26].map((w, i) => `body.tvmode .flytv table.opsfly col:nth-child(${i + 1}){width:${w}%!important}`).join("\n")}
 body.tvmode .flytv td.cs{white-space:normal}
 body.tvmode .flytv .opsaddtag{font-size:.6rem;padding:0 3px}
 body.tvmode .flytv td small{color:color-mix(in srgb,var(--ink) 65%,transparent);margin-top:0}
@@ -872,7 +872,7 @@ body.tvmode .flytv .opscard h2{margin:0 0 4px}
 .flytvg tr.grp td{font:700 .8rem var(--cond);letter-spacing:.04em;text-transform:uppercase;color:var(--in);padding-top:6px!important;border-bottom:1px solid var(--line)}
 .flytvr table{min-width:0!important;width:100%}
 body.tvmode .flytvr td.nm{white-space:nowrap!important}.flytvr td,.flytvr th{white-space:normal!important}
-@media (max-aspect-ratio:1/1){.flytv{grid-template-columns:minmax(0,1fr)}}
+@media (max-aspect-ratio:1/1){.flytv{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1.6fr) minmax(0,1fr)}.flytv.measure{grid-template-rows:auto}}
 .opsed input.opsauto{color:var(--muted);font-style:italic}
 .opsed input.opsman{border-color:var(--out);color:var(--ink);font-weight:600}
 .opsed input.opsetd{border:2px solid var(--in);font-weight:700}
