@@ -388,7 +388,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 
 <div class="toast" id="toast" hidden></div>
 
-<script src="ops.js?v=14"></script>
+<script src="ops.js?v=15"></script>
 <script src="opsboard.js?v=20"></script>
 <script>
 /* =====================================================================
@@ -1338,9 +1338,9 @@ function renderAdmin(v) {
       <div class="card"><h2>Perm staff (${admins.length + perm.length})</h2><ul class="rlist">
         <li class="chead">QFI<span>${admins.length}</span></li>${alist}
         ${["ST", "CEN", "AOSX", "ATCO"].map(t => { const g = perm.filter(p => (p.staff_role || "AOSX") === t); return g.length ? `<li class="chead">${t === "ST" ? "ST Tow" : t}<span>${g.length}</span></li>${g.map(staffRow).join("")}` : ""; }).join("")}</ul>
-        <p class="hint" style="margin-top:10px">QFI are instructors (the CO, DYCO and OCs approve travel; tick other QFI under Edit to let them edit the ops board). The AOSX edits the flying program, ops board and Go / No-Go. ST pilots (TOW / FCF), CEN and ATCO can view everything; tick "Can edit the ops board" under Edit if they should change it.</p>
+        <p class="hint" style="margin-top:10px">QFI are instructors (the CO, DYCO and OCs approve travel; tick other QFI under Edit to let them edit the ops board). The AOSX edits the flying program, ops board and Go / No-Go. ST Tow, CEN and ATCO can view everything; tick "Can edit the ops board" under Edit if they should change it.</p>
         <p class="hint" style="margin-top:10px">Add perm staff:</p>
-        <label>Type<select id="psType"><option value="QFI">QFI (instructor)</option><option value="ST">ST pilot (TOW / FCF)</option><option value="CEN">CEN (contracts &amp; squadron logistics)</option><option value="AOSX">AOSX (ops assistant)</option><option value="ATCO">ATCO (air traffic controller)</option></select></label>
+        <label>Type<select id="psType"><option value="QFI">QFI (instructor)</option><option value="ST">ST Tow</option><option value="CEN">CEN (contracts &amp; squadron logistics)</option><option value="AOSX">AOSX (ops assistant)</option><option value="ATCO">ATCO (air traffic controller)</option></select></label>
         <label>Name (as on the flying lines)<input id="iName" maxlength="60" placeholder="e.g. LEE G"></label>
         <div id="psQfi"><label>Callsign (leave blank if none)<input id="iCall" maxlength="30" placeholder="e.g. Brut"></label>
         <label>QFI CAT<select id="iCat"><option value="">-</option><option>A</option><option>B1</option><option>B2</option><option>C</option></select></label></div>
@@ -1443,7 +1443,7 @@ async function addInstructor() {
 }
 // Ops assistant: a non-admin, non-trainee login with ops_editor on.
 const isOpsAssistant = p => !!p && p.role !== "admin" && !p.trainee_id;
-const STAFF_LABEL = { AOSX: "AOSX", ATCO: "ATCO", CEN: "CEN", ST: "ST pilot", ENG: "Engineer" };
+const STAFF_LABEL = { AOSX: "AOSX", ATCO: "ATCO", CEN: "CEN", ST: "ST Tow", ENG: "Engineer" };
 // A staff row (CEN / AOSX / ATCO / engineer) in the same two-line style as the QFI rows.
 const staffRow = p => `<li class="qrow">
       <span class="qname"><strong>${esc(pLabel(p))}</strong><span class="qtags">${(p.quals || []).map(q => `<span class="tag qcat">${esc(q)}</span>`).join("")}${p.ops_editor ? `<span class="tag open">Ops</span>` : ""}${p.eng_editor ? `<span class="tag open">Aircraft</span>` : ""}${p.ops_editor || p.eng_editor ? "" : `<span class="tag nd">View only</span>`}</span></span>
