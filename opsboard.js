@@ -335,17 +335,16 @@ function obBoardView(tv, extra) {
       <section class="card opscard obwide obafcard"><div class="tablewrap"><table class="opst obt"><thead><tr><th>Airfield</th><th>P</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS</th><th>Restrictions</th><th>Aids</th></tr></thead><tbody>${main.map(([a, i]) => afRow(a, i)).join("")}</tbody></table></div>
         ${alt.length ? `<div class="tablewrap" style="margin-top:8px"><table class="opst obt"><thead><tr><th>Airfield</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS</th><th>Restrictions</th></tr></thead><tbody>${alt.map(([a, i]) => afRow(a, i)).join("")}</tbody></table></div>` : ""}
         ${b.zrt ? `<p class="obnote">${esc(b.zrt)}</p>` : ""}</section>
-      ${tv ? `<section class="card opscard"><h2>Cazaux weather</h2><dl class="opsdl">
+      ${tv ? `<section class="card opscard obtvwx"><h2>Cazaux weather &amp; wind</h2><div class="obwind">${obRose(w, z.rwy)}<div><div class="obbig">${esc(windTxt)}</div>
+        ${comp ? `<div>${comp.head < 0 ? "Tailwind" : "Headwind"} <b>${Math.abs(comp.head).toFixed(1)}</b> KT</div><div>Crosswind <b>${comp.cross.toFixed(1)}</b> KT</div><div class="hint">RWY ${esc(String(z.rwy / 10).padStart(2, "0"))} · governing wind ${w.gov} KT</div>` : ""}
+        <div>Wind hazard ${q ? `<select class="obsel ${obHazS(czx.windHazard) ? "obst-" + obHazS(czx.windHazard) : ""}" data-obq="czx" data-f="windHazard" aria-label="Wind hazard">${["", "A", "B", "C", "D"].map(o => `<option value="${o}" ${o === (czx.windHazard || "") ? "selected" : ""}>${o || "-"}</option>`).join("")}</select>` : czx.windHazard ? obPill(obHazS(czx.windHazard), czx.windHazard) : "-"}</div></div></div><dl class="opsdl">
         <dt>Sunrise / sunset</dt><dd>${czx.sun ? esc(czx.sun) : `${esc(z.sun.rise)} / ${esc(z.sun.set)}`}</dd>
         <dt>Icing band</dt><dd>${q ? obQIn("icingBand", czx.icingBand, "e.g. FL120 - FL170", "130px") : esc(czx.icingBand || "-")}</dd>
         <dt>Temperature</dt><dd>${z.t ?? "-"}°C</dd><dt>Humidity</dt><dd>${z.rh ?? "-"}%</dd><dt>QNH</dt><dd>${z.qnh ?? "-"}</dd>
         <dt>Runway surface</dt><dd>${q ? obQSel("rwySurface", czx.rwySurface, ["DRY", "DAMP", "WET", "FLOODED"]) : obPill(/FLOOD/i.test(czx.rwySurface) ? "r" : /WET|DAMP/i.test(czx.rwySurface) ? "a" : czx.rwySurface ? "g" : "", czx.rwySurface || "-")}</dd><dt>Sea surface</dt><dd>${q ? obQIn("seaTemp", czx.seaTemp, "°C", "64px", obSeaS(czx.seaTemp)) + " °C" : czx.seaTemp ? obPill(obSeaS(czx.seaTemp), czx.seaTemp + "°C") : "-"}</dd>
         <dt>Sea swell</dt><dd>${q ? obQIn("swell", czx.swell, "e.g. 1.6-1.9M", "110px") : esc(czx.swell || "-")}</dd><dt>Bird hazard</dt><dd>${q ? obQSel("bird", czx.bird, ["LOW (1)", "LOW (2)", "MED (2)", "HIGH (3)"]) : obPill(/HIGH/i.test(czx.bird) ? "r" : /MED/i.test(czx.bird) ? "a" : czx.bird ? "g" : "", czx.bird || "-")}</dd>
         <dt>Icing conditions</dt><dd>${yn(z.icing, "YES")}</dd></dl>
-        ${z.m ? `<p class="obraw">${esc(z.m.rawOb)}</p>` : `<p class="hint">No METAR yet.</p>`}</section>
-      <section class="card opscard"><h2>Wind (CZX)</h2><div class="obwind">${obRose(w, z.rwy)}<div><div class="obbig">${esc(windTxt)}</div>
-        ${comp ? `<div>${comp.head < 0 ? "Tailwind" : "Headwind"} <b>${Math.abs(comp.head).toFixed(1)}</b> KT</div><div>Crosswind <b>${comp.cross.toFixed(1)}</b> KT</div><div class="hint">RWY ${esc(String(z.rwy / 10).padStart(2, "0"))} · governing wind ${w.gov} KT</div>` : ""}
-        <div>Wind hazard ${q ? `<select class="obsel ${obHazS(czx.windHazard) ? "obst-" + obHazS(czx.windHazard) : ""}" data-obq="czx" data-f="windHazard" aria-label="Wind hazard">${["", "A", "B", "C", "D"].map(o => `<option value="${o}" ${o === (czx.windHazard || "") ? "selected" : ""}>${o || "-"}</option>`).join("")}</select>` : czx.windHazard ? obPill(obHazS(czx.windHazard), czx.windHazard) : "-"}</div></div></div></section>` : `<section class="card opscard obwx"><h2>Cazaux weather &amp; wind</h2><div class="obwxin"><div><dl class="opsdl">
+        ${z.m ? `<p class="obraw">${esc(z.m.rawOb)}</p>` : `<p class="hint">No METAR yet.</p>`}</section>` : `<section class="card opscard obwx"><h2>Cazaux weather &amp; wind</h2><div class="obwxin"><div><dl class="opsdl">
         <dt>Sunrise / sunset</dt><dd>${czx.sun ? esc(czx.sun) : `${esc(z.sun.rise)} / ${esc(z.sun.set)}`}</dd>
         <dt>Icing band</dt><dd>${q ? obQIn("icingBand", czx.icingBand, "e.g. FL120 - FL170", "130px") : esc(czx.icingBand || "-")}</dd>
         <dt>Temperature</dt><dd>${z.t ?? "-"}°C</dd><dt>Humidity</dt><dd>${z.rh ?? "-"}%</dd><dt>QNH</dt><dd>${z.qnh ?? "-"}</dd>
@@ -706,8 +705,8 @@ function renderTv(v) {
     ${obBoardView(true, ((obGet("aircraft").callsigns || []).length || obGet("aircraft").vehicleCap ? obAircraftCards()[1] : "") + // TV: no aircraft status table (Gordon, 10 Oct); callsigns only when there are some // TV: no aircraft status table (Gordon, 10 Oct), callsigns only
       obTvGoCard(crew, nogo))}`;
   v.innerHTML = `<div class="tvstage">${v.innerHTML}</div>`;
-  obTvColumns(v);
-  requestAnimationFrame(obTvFit); setTimeout(obTvFit, 1200);
+  obTvLayout(v);
+  requestAnimationFrame(() => obTvLayout(v)); setTimeout(() => obTvLayout(v), 1200);
 }
 // TV aircrew status: NO-GO people in the wave under way / the next wave first and loud (with their time); other NO-GO toned down.
 function obTvGoCard(crew, nogo) {
@@ -722,12 +721,21 @@ function obTvGoCard(crew, nogo) {
       ${later.length ? `<div class="obtvhd">Other NO-GO (${later.length})</div>${later.map(chip).join("")}` : ""}</div>`);
 }
 // Spread the TV cards over balanced columns: each card goes to the currently shortest column.
-function obTvColumns(v) {
+// Landscape: try 3 and 4 columns and keep whichever lets the board be shown biggest (Gordon, 10 Oct: no big empty cards).
+function obTvLayout(v) {
+  if (!v.querySelector(".obgrid.tv")) return;
+  if (innerWidth / innerHeight < 1) { obTvColumns(v, 2); return obTvFit(); }
+  let best = null;
+  for (const n of [3, 4]) { obTvColumns(v, n); obTvFit(); const z = parseFloat((document.querySelector(".tvstage") || {}).style?.zoom) || 1; if (!best || z > best.z + 0.01) best = { n, z }; }
+  if (best.n !== 4) { obTvColumns(v, best.n); obTvFit(); }
+}
+function obTvColumns(v, n) {
   const grid = v.querySelector(".obgrid.tv"); if (!grid) return;
-  const n = innerWidth / innerHeight < 1 ? 2 : 4;
+  const old = grid.querySelector(".tvcols");
+  if (old) { (grid._tvOrder || []).forEach(c => grid.insertBefore(c, old)); old.remove(); }
   const wrap = document.createElement("div"); wrap.className = "tvcols"; wrap.style.gridTemplateColumns = `repeat(${n},minmax(0,1fr))`;
   const cols = Array.from({ length: n }, () => { const c = document.createElement("div"); c.className = "tvcol"; wrap.appendChild(c); return c; });
-  const cards = [...grid.children].filter(c => !c.classList.contains("obafcard"));
+  const cards = grid._tvOrder = [...grid.children].filter(c => !c.classList.contains("obafcard"));
   wrap.classList.add("measuring"); grid.appendChild(wrap);
   const used = col => [...col.children].reduce((h, x) => h + x.offsetHeight, 0); // columns stretch, so add up the cards
   for (const c of cards) cols.reduce((a, b) => (used(b) < used(a) ? b : a)).appendChild(c);
@@ -1056,6 +1064,9 @@ table.obt{min-width:0}
 .obnote{margin:8px 0 0;font-weight:600}
 .obraw{font:500 .78rem ui-monospace,Menlo,Consolas,monospace;color:var(--muted);margin:8px 0 0;word-break:break-word}
 .obwind{display:flex;gap:14px;align-items:center}
+/* TV: wind sits at the top of the Cazaux weather card instead of its own big card (Gordon, 10 Oct) */
+.obtvwx .obwind{margin:0 0 8px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.obtvwx .obrose{width:96px;height:96px}
 .obrose{width:110px;height:110px;flex:none}
 .obbig{font:700 1.6rem var(--cond)}
 .obareas{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px 14px;margin-top:10px}
