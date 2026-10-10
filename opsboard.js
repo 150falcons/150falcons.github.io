@@ -1169,7 +1169,10 @@ body.tvmode{font-size:17px}
 @media (min-width:700px){.obwxin{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:start}.obwxwind{border-left:1px solid var(--line);padding-left:20px}}
 @media (min-width:1200px){.obwx .obrose{width:150px;height:150px}.obwx .obbig{font-size:2rem}
   .obwx.three .obwxin{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(0,1fr)}.obwxeq{border-left:1px solid var(--line);padding-left:20px}
-  .obwxeq .obeq{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+  /* equipment listed straight down like the weather list (Gordon, 10 Oct) */
+  .obwxeq .obeq{grid-template-columns:minmax(0,1fr);gap:6px;font-size:.9rem}
+  .obwxeq .obeq>div{display:grid;grid-template-columns:minmax(120px,max-content) auto;gap:12px;align-items:center;justify-items:start;color:var(--muted)}
+  .obwxeq .obeq>div>*{color:var(--ink)}
   .obpair{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:0 14px;align-items:stretch}.obpair>.card{margin-bottom:14px}}
 @media (min-width:1200px){.obgrid:not(.tv){grid-template-columns:minmax(0,1fr)}.obgrid:not(.tv) .obwide{grid-column:1/-1}}
 @media (min-width:1500px){.obgrid:not(.tv) .obafcard{display:grid;grid-template-columns:3fr 2fr;gap:0 12px;align-items:start}.obgrid:not(.tv) .obafcard>.tablewrap{margin-top:0!important}.obgrid:not(.tv) .obafcard>.obnote{grid-column:1/-1}}
