@@ -332,7 +332,6 @@ function opsFlyTvGround(g) {
 // Stored on the line as a.log = { to, ldg, st: "flown" | "cx" } through ops_log_flight (no version clash with the programme editor).
 const opsLogMins = L => { if (!L || L.st !== "flown") return null; const a = opsMin(L.to), b = opsMin(L.ldg); return a == null || b == null ? null : (b - a + 1440) % 1440; };
 const opsHrs = m => m == null ? "" : (m / 60).toFixed(1);
-const opsLogTag = L => !L || !L.st ? "" : L.st === "cx" ? ` <span class="opscx">CX</span>` : ` <span class="opsflown">✓ ${esc(L.to || "?")}–${esc(L.ldg || "?")}${opsLogMins(L) != null ? ` · ${opsHrs(opsLogMins(L))} h` : ""}</span>`;
 const opsT4 = v => { const m = opsMin(String(v || "").replace(/[^0-9:]/g, "").replace(/^(\d{3})$/, "0$1")); return m == null ? "" : opsZ4(m); };
 const opsLogLine = k => { const [w, f, a] = k.split(".").map(Number); return (((((OPS.rows.flying || {}).data || {}).waves || [])[w] || {}).flights || [])[f]?.ac?.[a] || {}; };
 function opsLogCard() {
@@ -550,24 +549,29 @@ const opsView = {
   flying(fl, n0) {
     let n = n0 || 0, out = "";
     const z4 = m => String(Math.floor(m / 60) % 24).padStart(2, "0") + String(m % 60).padStart(2, "0");
-    const cols = `<colgroup>${[5, 10, 8, 3, 15, 9, 11, 6, 5, 28].map(p => `<col style="width:${p}%">`).join("")}</colgroup>`;
+    // Planned ETD / ETA as their own columns (brief / step underneath); once any line is logged, ATD / ATA / Hrs columns too (Gordon, 10 Oct).
+    const logged = (fl.waves || []).some(w => (w.flights || []).some(f => (f.ac || []).some(a => a.log && a.log.st)));
+    const cols = `<colgroup>${(logged ? [5, 6, 6, 8, 3, 14, 9, 10, 5, 5, 5, 5, 4, 15] : [5, 7, 7, 8, 3, 15, 9, 11, 6, 5, 24]).map(p => `<col style="width:${p}%">`).join("")}</colgroup>`;
     for (const w of fl.waves || []) {
       const fs = w.flights || [], ws = opsStats({ waves: [w] });
       out += `<div class="opswave${w.night ? " night" : ""}"><b>${esc(w.name)}</b>${w.sxo ? `<span>SXO <strong>${opsX(w.sxo)}</strong></span>` : ""}${w.opsO ? `<span>OPS O <strong>${opsX(w.opsO)}</strong></span>` : ""}
         <span class="opswavest">${ws.sorties} sortie${ws.sorties === 1 ? "" : "s"}${ws.first != null ? ` · ${z4(ws.first)}–${z4(ws.last)}Z` : ""}</span></div>`;
       if (w.rmks) out += `<div class="opsrmk">⚠ ${opsNl(w.rmks)}</div>`;
       if (!fs.length) { out += `<p class="hint">No flights.</p>`; continue; }
-      out += `<div class="tablewrap"><table class="opst opsfly">${cols}<thead><tr><th>No</th><th>Time (Z)</th><th>Callsign</th><th>#</th><th>Aircrew</th><th>Mission</th><th>Area</th><th>A/C</th><th>Cfg</th><th>Remarks</th></tr></thead>`;
+      out += `<div class="tablewrap"><table class="opst opsfly${logged ? " logged" : ""}">${cols}<thead><tr><th>No</th><th>ETD (Z)</th><th>ETA (Z)</th><th>Callsign</th><th>#</th><th>Aircrew</th><th>Mission</th><th>Area</th><th>A/C</th><th>Cfg</th>${logged ? `<th class="act">ATD</th><th class="act">ATA</th><th class="act">Hrs</th>` : ""}<th>Remarks</th></tr></thead>`;
       for (const f of fs) {
         const ac = (f.ac || []).length ? f.ac : [opsTpl.ac("")], span = ac.length;
         out += `<tbody class="fl${f.opsAdd ? " opsadd" : ""}">`;
         ac.forEach((a, i) => {
           const add = opsIsAdd(f, a), no = add ? `<span class="opsaddtag">OPS ADD</span>` : opsLineUsed(a) ? String(++n).padStart(2, "0") : "";
           const bs = [f.brief && f.brief !== "NA" ? "Brief " + f.brief : "", f.step && f.step !== "NA" ? "Step " + f.step : ""].filter(Boolean).join(" · ");
+          const L = a.log || {}, m = opsLogMins(L);
+          const act = !logged ? "" : L.st === "cx" ? `<td colspan="3" class="act"><span class="opscx">CX</span></td>`
+            : `<td class="act">${esc(L.st ? L.to || "" : "")}</td><td class="act">${esc(L.st ? L.ldg || "" : "")}</td><td class="act hrs">${m != null ? opsHrs(m) : ""}</td>`;
           out += `<tr class="${add ? "opsadd" : ""}"><td class="no">${no}</td>
-            ${i === 0 ? `<td rowspan="${span}" class="tm rs"><b>${esc(f.etd)}–${esc(f.eta)}</b>${bs ? `<small>${esc(bs)}</small>` : ""}</td><td rowspan="${span}" class="cs rs">${esc(f.callsign)}</td>` : ""}
+            ${i === 0 ? `<td rowspan="${span}" class="tm rs"><b>${esc(f.etd)}</b>${bs ? `<small class="bs">${esc(bs)}</small>` : ""}</td><td rowspan="${span}" class="tm rs"><b>${esc(f.eta)}</b></td><td rowspan="${span}" class="cs rs">${esc(f.callsign)}</td>` : ""}
             <td class="n">${esc(a.n)}</td><td class="fcrew">${opsX(a.crew1)}${a.crew2 ? `<span class="c2"> / ${opsX(a.crew2)}</span>` : ""}</td><td class="nw">${esc(a.mission)}</td>
-            ${i === 0 ? `<td rowspan="${span}" class="area rs">${esc(f.area)}${f.areaTime ? `<small>${esc(f.areaTime)}</small>` : ""}</td>` : ""}<td class="nw">${esc(opsTail(a.tail, OPS.day))}</td><td class="nw">${esc(a.config)}</td><td class="rm">${opsNl(a.rmks)}${opsLogTag(a.log)}</td></tr>`;
+            ${i === 0 ? `<td rowspan="${span}" class="area rs">${esc(f.area)}${f.areaTime ? `<small>${esc(f.areaTime)}</small>` : ""}</td>` : ""}<td class="nw">${esc(opsTail(a.tail, OPS.day))}</td><td class="nw">${esc(a.config)}</td>${act}<td class="rm">${opsNl(a.rmks)}</td></tr>`;
         });
         out += `</tbody>`;
       }
@@ -934,6 +938,11 @@ table.opsfly tbody.fl{border-top:2px solid var(--line)}
 table.opsfly tbody.fl:nth-of-type(even){background:color-mix(in srgb,var(--muted) 7%,transparent)}
 table.opsfly tbody.fl tr+tr td{border-top:1px dashed color-mix(in srgb,var(--line) 70%,transparent)}
 table.opsfly td.tm b{display:block;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.opsfly td.tm small.bs{overflow:visible;position:relative;z-index:1} /* brief / step runs on under ETA */
+table.opsfly td.tm{overflow:visible}
+table.opsfly .act{font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--ok,#1F8A4C);font-weight:600}
+table.opsfly th.act{color:var(--muted)}
+table.opsfly td.act{background:color-mix(in srgb,var(--ok,#1F8A4C) 6%,transparent)}
 table.opsfly td small{display:block;color:var(--muted);font-size:.74rem;white-space:nowrap;margin-top:2px}
 table.opsfly td.cs{font:700 .95rem var(--cond);letter-spacing:.02em;white-space:nowrap}
 table.opsfly td.no{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600}
@@ -1042,7 +1051,6 @@ body.tvmode .flytv .fly .opswave{margin:12px 0 5px;padding:5px 0 5px 10px}
 body.tvmode .flytv .fly .opswave:first-child{margin-top:0}
 body.tvmode .flytv td{font-weight:500}
 body.tvmode .flytv table.opsfly{min-width:0}
-${[7, 10, 9, 3, 15, 9, 10, 6, 5, 26].map((w, i) => `body.tvmode .flytv table.opsfly col:nth-child(${i + 1}){width:${w}%!important}`).join("\n")}
 body.tvmode .flytv td.cs{white-space:normal}
 body.tvmode .flytv .opsaddtag{font-size:.6rem;padding:0 3px}
 body.tvmode .flytv td small{color:color-mix(in srgb,var(--ink) 65%,transparent);margin-top:0}
