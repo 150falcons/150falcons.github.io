@@ -320,6 +320,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
   <h2 id="editTitle">Edit</h2>
   <label><span id="eNameLbl">Name</span><input id="eName" maxlength="60"></label>
   <label id="eCallWrap">Callsign (leave blank if none)<input id="eCall" maxlength="30" placeholder="e.g. Brut"></label>
+  <div id="eQualWrap" style="margin-bottom:10px"><span class="hint">Qualifications</span><div><label class="opschk" style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;color:var(--ink)"><input type="checkbox" id="eQTOW" style="width:auto;margin:0">TOW</label><label class="opschk" style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;color:var(--ink)"><input type="checkbox" id="eQFCF" style="width:auto;margin:0">FCF</label></div></div>
   <label id="eCatWrap">QFI CAT<select id="eCat"><option value="">-</option><option>A</option><option>B1</option><option>B2</option><option>C</option></select></label>
   <label id="eCourseWrap">Course<input id="eCourse" maxlength="40"></label>
   <label id="ePhoneWrap">Handphone<input id="ePhone" type="tel" maxlength="30" placeholder="+33 / +65"></label>
@@ -527,7 +528,7 @@ async function fetchAll() {
   const sb = S.sb;
   const res = await Promise.all([
     sb.from("trainees").select("*").order("course").order("name"),
-    sb.from("profiles").select("id,email,display_name,role,trainee_id,must_change_password,appointment,ops_editor,eng_editor,no_geo,callsign,staff_role,qfi_cat"),
+    sb.from("profiles").select("id,email,display_name,role,trainee_id,must_change_password,appointment,ops_editor,eng_editor,no_geo,callsign,staff_role,qfi_cat,quals"),
     sb.from("vehicles").select("*").order("description"),
     sb.from("movements").select("*").in("status", ["out", "pending"]),
     sb.from("movements").select("*").order("out_at", { ascending: false }).limit(300),
@@ -1340,6 +1341,7 @@ function renderAdmin(v) {
         <label>Name (as on the flying lines)<input id="iName" maxlength="60" placeholder="e.g. LEE G"></label>
         <div id="psQfi"><label>Callsign (leave blank if none)<input id="iCall" maxlength="30" placeholder="e.g. Brut"></label>
         <label>QFI CAT<select id="iCat"><option value="">-</option><option>A</option><option>B1</option><option>B2</option><option>C</option></select></label></div>
+        <div id="psSt" hidden><span class="hint">Qualifications</span><div><label class="opschk" style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;color:var(--ink)"><input type="checkbox" id="iQTOW" style="width:auto;margin:0">TOW</label><label class="opschk" style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;color:var(--ink)"><input type="checkbox" id="iQFCF" style="width:auto;margin:0">FCF</label></div></div>
         <label>Username<input id="iEmail" autocapitalize="none" placeholder="e.g. tanjh"></label>
         <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddAdmin">Add perm staff</button></div></div>
       <div class="card"><h2>Engineers (${engs.length})</h2>
@@ -1361,7 +1363,7 @@ function renderAdmin(v) {
   // Fill in the standard temporary password (fetched from the server so it isn't written in this public page).
   if (!S.defPw) adminApi({ action: "default_password" }).then(r => { S.defPw = r && r.password; const i = $("#tmpPw"); if (i && !i.value && S.defPw) i.value = S.defPw; }).catch(() => {});
   $("#btnAddOps").onclick = () => addStaff("ENG", $("#oaName"), $("#oaUser"));
-  $("#psType").onchange = () => { $("#psQfi").hidden = $("#psType").value !== "QFI"; };
+  $("#psType").onchange = () => { $("#psQfi").hidden = $("#psType").value !== "QFI"; $("#psSt").hidden = $("#psType").value !== "ST"; };
   if (isOC()) S.sb.rpc("tg_link_status").then(({ data }) => { const s = $("#tgLinkState"); if (s) s.textContent = data ? "Linked." : "Not linked yet."; });
 }
 // OC A / OC B can link their Telegram to approve requests from the bot.
@@ -1441,7 +1443,7 @@ const isOpsAssistant = p => !!p && p.role !== "admin" && !p.trainee_id;
 const STAFF_LABEL = { AOSX: "AOSX", ATCO: "ATCO", CEN: "CEN", ST: "ST pilot", ENG: "Engineer" };
 // A staff row (CEN / AOSX / ATCO / engineer) in the same two-line style as the QFI rows.
 const staffRow = p => `<li class="qrow">
-      <span class="qname"><strong>${esc(pLabel(p))}</strong><span class="qtags">${p.ops_editor ? `<span class="tag open">Ops</span>` : ""}${p.eng_editor ? `<span class="tag open">Aircraft</span>` : ""}${p.ops_editor || p.eng_editor ? "" : `<span class="tag nd">View only</span>`}</span></span>
+      <span class="qname"><strong>${esc(pLabel(p))}</strong><span class="qtags">${(p.quals || []).map(q => `<span class="tag qcat">${esc(q)}</span>`).join("")}${p.ops_editor ? `<span class="tag open">Ops</span>` : ""}${p.eng_editor ? `<span class="tag open">Aircraft</span>` : ""}${p.ops_editor || p.eng_editor ? "" : `<span class="tag nd">View only</span>`}</span></span>
       <span class="hint qlogin">Login: ${esc(showLogin(p.email))}${p.must_change_password ? " (temp pw)" : ""}${p.no_geo ? " · no location check" : ""}</span>
       <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button><button class="btn small" data-act="resetpw" data-id="${esc(p.id)}" title="Reset password">Reset pw</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button></span></li>`;
 async function addStaff(type, nameEl, userEl) {
@@ -1452,6 +1454,7 @@ async function addStaff(type, nameEl, userEl) {
     const r = await adminApi({ action: "create", email: toLogin(user), display_name: name, role: "user" });
     const { error: e1 } = await S.sb.rpc("set_staff_role", { p_user: r.user_id, p_role: type });
     if (e1) throw e1;
+    if (type === "ST") { const q = ["TOW", "FCF"].filter(x => $("#iQ" + x) && $("#iQ" + x).checked); if (q.length) { const { error } = await S.sb.rpc("set_quals", { p_user: r.user_id, p_quals: q }); if (error) throw error; } }
     if (type === "AOSX" || type === "ENG") { const { error } = await S.sb.rpc(type === "ENG" ? "set_eng_editor" : "set_ops_editor", { p_user: r.user_id, p_on: true }); if (error) throw error; }
     fetchAll(); await ask(`${STAFF_LABEL[type]} login added`, `${name}: username ${user}, temporary password ${r.password}. They must set their own password at first sign-in.`, "OK");
   } catch (e) { toast(e.message); }
@@ -1514,6 +1517,8 @@ function openEdit(key) {
   $("#eNoGeoWrap").hidden = !acct; $("#eNoGeo").checked = !!(acct && acct.no_geo);
   $("#eCallWrap").hidden = !inst; $("#eCall").value = inst ? (acct.callsign || "") : "";
   $("#eCatWrap").hidden = !inst; $("#eCat").value = inst ? (acct.qfi_cat || "") : "";
+  const st = !!acct && acct.staff_role === "ST";
+  $("#eQualWrap").hidden = !st; for (const q of ["TOW", "FCF"]) $("#eQ" + q).checked = st && (acct.quals || []).includes(q);
   $("#eNameLbl").textContent = inst ? "Name (as on the flying lines)" : "Name";
   $("#eHint").textContent = acct ? "Changing the username doesn't change the password. Tell them their new username." : "No login yet. Use Create login on the Admin tab to give them one.";
   $("#editErr").textContent = ""; $("#dlgEdit").showModal(); $("#eName").focus();
@@ -1547,6 +1552,10 @@ $("#btnEdit").onclick = async () => {
       if (acct.role === "admin" && $("#eCall").value.trim() !== (acct.callsign || "")) {
         const { error } = await S.sb.rpc("set_callsign", { p_user: acct.id, p_callsign: $("#eCall").value.trim() });
         if (error) throw error;
+      }
+      if (acct.staff_role === "ST") {
+        const q = ["TOW", "FCF"].filter(x => $("#eQ" + x).checked);
+        if (q.join() !== (acct.quals || []).join()) { const { error } = await S.sb.rpc("set_quals", { p_user: acct.id, p_quals: q }); if (error) throw error; }
       }
       if (acct.role === "admin" && $("#eCat").value !== (acct.qfi_cat || "")) {
         const { error } = await S.sb.rpc("set_qfi_cat", { p_user: acct.id, p_cat: $("#eCat").value });
