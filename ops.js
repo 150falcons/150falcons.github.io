@@ -862,6 +862,14 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .flytvr .flypane.sim{flex:0 1 auto;margin-bottom:12px}
 .flytvr .flypane.gnd{flex:1 1 auto}
 .flytv .tvpane{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;display:flex;flex-direction:column}
+/* Slim, see-through scroll bars in the TV windows (Gordon, 10 Oct); a little clearer on hover */
+.flytv .tvpane{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--muted) 30%,transparent) transparent}
+.flytv .tvpane:hover{scrollbar-color:color-mix(in srgb,var(--muted) 60%,transparent) transparent}
+.flytv .tvpane::-webkit-scrollbar{width:5px}
+.flytv .tvpane::-webkit-scrollbar-track{background:transparent}
+.flytv .tvpane::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--muted) 30%,transparent);border-radius:3px}
+.flytv .tvpane:hover::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--muted) 60%,transparent)}
+.flytv .tvpane::-webkit-scrollbar-button{display:none;height:0}
 .flytv .tvpane>*{flex-shrink:0}
 .flytv .tvpane>.tablewrap{overflow:visible;flex:1 0 auto}
 .flytv .tvpane>.tablewrap>table,.flytv .flypane.gnd .tvpane>table{height:100%}
