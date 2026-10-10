@@ -498,7 +498,7 @@ function obItemsCard() {
 }
 function obCrewCard() {
   const logins = S.profiles.filter(p => !p.trainee_id || active().some(t => t.id === p.trainee_id));
-  const opts = sel => `<option value="">No login</option>` + logins.map(p => `<option value="${esc(p.id)}" ${p.id === sel ? "selected" : ""}>${esc(p.display_name || showLogin(p.email))}</option>`).join("");
+  const opts = sel => `<option value="">No login</option>` + logins.map(p => `<option value="${esc(p.id)}" ${p.id === sel ? "selected" : ""}>${esc(pLabel(p) + (p.callsign && p.display_name && p.display_name !== p.callsign ? " – " + p.display_name : ""))}</option>`).join("");
   const rows = OB.crew.map(c => `<tr class="${c.active ? "" : "opsadd"}"><td><input value="${esc(c.name)}" data-crew="${esc(c.id)}" data-f="name" style="width:130px"></td>
       <td><input value="${esc(c.grp)}" list="obGroups" data-crew="${esc(c.id)}" data-f="grp" style="width:110px"></td>
       <td><select data-crew="${esc(c.id)}" data-f="profile_id" style="width:150px">${opts(c.profile_id)}</select></td>

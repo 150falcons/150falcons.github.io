@@ -73,7 +73,7 @@ const opsHas = (text, name) => { const n = opsNorm(name); return !!n && (" " + o
 const opsCrewHas = (a, n) => opsNorm(a.crew1) === n || opsNorm(a.crew2) === n;
 const opsLineUsed = a => !!(a.crew1 || a.crew2 || a.tail || a.mission);
 const opsSimUsed = s => !!(s.etd || s.eta || s.callsign || (s.ac || []).some(opsLineUsed));
-const opsMyNames = () => [me() && me().name, S.me && S.me.display_name, ...(typeof OB !== "undefined" ? obMyCrew().map(c => c.name) : [])].filter(Boolean).map(opsNorm).filter((n, i, a) => n && a.indexOf(n) === i);
+const opsMyNames = () => [me() && me().name, S.me && S.me.display_name, S.me && S.me.callsign, ...(typeof OB !== "undefined" ? obMyCrew().map(c => c.name) : [])].filter(Boolean).map(opsNorm).filter((n, i, a) => n && a.indexOf(n) === i);
 // Escape, and highlight the signed-in person's name.
 function opsX(v) {
   let h = esc(v);

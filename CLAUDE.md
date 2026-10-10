@@ -30,6 +30,7 @@ A book-in / book-out board for RSAF trainees at 150 Squadron (BA 120 Cazaux, Fra
   - **Who can approve travel requests:** CO, DYCO, OC A and OC B. CC and QFI cannot.
   - **No approvers yet:** if nobody holds an approving appointment, any admin can approve.
   - **Acting OC:** was built and then removed at Gordon's request. Don't re-add it.
+  - **Name and callsign (10 Oct):** instructors have a name (`display_name`, as on the flying lines, used for "Your day" matching) and an optional `callsign` (blank e.g. for the Command Chief), set via admin-only `set_callsign(user, callsign)` from Admin → Add instructor / Edit. Everywhere a person is labelled (board, `who()`, `approver_label`, Telegram) the callsign is shown if set, else the name (`pLabel` in the page). Existing instructors had their callsign copied from `display_name`; Admin shows "(name not set)" until the name is changed.
 - **Trainees:**
   - **Fields:** name, course, phone, `can_drive`.
   - **Courses:** e.g. 200/203/204/206 FWC, 29/30 WSO, PGF. The board groups people by course: FWC first, then WSO, then others, numbers ascending.
@@ -105,7 +106,7 @@ A book-in / book-out board for RSAF trainees at 150 Squadron (BA 120 Cazaux, Fra
 ## 5. Database (public schema)
 - **Tables:**
   - **`trainees`:** id, name, course, phone, active, posted_out_at, can_drive.
-  - **`profiles`:** id = auth user, email (`user@150sqn.local`), display_name, role admin|user, trainee_id, must_change_password, appointment (CO|DYCO|OC A|OC B|CC|QFI), ops_editor, eng_editor, no_geo, acting_oc/acting_for (unused).
+  - **`profiles`:** id = auth user, email (`user@150sqn.local`), display_name, role admin|user, trainee_id, must_change_password, appointment (CO|DYCO|OC A|OC B|CC|QFI), ops_editor, eng_editor, no_geo, callsign, acting_oc/acting_for (unused).
   - **`vehicles`:** description, plate, plate_key (generated), owner_type course|personal, course, owner_trainee, added_by, seats.
   - **`movements`:** one row per trip.
     - **People:** `members` jsonb (current crew: id, name, course, role driver|vcom|pax|person) and `member_ids` uuid[] (current crew), plus `orig_members` (original crew, set by a trigger) and `events` jsonb (per-person in / leave / moved / joined).

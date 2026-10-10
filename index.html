@@ -301,7 +301,8 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 
 <dialog id="dlgEdit"><div class="dlg">
   <h2 id="editTitle">Edit</h2>
-  <label>Name / callsign<input id="eName" maxlength="60"></label>
+  <label><span id="eNameLbl">Name</span><input id="eName" maxlength="60"></label>
+  <label id="eCallWrap">Callsign (leave blank if none)<input id="eCall" maxlength="30" placeholder="e.g. Brut"></label>
   <label id="eCourseWrap">Course<input id="eCourse" maxlength="40"></label>
   <label id="ePhoneWrap">Handphone<input id="ePhone" type="tel" maxlength="30" placeholder="+33 / +65"></label>
   <label id="eDriveWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eDrive" type="checkbox" style="width:auto;margin:0">Can drive</label>
@@ -368,8 +369,8 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 
 <div class="toast" id="toast" hidden></div>
 
-<script src="ops.js?v=3"></script>
-<script src="opsboard.js?v=16"></script>
+<script src="ops.js?v=4"></script>
+<script src="opsboard.js?v=17"></script>
 <script>
 /* =====================================================================
    SETUP: paste your Supabase Project URL and anon (public) key here.
@@ -426,7 +427,9 @@ function suggestUser(name) {
   let u = base, n = 2; while (taken.has(u)) u = base + n++;
   return u;
 }
-const who = id => { const p = profOf(id); return p ? (p.display_name || showLogin(p.email) || "") : ""; };
+// Instructors show by callsign when they have one; their name (as on the flying lines) is display_name.
+const pLabel = p => p ? (p.callsign || p.display_name || showLogin(p.email) || "") : "";
+const who = id => pLabel(profOf(id));
 const acctOf = tid => S.profiles.find(p => p.trainee_id === tid);
 const phoneOf = tid => (S.roster.find(t => t.id === tid) || {}).phone || "";
 const telLink = ph => ph ? `<a href="tel:${esc(ph.replace(/[^+\d]/g, ""))}">${esc(ph)}</a>` : "";
@@ -448,7 +451,7 @@ const APPROVER = p => p.role === "admin" && ["CO", "DYCO", "OC A", "OC B"].inclu
 const canApprove = () => isAdmin() && (APPROVER(S.me) || !S.profiles.some(APPROVER));
 const bare = n => String(n || "").replace(/\s*\([^)]*\)\s*$/, "");
 const ocName = () => {
-  const ocs = ["OC A", "OC B"].map(a => S.profiles.find(p => p.appointment === a)).filter(Boolean).map(p => `${p.appointment} (${bare(p.display_name)})`);
+  const ocs = ["OC A", "OC B"].map(a => S.profiles.find(p => p.appointment === a)).filter(Boolean).map(p => `${p.appointment} (${bare(pLabel(p))})`);
   return ocs.join(", "); };
 const fmtL = x => { if (!x) return ""; const d = new Date(x), t = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }).replace(":", "") + "L";
   return d.toDateString() === new Date().toDateString() ? t : t + " " + d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }); };
@@ -508,7 +511,7 @@ async function fetchAll() {
   const sb = S.sb;
   const res = await Promise.all([
     sb.from("trainees").select("*").order("course").order("name"),
-    sb.from("profiles").select("id,email,display_name,role,trainee_id,must_change_password,appointment,ops_editor,eng_editor,no_geo"),
+    sb.from("profiles").select("id,email,display_name,role,trainee_id,must_change_password,appointment,ops_editor,eng_editor,no_geo,callsign"),
     sb.from("vehicles").select("*").order("description"),
     sb.from("movements").select("*").in("status", ["out", "pending"]),
     sb.from("movements").select("*").order("out_at", { ascending: false }).limit(300),
@@ -1256,8 +1259,8 @@ function renderAdmin(v) {
   const glist = gone.map(t => `<li><span><strong>${esc(t.name)}</strong> <span class="hint">${esc(t.course || "")}${t.posted_out_at ? ", posted out " + esc(fmt(t.posted_out_at)) : ""}</span></span>
       <span class="acts"><button class="btn small" data-act="restore" data-id="${esc(t.id)}">Restore</button><button class="btn small" data-act="deltrainee" data-id="${esc(t.id)}">Delete</button></span></li>`).join("");
   const admins = S.profiles.filter(p => p.role === "admin")
-    .sort((a, b) => (APPT_ORDER[a.appointment] ?? 9) - (APPT_ORDER[b.appointment] ?? 9) || (a.display_name || "").localeCompare(b.display_name || ""));
-  const alist = admins.map(p => `<li><span><strong>${esc(p.display_name || p.email)}</strong>${apptText(p) ? ` <span class="tag open">${esc(apptText(p))}</span>` : ""}${p.ops_editor && !APPROVER(p) ? ` <span class="tag nd">Ops</span>` : ""}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.id === S.me.id ? " (you)" : ""}${p.no_geo ? " · no location check" : ""}</span></span>
+    .sort((a, b) => (APPT_ORDER[a.appointment] ?? 9) - (APPT_ORDER[b.appointment] ?? 9) || pLabel(a).localeCompare(pLabel(b)));
+  const alist = admins.map(p => `<li><span><strong>${esc(pLabel(p))}</strong>${p.callsign && p.display_name && p.display_name !== p.callsign ? ` <span class="hint">${esc(p.display_name)}</span>` : p.callsign ? ` <span class="hint">(name not set)</span>` : ""}${apptText(p) ? ` <span class="tag open">${esc(apptText(p))}</span>` : ""}${p.ops_editor && !APPROVER(p) ? ` <span class="tag nd">Ops</span>` : ""}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.id === S.me.id ? " (you)" : ""}${p.no_geo ? " · no location check" : ""}</span></span>
       <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button>${p.id === S.me.id ? "" : `<button class="btn small" data-act="resetpw" data-id="${esc(p.id)}">Reset password</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button>`}</span></li>`).join("");
 
   const opsAsst = S.profiles.filter(isOpsAssistant);
@@ -1272,11 +1275,12 @@ function renderAdmin(v) {
         <p class="hint">Every trainee gets a login straight away. They sign in with their username and the temporary password, then must set their own password.</p></div>
       <div class="card"><h2>Instructors (${admins.length})</h2><ul class="rlist">${alist}</ul>
         <p class="hint" style="margin-top:10px">Add an instructor login:</p>
-        <label>Name / callsign<input id="iName" maxlength="60" placeholder="e.g. CPT TAN"></label>
+        <label>Name (as on the flying lines)<input id="iName" maxlength="60" placeholder="e.g. LEE G"></label>
+        <label>Callsign (leave blank if none)<input id="iCall" maxlength="30" placeholder="e.g. Brut"></label>
         <label>Username<input id="iEmail" autocapitalize="none" placeholder="e.g. tanjh"></label>
         <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddAdmin">Add instructor</button></div></div>
       <div class="card"><h2>Ops &amp; engineering logins (${opsAsst.length})</h2>
-        ${opsAsst.length ? `<ul class="rlist">${opsAsst.map(p => `<li><span><strong>${esc(p.display_name || p.email)}</strong>${p.ops_editor ? ` <span class="tag open">Ops</span>` : ""}${p.eng_editor ? ` <span class="tag open">Aircraft</span>` : ""}${p.ops_editor || p.eng_editor ? "" : ` <span class="tag nd">Can't edit</span>`}${p.no_geo ? ` <span class="tag nd">No location check</span>` : ""}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.must_change_password ? " (temporary password)" : ""}</span></span>
+        ${opsAsst.length ? `<ul class="rlist">${opsAsst.map(p => `<li><span><strong>${esc(pLabel(p))}</strong>${p.ops_editor ? ` <span class="tag open">Ops</span>` : ""}${p.eng_editor ? ` <span class="tag open">Aircraft</span>` : ""}${p.ops_editor || p.eng_editor ? "" : ` <span class="tag nd">Can't edit</span>`}${p.no_geo ? ` <span class="tag nd">No location check</span>` : ""}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.must_change_password ? " (temporary password)" : ""}</span></span>
           <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button><button class="btn small" data-act="resetpw" data-id="${esc(p.id)}">Reset password</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button></span></li>`).join("")}</ul>` : ""}
         <p class="hint" style="margin-top:6px">Logins without instructor admin rights. An ops assistant edits the flying program, ops board and Go / No-Go; an engineer edits aircraft status only. The CO, DYCO and OCs can always edit; tick other instructors under Edit.</p>
         <label>Type<select id="oaType"><option value="ops">Ops assistant</option><option value="eng">Engineer (aircraft status)</option></select></label>
@@ -1348,7 +1352,7 @@ async function makeLogin(tid) {
 }
 async function resetPw(uid) {
   const p = profOf(uid); if (!p) return;
-  const pw = await ask(`Reset password for ${p.display_name || p.email}`, "Give them this temporary password. They must set their own the next time they sign in.", "Reset password", { value: tempPw() });
+  const pw = await ask(`Reset password for ${pLabel(p)}`, "Give them this temporary password. They must set their own the next time they sign in.", "Reset password", { value: tempPw() });
   if (!pw) return;
   try { await adminApi({ action: "reset_password", user_id: uid, password: pw }); toast("Password reset."); fetchAll(); }
   catch (e) { toast(e.message); }
@@ -1359,7 +1363,11 @@ async function addInstructor() {
   if (!validUser(user)) return toast("Usernames can only use letters, numbers, dots and dashes (3-30 characters).");
   const email = toLogin(user);
   const pw = tempPw();
-  try { await adminApi({ action: "create", email, password: pw, display_name: name, role: "admin" }); fetchAll(); await ask("Instructor added", `${name}: username ${user}, temporary password ${pw}. They must set their own password at first sign-in.`, "OK"); }
+  const call = $("#iCall").value.trim();
+  try {
+    const r = await adminApi({ action: "create", email, password: pw, display_name: name, role: "admin" });
+    if (call && r && r.user_id) { const { error } = await S.sb.rpc("set_callsign", { p_user: r.user_id, p_callsign: call }); if (error) toast(errMsg(error)); }
+    fetchAll(); await ask("Instructor added", `${call ? call + " (" + name + ")" : name}: username ${user}, temporary password ${pw}. They must set their own password at first sign-in.`, "OK"); }
   catch (e) { toast(e.message); }
 }
 // Ops assistant: a non-admin, non-trainee login with ops_editor on.
@@ -1379,7 +1387,7 @@ async function addOpsAssistant() {
 }
 async function removeInstructor(uid) {
   const p = profOf(uid); if (!p) return;
-  if (!await ask(`Remove ${p.display_name || p.email}?`, "Their login is deleted. Their name stays on past log entries as \"Someone\".", "Remove")) return;
+  if (!await ask(`Remove ${pLabel(p)}?`, "Their login is deleted. Their name stays on past log entries as \"Someone\".", "Remove")) return;
   try { await adminApi({ action: "delete", user_id: uid }); toast("Login removed."); fetchAll(); }
   catch (e) { toast(e.message); }
 }
@@ -1420,7 +1428,7 @@ function openEdit(key) {
   if (kind === "t") { t = S.roster.find(x => x.id === id); if (!t) return; acct = acctOf(t.id) || null; }
   else { acct = profOf(id); if (!acct) return; }
   editCtx = { t, acct };
-  $("#editTitle").textContent = t ? `Edit ${t.name}` : `Edit ${acct.display_name || showLogin(acct.email)}`;
+  $("#editTitle").textContent = t ? `Edit ${t.name}` : `Edit ${pLabel(acct)}`;
   $("#eName").value = t ? t.name : (acct.display_name || "");
   $("#eCourseWrap").hidden = !t; $("#eCourse").value = t ? (t.course || "") : "";
   $("#eDriveWrap").hidden = !t; $("#eDrive").checked = !t || t.can_drive !== false;
@@ -1432,6 +1440,8 @@ function openEdit(key) {
   $("#eOpsWrap").hidden = !acct || (!inst && !isOpsAssistant(acct)); $("#eOps").checked = !!(acct && acct.ops_editor);
   $("#eEngWrap").hidden = !acct || !isOpsAssistant(acct); $("#eEng").checked = !!(acct && acct.eng_editor);
   $("#eNoGeoWrap").hidden = !acct; $("#eNoGeo").checked = !!(acct && acct.no_geo);
+  $("#eCallWrap").hidden = !inst; $("#eCall").value = inst ? (acct.callsign || "") : "";
+  $("#eNameLbl").textContent = inst ? "Name (as on the flying lines)" : "Name";
   $("#eHint").textContent = acct ? "Changing the username doesn't change the password. Tell them their new username." : "No login yet. Use Create login on the Admin tab to give them one.";
   $("#editErr").textContent = ""; $("#dlgEdit").showModal(); $("#eName").focus();
 }
@@ -1452,13 +1462,17 @@ $("#btnEdit").onclick = async () => {
         const appt = $("#eAppt").value || null;
         if (appt !== (acct.appointment || null)) {
           const holder = SINGLE.includes(appt) && S.profiles.find(p => p.appointment === appt && p.id !== acct.id);
-          if (holder && !await ask(`Make ${name} the ${appt}?`, `${holder.display_name || showLogin(holder.email)} is currently ${appt}. They'll lose the appointment.`, `Make ${appt}`)) { b.disabled = false; return; }
+          if (holder && !await ask(`Make ${name} the ${appt}?`, `${pLabel(holder)} is currently ${appt}. They'll lose the appointment.`, `Make ${appt}`)) { b.disabled = false; return; }
           const { error } = await S.sb.rpc("set_role", { p_user: acct.id, p_appointment: appt, p_acting: null });
           if (error) throw error;
         }
       }
       if (!$("#eEngWrap").hidden && $("#eEng").checked !== !!acct.eng_editor) {
         const { error } = await S.sb.rpc("set_eng_editor", { p_user: acct.id, p_on: $("#eEng").checked });
+        if (error) throw error;
+      }
+      if (acct.role === "admin" && $("#eCall").value.trim() !== (acct.callsign || "")) {
+        const { error } = await S.sb.rpc("set_callsign", { p_user: acct.id, p_callsign: $("#eCall").value.trim() });
         if (error) throw error;
       }
       if ($("#eNoGeo").checked !== !!acct.no_geo) {
