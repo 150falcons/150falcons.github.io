@@ -443,6 +443,13 @@ function obChartsCard() {
   return obCard("ob-charts", "Charts", on.length ? `Captieux active: ${esc(on.map(k => k === "RADAR" ? "RADAR SATAN" : k).join(", "))}` : "", `<div class="obcharts">${rows}</div>
     ${can ? `<p class="hint" style="margin:6px 0 0">Uploading replaces the old one. Only signed-in users can open these.</p>` : ""}`);
 }
+// TV bar: one button per uploaded chart, opens it full screen (Gordon, 10 Oct). Stale daily charts are marked.
+function obTvCharts() {
+  const have = OB_CHARTS.filter(c => obFile(c.key)); if (!have.length) return "";
+  const today = todayStr();
+  return `<span class="tvcharts">Charts ${have.map(c => { const f = obFile(c.key), at = f && (f.updated_at || f.created_at), stale = c.daily && at && new Date(at).toLocaleDateString("en-CA", { timeZone: "Europe/Paris" }) !== today;
+    return `<button class="btn small${stale ? " stale" : ""}" data-ob="chart" data-k="${c.key}" title="${stale ? "Not uploaded today" : ""}">${esc(c.label.replace(/ \(R115\)| areas \/ activities/g, ""))}</button>`; }).join("")}</span>`;
+}
 const obUrlCache = {};
 async function obChartUrl(key) {
   const f = OB.files[key], stamp = f ? (f.updated_at || f.id) : "";
@@ -701,7 +708,7 @@ function renderTv(v) {
   if (OPS.rowsDay !== todayStr() && !OPS.loading) { OPS.day = todayStr(); opsLoad(OPS.day); }
   const n = new Date();
   v.innerHTML = `<div class="tvbar"><b>150 Falcon Det · Ops board</b><span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 19).replace(/:/g, ""))}Z</small></span>
-      <span class="grow"></span>${st ? `<span>Today: ${st.sorties} sorties · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>` : ""}<button class="btn small" data-ob="exittv">Exit TV</button></div>
+      <span class="grow"></span>${obTvCharts()}${st ? `<span>Today: ${st.sorties} sorties · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>` : ""}<button class="btn small" data-ob="exittv">Exit TV</button></div>
     ${obBoardView(true, ((obGet("aircraft").callsigns || []).length || obGet("aircraft").vehicleCap ? obAircraftCards()[1] : "") + // TV: no aircraft status table (Gordon, 10 Oct); callsigns only when there are some // TV: no aircraft status table (Gordon, 10 Oct), callsigns only
       obTvGoCard(crew, nogo))}`;
   v.innerHTML = `<div class="tvstage">${v.innerHTML}</div>`;
@@ -1052,6 +1059,13 @@ select.obcs option{background:var(--paper);color:var(--ink)}
 .obchart>.btn:first-child{flex:1 1 100%;text-align:left}.obchart .btn.small{flex:0 0 auto;width:auto}
 .obup{cursor:pointer;margin-left:auto}
 #dlgChart{width:min(1100px,calc(100vw - 16px))}
+body.tvmode #dlgChart{width:calc(100vw - 40px);max-width:none;height:calc(100vh - 40px);max-height:none}
+body.tvmode #dlgChart .obchartview iframe{height:calc(100vh - 140px)}
+body.tvmode #dlgChart .obchartview{text-align:center}
+body.tvmode #dlgChart .obchartimg{display:inline-block;max-width:100%}
+body.tvmode #dlgChart .obchartimg img{height:calc(100vh - 150px);width:auto;max-width:100%;object-fit:contain}
+.tvcharts{display:inline-flex;gap:6px;align-items:center;font-size:.85rem;color:var(--muted)}
+.tvcharts .btn.stale{opacity:.55}
 .obchartview iframe{width:100%;height:75vh;border:0;background:#fff}
 .obchartimg{position:relative;line-height:0}
 .obchartimg img{width:100%;height:auto;display:block;border-radius:4px}

@@ -238,6 +238,7 @@ function renderFlyTv(v) {
   v.innerHTML = `<div class="tvstage"><div class="tvbar"><b>150 Falcon Det · Flying program</b><span>${esc(opsLongDay(OPS.day))}</span>
       <span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 19).replace(/:/g, ""))}Z</small></span>
       <span class="grow"></span><span>${st.sorties} sorties · ${st.hours} h · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>
+      ${typeof obTvCharts === "function" && OB.loaded ? obTvCharts() : ""}
       <label class="tvspd">Auto-scroll <select data-flyspd aria-label="Auto-scroll speed">${Object.keys(OPS_TV_SPEEDS).map(k => `<option value="${k}" ${k === opsTvSpeed() ? "selected" : ""}>${k[0].toUpperCase() + k.slice(1)}</option>`).join("")}</select></label>
       <button class="btn small" data-tab="ops">Exit TV</button></div>
     ${OPS_ORDER.some(opsData) ? `<div class="flytv"><div class="flytvl">${pane("fly", "fly", "", "")}</div>
