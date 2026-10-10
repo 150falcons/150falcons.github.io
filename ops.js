@@ -389,12 +389,12 @@ const opsView = {
   sim(sim) {
     sim = { rows: (sim.rows || []).filter(opsSimUsed) };
     if (!sim.rows.length) return "";
-    let n = 0, out = `<div class="tablewrap"><table class="opst"><thead><tr><th>No</th><th>ETD</th><th>ETA</th><th>Callsign</th><th>Aircrew</th><th>Mission</th><th>FMS</th><th>Config</th><th>Rmks</th></tr></thead><tbody>`;
+    let n = 0, out = `<div class="tablewrap"><table class="opst"><thead><tr><th>No</th><th>ETD</th><th>ETA</th><th>Callsign</th><th>Aircrew</th><th>Console</th><th>Mission</th><th>FMS</th><th>Config</th><th>Rmks</th></tr></thead><tbody>`;
     for (const s of sim.rows) {
       const ac = (s.ac || []).length ? s.ac : [opsTpl.simac("")], span = ac.length;
       ac.forEach((a, i) => {
         out += `<tr class="${i === 0 ? "first" : ""}"><td>${opsLineUsed(a) ? String(++n).padStart(2, "0") : ""}</td>${i === 0 ? `<td rowspan="${span}">${esc(s.etd)}</td><td rowspan="${span}">${esc(s.eta)}</td>` : ""}
-          <td>${esc([i === 0 ? s.callsign : "", a.n].filter(Boolean).join(" "))}</td><td>${opsX(a.crew1)}${a.crew2 ? " · " + opsX(a.crew2) : ""}</td><td>${esc(a.mission)}</td><td>${esc(a.fms)}</td><td>${esc(a.config)}</td><td>${opsNl(a.rmks)}</td></tr>`;
+          <td>${esc([i === 0 ? s.callsign : "", a.n].filter(Boolean).join(" "))}</td><td>${opsX(a.crew1)}</td><td>${opsX(a.crew2 || "")}</td><td>${esc(a.mission)}</td><td>${esc(a.fms)}</td><td>${esc(a.config)}</td><td>${opsNl(a.rmks)}</td></tr>`;
       });
     }
     return out + `</tbody></table></div>`;
@@ -474,7 +474,7 @@ const opsEd = {
   sim(sim) {
     return (sim.rows || []).map((s, si) => { const p = `rows.${si}`; return `<div class="blk flt"><div class="tablewrap">
       <table><thead><tr><th>ETD</th><th>ETA</th><th>Callsign</th><th></th></tr></thead><tbody><tr><td>${oI(p + ".etd", s.etd, "70px")}</td><td>${oI(p + ".eta", s.eta, "70px")}</td><td>${oI(p + ".callsign", s.callsign, "140px")}</td><td>${oTools("rows", si)}</td></tr></tbody></table>
-      <table><thead><tr><th>#</th><th>Aircrew</th><th>Aircrew</th><th>Mission</th><th>FMS</th><th>Config</th><th>Rmks</th><th></th></tr></thead><tbody>
+      <table><thead><tr><th>#</th><th>Aircrew</th><th>Console</th><th>Mission</th><th>FMS</th><th>Config</th><th>Rmks</th><th></th></tr></thead><tbody>
       ${(s.ac || []).map((a, ai) => { const q = `${p}.ac.${ai}`; return `<tr><td>${oI(q + ".n", a.n, "40px")}</td><td>${oP(q + ".crew1", a.crew1, "120px")}</td><td>${oP(q + ".crew2", a.crew2, "120px")}</td><td>${oI(q + ".mission", a.mission, "150px")}</td><td>${oI(q + ".fms", a.fms, "50px")}</td><td>${oI(q + ".config", a.config, "60px")}</td><td>${oI(q + ".rmks", a.rmks, "160px")}</td><td>${oB("del", p + ".ac", ai, "✕", "", "Remove")}</td></tr>`; }).join("")}
       </tbody></table></div>${oB("add", p + ".ac", "", "+ Line", "simac")}</div>`; }).join("") + oB("add", "rows", "", "+ Sim", "sim");
   },
@@ -685,7 +685,7 @@ function opsPrint() {
       <div><table>${waves.map(w => kv(e(w.name) + " OPS O", w.opsO)).join("")}${kv("TOWER", h.tower)}${kv("DI", h.di)}</table></div>
     </div>
     <table><tr><th>NO</th><th>FLT / STEP BRIEF</th><th>ETD (Z)</th><th>ETA (Z)</th><th>CALLSIGN</th><th colspan="2">AIRCREW</th><th>MISSION</th><th>AREA</th><th>A/C</th><th>CONFIG</th><th>RMKS</th></tr>${flying}</table>
-    ${sims ? `<h2>150 SQUADRON SIMULATOR PROGRAM</h2><table><tr><th>NO</th><th>ETD (Z)</th><th>ETA (Z)</th><th>CALLSIGN</th><th colspan="2">AIRCREW</th><th>MISSION</th><th>FMS</th><th>CONFIG</th><th>RMKS</th></tr>${sims}</table>` : ""}
+    ${sims ? `<h2>150 SQUADRON SIMULATOR PROGRAM</h2><table><tr><th>NO</th><th>ETD (Z)</th><th>ETA (Z)</th><th>CALLSIGN</th><th>AIRCREW</th><th>CONSOLE</th><th>MISSION</th><th>FMS</th><th>CONFIG</th><th>RMKS</th></tr>${sims}</table>` : ""}
     <div class="cols">
       <div style="flex:1.4">${ground ? `<table><tr><th>TIME</th><th>EVENT</th><th>PERSONNEL</th><th>VENUE</th></tr>${ground}</table>` : ""}</div>
       <div>
