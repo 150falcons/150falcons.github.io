@@ -105,7 +105,7 @@ const obN = v => (v === null || v === undefined || v === "" || isNaN(+v)) ? null
 function obWind(m) {
   if (!m) return null;
   const dir = m.wdir === "VRB" ? null : obN(m.wdir), spd = obN(m.wspd) ?? 0, gst = obN(m.wgst);
-  return { dir, spd, gst, gov: Math.max(spd, gst ?? 0), vrb: m.wdir === "VRB" };
+  return { dir, spd, gst, gov: Math.max(spd, gst ?? 0), vrb: m.wdir === "VRB", calm: !spd && !gst }; // 00000KT = calm (no direction)
 }
 // Components of the governing wind relative to a heading: head (+) / tail (-) and cross.
 function obComp(w, hdg) {
@@ -242,7 +242,7 @@ function obHomeLine() {
   if (!OB.loaded) return "";
   const bd = obGet("board"), lfbc = (bd.airfields || []).find(a => a.icao === "LFBC");
   const f = lfbc ? obState(lfbc, "fasf").v : "", r = lfbc ? obState(lfbc, "rsaf").v : "", bg = obBingo(bd, r).v, w = obCzx().w;
-  const wind = !w ? "" : w.vrb ? `VRB/${w.spd}KT` : `${String(w.dir).padStart(3, "0")}°/${w.spd}${w.gst ? "G" + w.gst : ""}KT`;
+  const wind = !w ? "" : w.calm ? "CALM" : w.vrb ? `VRB/${w.spd}KT` : `${String(w.dir).padStart(3, "0")}°/${w.spd}${w.gst ? "G" + w.gst : ""}KT`;
   return `<span class="obpill ${bd.eor === "IN HSE" ? "obst-a" : "obst-g"}">EOR ${esc(bd.eor || "NORMAL")}</span>
     ${f ? `<span>CZX FASF <span class="obcs ${obCsCls(f)}">${esc(f)}</span></span>` : ""}${r ? `<span>RSAF <span class="obcs ${obCsCls(r)}">${esc(r)}</span></span>` : ""}
     ${bg ? `<span class="obpill ${/UPG|IFR/.test(bg) ? "obst-y" : ""}">${esc(bg)}</span>` : ""}${wind ? `<span>Wind <b>${esc(wind)}</b></span>` : ""}`;
@@ -323,7 +323,7 @@ function obBoardView(tv, extra) {
   const bg = obBingo(b, czxR), bingo = bg.v, asOf = obAsOf();
   const bsel = !b.bingo || b.bingo === "AUTO" ? "AUTO" : b.bingo;
   const w = z.w, comp = z.c;
-  const windTxt = !w ? "-" : w.vrb ? `VRB / ${w.spd} KT` : `${String(w.dir).padStart(3, "0")}° / ${w.spd}${w.gst ? "G" + w.gst : ""} KT`;
+  const windTxt = !w ? "-" : w.calm ? "CALM" : w.vrb ? `VRB / ${w.spd} KT` : `${String(w.dir).padStart(3, "0")}° / ${w.spd}${w.gst ? "G" + w.gst : ""} KT`;
   const yn = (v2, bad) => v2 ? obPill(v2 === bad ? "r" : "g", v2) : "-";
   const czx = b.czx || {};
   return `
@@ -401,7 +401,7 @@ const obQSel = (f, v, opts) => `<select class="obsel" data-obq="czx" data-f="${f
 function obRose(w, rwy) {
   const R = 46, cx = 55, cy = 55, p = (deg, r) => [cx + r * Math.sin(deg * Math.PI / 180), cy - r * Math.cos(deg * Math.PI / 180)];
   const rw = rwy != null ? [p(rwy, 30), p(rwy + 180, 30)] : null;
-  const arrow = w && w.dir != null ? (() => { const [x1, y1] = p(w.dir, R), [x2, y2] = p(w.dir, 8); return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--out)" stroke-width="4" stroke-linecap="round" marker-end="url(#obArr)"/>`; })() : "";
+  const arrow = w && w.dir != null && !w.calm ? (() => { const [x1, y1] = p(w.dir, R), [x2, y2] = p(w.dir, 8); return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--out)" stroke-width="4" stroke-linecap="round" marker-end="url(#obArr)"/>`; })() : "";
   return `<svg class="obrose" viewBox="0 0 110 110" role="img" aria-label="Wind"><defs><marker id="obArr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="var(--out)"/></marker></defs>
     <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="var(--line)" stroke-width="2"/>
     ${["N", "E", "S", "W"].map((t, i) => { const [x, y] = p(i * 90, R - 9); return `<text x="${x}" y="${y + 3}" text-anchor="middle" font-size="9" fill="var(--muted)">${t}</text>`; }).join("")}
