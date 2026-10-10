@@ -72,6 +72,8 @@ const opsNorm = s => String(s ?? "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").t
 const opsHas = (text, name) => { const n = opsNorm(name); return !!n && (" " + opsNorm(text) + " ").includes(" " + n + " "); };
 const opsCrewHas = (a, n) => opsNorm(a.crew1) === n || opsNorm(a.crew2) === n;
 const opsLineUsed = a => !!(a.crew1 || a.crew2 || a.tail || a.mission);
+// Ops add: the whole flight, or just one aircraft in it (e.g. "#1 OPS ADD"). Shown as *, not counted.
+const opsIsAdd = (f, a) => !!(f.opsAdd || (a && a.opsAdd));
 const opsSimUsed = s => !!(s.etd || s.eta || s.callsign || (s.ac || []).some(opsLineUsed));
 const opsMyNames = () => [me() && me().name, S.me && S.me.display_name, S.me && S.me.callsign, ...(typeof OB !== "undefined" ? obMyCrew().map(c => c.name) : [])].filter(Boolean).map(opsNorm).filter((n, i, a) => n && a.indexOf(n) === i);
 // Escape, and highlight the signed-in person's name.
@@ -90,7 +92,7 @@ function opsStats(fl) {
   let sorties = 0, mins = 0, first = null, last = null;
   for (const w of fl.waves || []) for (const f of w.flights || []) {
     if (f.opsAdd) continue;
-    const d = opsMin(f.etd), a = opsMin(f.eta), lines = (f.ac || []).filter(opsLineUsed).length;
+    const d = opsMin(f.etd), a = opsMin(f.eta), lines = (f.ac || []).filter(x => opsLineUsed(x) && !x.opsAdd).length;
     sorties += lines;
     if (d != null && a != null) mins += lines * opsSpan(d, a);
     if (d != null && (first == null || d < first)) first = d;
@@ -127,7 +129,7 @@ function opsAuto(name, fl, sim) {
     if (opsHas(w.sxo, n)) out[i].push("SXO");
     if (opsHas(w.opsO, n)) out[i].push("OPS O");
     const f = (w.flights || []).find(f => (f.ac || []).some(a => opsCrewHas(a, n)));
-    if (f) out[i].push(f.opsAdd ? "(#)" : "#");
+    if (f) out[i].push(opsIsAdd(f, (f.ac || []).find(a => opsCrewHas(a, n))) ? "(#)" : "#");
   });
   const wins = opsWindows(fl);
   for (const s of sim.rows || []) if ((s.ac || []).some(a => opsCrewHas(a, n))) {
@@ -235,7 +237,7 @@ function opsMyItems(get) {
   for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) {
     const n = names.find(n => opsCrewHas(a, n)); if (!n) continue;
     const mate = opsNorm(a.crew1) === n ? a.crew2 : a.crew1;
-    items.push(`<li><b>${esc(w.name)}</b> ${esc(f.etd)}–${esc(f.eta)}Z · ${esc([f.callsign, a.n].filter(Boolean).join(" "))} · ${esc(a.mission)}${mate ? " with " + esc(mate) : ""}${a.tail ? " · " + esc(a.tail) : ""}${f.area ? " · " + esc(f.area) : ""}${f.opsAdd ? " <em>(ops add)</em>" : ""}</li>`);
+    items.push(`<li><b>${esc(w.name)}</b> ${esc(f.etd)}–${esc(f.eta)}Z · ${esc([f.callsign, a.n].filter(Boolean).join(" "))} · ${esc(a.mission)}${mate ? " with " + esc(mate) : ""}${a.tail ? " · " + esc(a.tail) : ""}${f.area ? " · " + esc(f.area) : ""}${opsIsAdd(f, a) ? " <em>(ops add)</em>" : ""}</li>`);
   }
   for (const s of sim.rows || []) for (const a of s.ac || []) {
     const n = names.find(n => opsCrewHas(a, n)); if (!n) continue;
@@ -276,8 +278,8 @@ const opsView = {
       for (const f of fs) {
         const ac = (f.ac || []).length ? f.ac : [opsTpl.ac("")], span = ac.length;
         ac.forEach((a, i) => {
-          const no = f.opsAdd ? "*" : opsLineUsed(a) ? String(++n).padStart(2, "0") : "";
-          out += `<tr class="${i === 0 ? "first" : ""}${f.opsAdd ? " opsadd" : ""}"><td>${no}</td>${i === 0 ? `<td rowspan="${span}">${esc(f.brief)}${f.step ? " / " + esc(f.step) : ""}</td><td rowspan="${span}">${esc(f.etd)}</td><td rowspan="${span}">${esc(f.eta)}</td>` : ""}
+          const no = opsIsAdd(f, a) ? "*" : opsLineUsed(a) ? String(++n).padStart(2, "0") : "";
+          out += `<tr class="${i === 0 ? "first" : ""}${opsIsAdd(f, a) ? " opsadd" : ""}"><td>${no}</td>${i === 0 ? `<td rowspan="${span}">${esc(f.brief)}${f.step ? " / " + esc(f.step) : ""}</td><td rowspan="${span}">${esc(f.etd)}</td><td rowspan="${span}">${esc(f.eta)}</td>` : ""}
             <td>${esc([i === 0 ? f.callsign : "", a.n].filter(Boolean).join(" "))}</td><td>${opsX(a.crew1)}${a.crew2 ? " · " + opsX(a.crew2) : ""}</td><td>${esc(a.mission)}</td>
             ${i === 0 ? `<td rowspan="${span}">${esc(f.area)}${f.areaTime ? `<br><span class="hint">${esc(f.areaTime)}</span>` : ""}</td>` : ""}<td>${esc(a.tail)}</td><td>${esc(a.config)}</td><td>${opsNl(a.rmks)}</td></tr>`;
         });
@@ -361,11 +363,11 @@ const opsEd = {
           <td>${oI(p + ".brief", f.brief, "70px")}</td><td>${oI(p + ".step", f.step, "70px")}</td><td>${oI(p + ".etd", f.etd, "70px")}</td><td>${oI(p + ".eta", f.eta, "70px")}</td>
           <td>${oI(p + ".callsign", f.callsign, "120px")}</td><td>${oI(p + ".area", f.area, "120px")}</td><td>${oI(p + ".areaTime", f.areaTime, "110px")}</td>
           <td>${oC(p + ".opsAdd", f.opsAdd, "Ops add")}</td><td>${oTools(`waves.${wi}.flights`, fi)}</td></tr></tbody></table>
-        <table><thead><tr><th>#</th><th>Aircrew</th><th>Aircrew</th><th>Mission</th><th>A/C</th><th>Config</th><th>Rmks</th><th></th></tr></thead><tbody>
-          ${(f.ac || []).map((a, ai) => { const q = `${p}.ac.${ai}`; return `<tr><td>${oI(q + ".n", a.n, "40px")}</td><td>${oP(q + ".crew1", a.crew1, "120px")}</td><td>${oP(q + ".crew2", a.crew2, "120px")}</td><td>${oI(q + ".mission", a.mission, "110px")}</td><td>${oI(q + ".tail", a.tail, "60px")}</td><td>${oI(q + ".config", a.config, "60px")}</td><td>${oI(q + ".rmks", a.rmks, "200px")}</td><td>${oB("del", p + ".ac", ai, "✕", "", "Remove aircraft")}</td></tr>`; }).join("")}
+        <table><thead><tr><th>#</th><th>Aircrew</th><th>Aircrew</th><th>Mission</th><th>A/C</th><th>Config</th><th>Rmks</th><th></th><th></th></tr></thead><tbody>
+          ${(f.ac || []).map((a, ai) => { const q = `${p}.ac.${ai}`; return `<tr><td>${oI(q + ".n", a.n, "40px")}</td><td>${oP(q + ".crew1", a.crew1, "120px")}</td><td>${oP(q + ".crew2", a.crew2, "120px")}</td><td>${oI(q + ".mission", a.mission, "110px")}</td><td>${oI(q + ".tail", a.tail, "60px")}</td><td>${oI(q + ".config", a.config, "60px")}</td><td>${oI(q + ".rmks", a.rmks, "200px")}</td><td>${oC(q + ".opsAdd", a.opsAdd, "Ops add")}</td><td>${oB("del", p + ".ac", ai, "✕", "", "Remove aircraft")}</td></tr>`; }).join("")}
         </tbody></table></div>${oB("add", p + ".ac", "", "+ Aircraft", "ac")}</div>`; }).join("")}
       <div class="tools">${oB("add", `waves.${wi}.flights`, "", "+ Flight", "flight")}</div></div>`).join("")
-      + `<div class="tools">${oB("add", "waves", "", "+ Wave", "wave")}${oB("add", "waves", "", "+ Night wave", "nwave")}</div>` + `<p class="hint">Times as 0725 (Zulu). Tick "Ops add" for standby / ops-add flights: they show as * and don't count in planned sorties or hours.</p>`;
+      + `<div class="tools">${oB("add", "waves", "", "+ Wave", "wave")}${oB("add", "waves", "", "+ Night wave", "nwave")}</div>` + `<p class="hint">Times as 0725 (Zulu). Tick "Ops add" on the flight (whole flight) or on one aircraft line (e.g. #1 ops add): they show as * and don't count in planned sorties or hours.</p>`;
   },
   sim(sim) {
     return (sim.rows || []).map((s, si) => { const p = `rows.${si}`; return `<div class="blk flt"><div class="tablewrap">
@@ -498,7 +500,7 @@ function opsPrint() {
     for (const f of w.flights || []) {
       const ac = (f.ac || []).length ? f.ac : [opsTpl.ac("")];
       ac.forEach((a, i) => {
-        const no = f.opsAdd ? "*" : opsLineUsed(a) ? String(++n).padStart(2, "0") : "";
+        const no = opsIsAdd(f, a) ? "*" : opsLineUsed(a) ? String(++n).padStart(2, "0") : "";
         rows += `<tr${i === 0 ? ' class="f"' : ""}><td>${no}</td>${i === 0 ? `<td rowspan="${ac.length}">${e(f.brief)} ${e(f.step)}</td><td rowspan="${ac.length}">${e(f.etd)}</td><td rowspan="${ac.length}">${e(f.eta)}</td>` : ""}<td>${e([i === 0 ? f.callsign : "", a.n].filter(Boolean).join(" "))}</td><td>${e(a.crew1)}</td><td>${e(a.crew2)}</td><td>${e(a.mission)}</td>${i === 0 ? `<td rowspan="${ac.length}">${e(f.area)}<br>${e(f.areaTime)}</td>` : ""}<td>${e(a.tail)}</td><td>${e(a.config)}</td><td>${nl(a.rmks)}</td></tr>`;
       });
     }
