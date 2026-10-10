@@ -26,9 +26,19 @@ const OB_FASF = ["B", "W", "G VFR", "G IFR", "Y", "A", "R", "BLACK", "CLSD"];
 const OB_RSAF = ["B", "Y1", "Y2", "A1", "A2", "R", "BLACK", "CLSD"];
 // R115 range weather (Gordon's range table, 10 Oct): BLUE (good), WHITE n (vis 8 km+), GREEN n (vis 5 km+), YELLOW, RED,
 // where n is the cloud base in thousands of ft (0 = 1000 ft, 1 = 1500 ft, 2 = 2000 ft, 3 = 3000 ft …).
+// Picked as two short dropdowns (Gordon: "red yellow green white with the numbers following"): colour, then number.
+// Every colour but blue can carry a number. Stored as one string, e.g. "W5", "Y2", "R", "B".
 const OB_RANGE_N = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-const OB_RANGE_WX = ["B", ...OB_RANGE_N.map(n => "W" + n), ...OB_RANGE_N.map(n => "G" + n), "Y", "R"];
-const obRangeOpts = cur => ["", ...OB_RANGE_WX, ...(cur && !OB_RANGE_WX.includes(cur) ? [cur] : [])];
+const OB_RANGE_C = [["B", "Blue"], ["W", "White"], ["G", "Green"], ["Y", "Yellow"], ["R", "Red"]];
+const obRwxSplit = v => { const m = /^([BWGYR])(\d*)$/.exec(v || ""); return m ? [m[1], m[2]] : [v || "", ""]; };
+const obRwxJoin = (c, n) => !c ? "" : c === "B" ? "B" : OB_RANGE_C.some(x => x[0] === c) ? c + (n || "") : c;
+// attr marks the pair: data-obq="r115wx" on the board, data-rwx="ed" in the full editor.
+function obRwxSel(v, attr) {
+  const [c, n] = obRwxSplit(v), known = !c || OB_RANGE_C.some(x => x[0] === c);
+  return `<span class="obrwx"><select class="obcs ${obCsCls(v)}" ${attr} data-p="c" aria-label="R115 WX colour">${[["", "-"], ...OB_RANGE_C, ...(known ? [] : [[c, c]])].map(([k, l]) => `<option value="${esc(k)}" ${k === c ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`
+    + `<select class="obsel obrwxn" ${attr} data-p="n" aria-label="R115 WX number" ${!c || c === "B" || !known ? "hidden" : ""}>${["", ...OB_RANGE_N.map(String)].map(k => `<option value="${k}" ${k === n ? "selected" : ""}>${k || "-"}</option>`).join("")}</select></span>`;
+}
+const obRwxVal = el => { const w = el.closest(".obrwx"); return obRwxJoin(w.querySelector('[data-p="c"]').value, w.querySelector('[data-p="n"]').value); };
 // Restricted-area list (Excel AD19:AV22). A filled value shows red unless ops picks another colour.
 const OB_AREAS = ["R46 A/B", "R166", "R259 (4200FT)", "ZRT 598 (500AGL)", "R148 (SFC – 1650 FT)", "R61 MEDOC", "CEL"];
 const obAf = (icao, grp, p, rwy, aids) => ({ icao, grp, p, rwy, fasf: OB_FASF_AUTO.includes(icao) ? "AUTO" : "B", rsaf: "AUTO", wx: "", restr: "", aids });
@@ -175,7 +185,7 @@ function obState(a, kind) {
   return { v: (kind === "rsaf" ? obRsafAuto : obFasfAuto)(obVisCeil(a)), auto: true };
 }
 // Colour of a colour-state value.
-const obCsCls = v => ({ B: "cs-b", W: "cs-w", "G VFR": "cs-gv", "G IFR": "cs-gi", Y: "cs-y", Y1: "cs-y1", Y2: "cs-y2", A: "cs-a", A1: "cs-a1", A2: "cs-a2", R: "cs-r", BLACK: "cs-k", CLSD: "cs-c" }[v] || (/^W\d+$/.test(v) ? "cs-w" : /^G\d+$/.test(v) ? "cs-gv" : /^Y\d$/.test(v) ? "cs-y" : "cs-n"));
+const obCsCls = v => ({ B: "cs-b", W: "cs-w", "G VFR": "cs-gv", "G IFR": "cs-gi", Y: "cs-y", Y1: "cs-y1", Y2: "cs-y2", A: "cs-a", A1: "cs-a1", A2: "cs-a2", R: "cs-r", BLACK: "cs-k", CLSD: "cs-c" }[v] || (/^W\d+$/.test(v) ? "cs-w" : /^G\d+$/.test(v) ? "cs-gv" : /^Y\d+$/.test(v) ? "cs-y" : /^R\d+$/.test(v) ? "cs-r" : "cs-n"));
 // Aid status, with the LFBC CAT 1 line following CZX FASF when set to auto (B/W green, else yellow).
 function obAidS(a, x) {
   if (x.s !== "auto") return x.s;
@@ -371,7 +381,7 @@ function obBoardView(tv, extra) {
 function obAreasView(b, q, z, tv) {
   const r = b.r115 || {}, czx = b.czx || {};
   const f = (k, w) => q ? `<input class="obval" style="width:${w}" data-obq="r115" data-f="${k}" value="${esc(r[k] || "")}" aria-label="R115 ${k}">` : esc(r[k] || "-");
-  const wx = q ? `<select class="obcs ${obCsCls(r.wx)}" data-obq="r115" data-f="wx" aria-label="R115 WX colour state">${obRangeOpts(r.wx).map(v => `<option value="${v}" ${v === (r.wx || "") ? "selected" : ""}>${v || "-"}</option>`).join("")}</select>`
+  const wx = q ? obRwxSel(r.wx, 'data-obq="r115wx"')
     : `<span class="obcs ${obCsCls(r.wx)}">${esc(r.wx || "-")}</span>`;
   const restr = q ? `<input class="obval" style="width:${tv ? "220px" : "170px"}" data-obq="r115" data-f="restr" value="${esc(r.restr || "")}" placeholder="e.g. G1, G3, RADAR" aria-label="R115 restrictions">` : esc(r.restr || "-");
   // On the page, board editors can add or remove areas (Gordon, 10 Oct): ✕ on each, "+ Area" at the bottom.
@@ -818,7 +828,7 @@ function obEditor(k) {
       <h3 class="opssub">Canopy / equipment</h3><div class="grid"><label>Canopy${bS("equip.canopy", d.equip.canopy, OB_AUTO)}</label><label>APU (A11–15)${bS("equip.apu1", d.equip.apu1, OB_AUTO)}</label><label>APU (A16–23)${bS("equip.apu2", d.equip.apu2, OB_AUTO)}</label>
         <label>Parachute (0 = green)${bI("equip.parachute", d.equip.parachute)}</label><label>SAMAR (G… / Y… / R…)${bI("equip.samar", d.equip.samar)}</label></div>
       <h3 class="opssub">Restricted areas</h3><div class="tablewrap"><table><thead><tr><th>R115 (CAPTIEUX)</th><th>TGT</th><th>WX</th><th>Before</th><th>After</th><th>Restrictions (G1–G7, RADAR)</th></tr></thead><tbody><tr><td></td>
-        <td>${bI("r115.tgt", d.r115.tgt, "70px")}</td><td>${bS("r115.wx", d.r115.wx, obRangeOpts(d.r115.wx).map(v => [v, v || "-"]))}</td><td>${bI("r115.before", d.r115.before, "80px")}</td><td>${bI("r115.after", d.r115.after, "80px")}</td><td>${bI("r115.restr", d.r115.restr, "180px")}</td></tr></tbody></table></div>
+        <td>${bI("r115.tgt", d.r115.tgt, "70px")}</td><td>${obRwxSel(d.r115.wx, 'data-rwx="ed"')}</td><td>${bI("r115.before", d.r115.before, "80px")}</td><td>${bI("r115.after", d.r115.after, "80px")}</td><td>${bI("r115.restr", d.r115.restr, "180px")}</td></tr></tbody></table></div>
       <div class="tablewrap"><table><thead><tr><th>Item</th><th>Value</th><th>Colour</th><th></th></tr></thead><tbody>${(d.areas || []).map((r, i) => `<tr>
         <td>${bI(`areas.${i}.item`, r.item, "120px")}</td><td>${bI(`areas.${i}.val`, r.val, "110px")}</td><td>${bS(`areas.${i}.s`, r.s, OB_VALCOL)}</td><td>${bTools("areas", i)}</td></tr>`).join("")}
         <tr><td>Firing sch</td><td>${bI("czx.firing", d.czx.firing, "110px")}</td><td>${bS("czx.firingS", d.czx.firingS, OB_VALCOL)}</td><td></td></tr>
@@ -888,12 +898,21 @@ document.addEventListener("change", e => {
   else if (k === "czx" || k === "czxv") obQuick(d => { d.czx[el.dataset.f] = v.trim(); });
   else if (k === "czxu") obQuick(d => { d.czx[el.dataset.f] = v.trim().toUpperCase().replace(/\s*°C$/, ""); });
   else if (k === "eqv") obQuick(d => { d.equip[el.dataset.f] = v.trim().toUpperCase(); });
+  else if (k === "r115wx") { const val = obRwxVal(el); obQuick(d => { d.r115 = { ...(d.r115 || {}), wx: val }; }); }
   else if (k === "r115") obQuick(d => { d.r115 = { ...(d.r115 || {}), [el.dataset.f]: v.trim().toUpperCase() }; });
   else if (k === "aval") obQuick(d => { d.areas[+el.dataset.j].val = v.trim(); });
   else if (k === "bingo") obQuick(d => { d.bingo = v; });
 });
 document.addEventListener("input", e => {
-  const el = e.target; if (!OB.edit || !el.dataset || !el.dataset.bp || !el.closest("#obEdit")) return;
+  const el = e.target;
+  if (OB.edit && el.dataset && el.dataset.rwx && el.closest("#obEdit")) { // R115 WX pair in the full editor
+    const val = obRwxVal(el), [c] = obRwxSplit(val), w = el.closest(".obrwx");
+    opsSetPath(OB.edit.data, "r115.wx", val);
+    w.querySelector('[data-p="c"]').className = "obcs " + obCsCls(val);
+    w.querySelector('[data-p="n"]').hidden = !c || c === "B";
+    return;
+  }
+  if (!OB.edit || !el.dataset || !el.dataset.bp || !el.closest("#obEdit")) return;
   opsSetPath(OB.edit.data, el.dataset.bp, el.type === "checkbox" ? el.checked : el.value);
   // CFH 2 and CFH 3 can't both be ticked.
   const m = /^(tails\.\d+)\.cfh([23])$/.exec(el.dataset.bp);
@@ -1101,6 +1120,7 @@ body.tvmode #dlgChart .obchartimg img{height:calc(100vh - 140px);width:auto;max-
 .obchartimg{position:relative;line-height:0}
 .obchartimg img{width:100%;height:auto;display:block;border-radius:4px}
 .obchartimg svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.obrwx{display:inline-flex;gap:4px;align-items:center}.obrwxn{width:auto;min-width:48px}
 .obhot{fill:rgba(255,40,40,.32);stroke:#ff2d2d;stroke-width:2;animation:obpulse 1.6s ease-in-out infinite}
 .obhot.radar{fill:rgba(255,255,255,.25);stroke:#fff}
 @keyframes obpulse{50%{fill-opacity:.12}}
