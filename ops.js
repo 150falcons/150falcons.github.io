@@ -408,8 +408,8 @@ const opsEd = {
       <div class="grid"><label>SXO${oP(`waves.${wi}.sxo`, w.sxo)}</label><label>OPS O${oI(`waves.${wi}.opsO`, w.opsO, "", "e.g. LIM Y / LEE L (TKOVER @ 1100Z)")}</label></div>
       <label>Wave remarks (airfield notes for this wave)${oT(`waves.${wi}.rmks`, w.rmks)}</label>
       ${(w.flights || []).map((f, fi) => { const p = `waves.${wi}.flights.${fi}`; return `<div class="blk flt">
-        <div class="tablewrap"><table><thead><tr><th class="opsetdh">ETD ① key in first</th><th>ETA</th><th>Step</th><th>Brief</th><th>Callsign</th><th>Area</th><th>Area time</th><th></th><th></th></tr></thead><tbody><tr>
-          <td>${oI(p + ".etd", f.etd, "80px", "e.g. 0715").replace("<input", '<input class="opsetd"')}</td>${OPS_AUTO_T.map(k => `<td>${opsAutoIn(p, f, k)}</td>`).join("")}
+        <div class="tablewrap"><table><thead><tr><th>Brief</th><th>Step</th><th class="opsetdh">ETD (key in first)</th><th>ETA</th><th>Callsign</th><th>Area</th><th>Area time</th><th></th><th></th></tr></thead><tbody><tr>
+          <td>${opsAutoIn(p, f, "brief")}</td><td>${opsAutoIn(p, f, "step")}</td><td>${oI(p + ".etd", f.etd, "80px", "e.g. 0715").replace("<input", '<input class="opsetd"')}</td><td>${opsAutoIn(p, f, "eta")}</td>
           <td>${oI(p + ".callsign", f.callsign, "120px")}</td><td>${oI(p + ".area", f.area, "120px")}</td><td>${oI(p + ".areaTime", f.areaTime, "110px")}</td>
           <td>${oC(p + ".opsAdd", f.opsAdd, "Ops add")}</td><td>${oTools(`waves.${wi}.flights`, fi)}</td></tr></tbody></table>
         <table><thead><tr><th>#</th><th>Aircrew</th><th>Aircrew</th><th>Mission</th><th>A/C</th><th>Config</th><th>Rmks</th><th></th><th></th></tr></thead><tbody>
