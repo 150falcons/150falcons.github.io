@@ -1290,11 +1290,11 @@ function renderAdmin(v) {
         <label>QFI CAT<select id="iCat"><option value="">-</option><option>A</option><option>B1</option><option>B2</option><option>C</option></select></label>
         <label>Username<input id="iEmail" autocapitalize="none" placeholder="e.g. tanjh"></label>
         <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddAdmin">Add QFI</button></div></div>
-      <div class="card"><h2>AOSX, ATCO &amp; engineer logins (${opsAsst.length})</h2>
+      <div class="card"><h2>Staff logins: AOSX, ATCO, CEN &amp; engineers (${opsAsst.length})</h2>
         ${opsAsst.length ? `<ul class="rlist">${opsAsst.map(p => `<li><span><strong>${esc(pLabel(p))}</strong>${p.staff_role ? ` <span class="tag">${esc(STAFF_LABEL[p.staff_role] || p.staff_role)}</span>` : ""}${p.ops_editor ? ` <span class="tag open">Ops</span>` : ""}${p.eng_editor ? ` <span class="tag open">Aircraft</span>` : ""}${p.ops_editor || p.eng_editor ? "" : ` <span class="tag nd">Can't edit</span>`}${p.no_geo ? ` <span class="tag nd">No location check</span>` : ""}<br><span class="hint">Login: ${esc(showLogin(p.email))}${p.must_change_password ? " (temporary password)" : ""}</span></span>
           <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button><button class="btn small" data-act="resetpw" data-id="${esc(p.id)}">Reset password</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button></span></li>`).join("")}</ul>` : ""}
-        <p class="hint" style="margin-top:6px">Logins without QFI admin rights. The AOSX edits the flying program, ops board and Go / No-Go; an ATCO can view everything (tick "Can edit the ops board" under Edit if they should change it); an engineer edits aircraft status only. The CO, DYCO and OCs can always edit; tick other QFIs under Edit.</p>
-        <label>Type<select id="oaType"><option value="AOSX">AOSX (ops assistant)</option><option value="ATCO">ATCO (air traffic controller)</option><option value="ENG">Engineer (aircraft status)</option></select></label>
+        <p class="hint" style="margin-top:6px">Logins without QFI admin rights. The AOSX edits the flying program, ops board and Go / No-Go; ATCO and CEN can view everything (tick "Can edit the ops board" under Edit if they should change it); an engineer edits aircraft status only. The CO, DYCO and OCs can always edit; tick other QFIs under Edit.</p>
+        <label>Type<select id="oaType"><option value="AOSX">AOSX (ops assistant)</option><option value="ATCO">ATCO (air traffic controller)</option><option value="CEN">CEN (contracts &amp; squadron logistics)</option><option value="ENG">Engineer (aircraft status)</option></select></label>
         <label>Name<input id="oaName" maxlength="60" placeholder="e.g. TAN M"></label>
         <label>Username<input id="oaUser" autocapitalize="none" placeholder="e.g. tanm"></label>
         <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddOps">Add login</button></div></div>
@@ -1387,7 +1387,7 @@ async function addInstructor() {
 }
 // Ops assistant: a non-admin, non-trainee login with ops_editor on.
 const isOpsAssistant = p => !!p && p.role !== "admin" && !p.trainee_id;
-const STAFF_LABEL = { AOSX: "AOSX", ATCO: "ATCO", ENG: "Engineer" };
+const STAFF_LABEL = { AOSX: "AOSX", ATCO: "ATCO", CEN: "CEN", ENG: "Engineer" };
 async function addOpsAssistant() {
   const name = $("#oaName").value.trim(), user = $("#oaUser").value.trim().toLowerCase();
   if (!name || !user) return toast("Enter a name and a username.");
@@ -1397,7 +1397,7 @@ async function addOpsAssistant() {
     const r = await adminApi({ action: "create", email: toLogin(user), display_name: name, role: "user" });
     const { error: e1 } = await S.sb.rpc("set_staff_role", { p_user: r.user_id, p_role: type });
     if (e1) throw e1;
-    if (type !== "ATCO") { const { error } = await S.sb.rpc(type === "ENG" ? "set_eng_editor" : "set_ops_editor", { p_user: r.user_id, p_on: true }); if (error) throw error; }
+    if (type === "AOSX" || type === "ENG") { const { error } = await S.sb.rpc(type === "ENG" ? "set_eng_editor" : "set_ops_editor", { p_user: r.user_id, p_on: true }); if (error) throw error; }
     fetchAll(); await ask(`${STAFF_LABEL[type]} login added`, `${name}: username ${user}, temporary password ${r.password}. They must set their own password at first sign-in.`, "OK");
   } catch (e) { toast(e.message); }
 }
