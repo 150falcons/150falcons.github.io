@@ -24,8 +24,10 @@ const OB_RWYS = { LFBC: ["06", "24"], LFBM: ["09", "27"], LFBD: ["05", "23", "11
 const OB_FASF_AUTO = ["LFBZ", "LFSL", "LFBE"];
 const OB_FASF = ["B", "W", "G VFR", "G IFR", "Y", "A", "R", "BLACK", "CLSD"];
 const OB_RSAF = ["B", "Y1", "Y2", "A1", "A2", "R", "BLACK", "CLSD"];
-// R115 range weather (Gordon, 10 Oct): Blue, White with a number (W5) or Yellow with a number (Y2).
-const OB_RANGE_WX = ["B", ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => "W" + n), ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => "Y" + n)];
+// R115 range weather (Gordon's range table, 10 Oct): BLUE (good), WHITE n (vis 8 km+), GREEN n (vis 5 km+), YELLOW, RED,
+// where n is the cloud base in thousands of ft (0 = 1000 ft, 1 = 1500 ft, 2 = 2000 ft, 3 = 3000 ft …).
+const OB_RANGE_N = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const OB_RANGE_WX = ["B", ...OB_RANGE_N.map(n => "W" + n), ...OB_RANGE_N.map(n => "G" + n), "Y", "R"];
 const obRangeOpts = cur => ["", ...OB_RANGE_WX, ...(cur && !OB_RANGE_WX.includes(cur) ? [cur] : [])];
 // Restricted-area list (Excel AD19:AV22). A filled value shows red unless ops picks another colour.
 const OB_AREAS = ["R46 A/B", "R166", "R259 (4200FT)", "ZRT 598 (500AGL)", "R148 (SFC – 1650 FT)", "R61 MEDOC", "CEL"];
@@ -173,7 +175,7 @@ function obState(a, kind) {
   return { v: (kind === "rsaf" ? obRsafAuto : obFasfAuto)(obVisCeil(a)), auto: true };
 }
 // Colour of a colour-state value.
-const obCsCls = v => ({ B: "cs-b", W: "cs-w", "G VFR": "cs-gv", "G IFR": "cs-gi", Y: "cs-y", Y1: "cs-y1", Y2: "cs-y2", A: "cs-a", A1: "cs-a1", A2: "cs-a2", R: "cs-r", BLACK: "cs-k", CLSD: "cs-c" }[v] || (/^W\d$/.test(v) ? "cs-w" : /^Y\d$/.test(v) ? "cs-y" : "cs-n"));
+const obCsCls = v => ({ B: "cs-b", W: "cs-w", "G VFR": "cs-gv", "G IFR": "cs-gi", Y: "cs-y", Y1: "cs-y1", Y2: "cs-y2", A: "cs-a", A1: "cs-a1", A2: "cs-a2", R: "cs-r", BLACK: "cs-k", CLSD: "cs-c" }[v] || (/^W\d+$/.test(v) ? "cs-w" : /^G\d+$/.test(v) ? "cs-gv" : /^Y\d$/.test(v) ? "cs-y" : "cs-n"));
 // Aid status, with the LFBC CAT 1 line following CZX FASF when set to auto (B/W green, else yellow).
 function obAidS(a, x) {
   if (x.s !== "auto") return x.s;
