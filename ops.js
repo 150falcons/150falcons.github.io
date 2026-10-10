@@ -495,7 +495,7 @@ function opsBar() {
     <span class="grow"></span>
     ${opsCanEdit() && OPS.rowsDay === OPS.day && opsData("flying") && !OPS.edit ? `<button class="btn small${OPS.logOpen ? " primary" : ""}" data-ops="log">${OPS.logOpen ? "Done logging" : "Log flown times"}</button>` : ""}
     ${opsCanEdit() ? `<button class="btn small" data-ops="copy">Copy from…</button>${OPS.rowsDay === OPS.day && OPS_ORDER.some(opsData) && !OPS.edit ? `<button class="btn small danger" data-ops="clear">Clear day</button>` : ""}` : ""}
-    <button class="btn small" data-ops="pdf">PDF</button>${OPS.edit ? "" : `<button class="btn small primary" data-tab="flytv">TV mode</button>`}</div>`;
+    <button class="btn small" data-ops="pdf" title="Daily programme to send out">PDF</button>${OPS.rowsDay === OPS.day && opsData("flying") ? `<button class="btn small" data-ops="pdfeod" title="End-of-day copy with flown times, for filing">End of day PDF</button>` : ""}${OPS.edit ? "" : `<button class="btn small primary" data-tab="flytv">TV mode</button>`}</div>`;
 }
 function opsGo(day) {
   if (OPS.edit && !confirm("Discard your unsaved changes?")) { const d = $("#opsDate"); if (d) d.value = OPS.day; return; }
@@ -798,7 +798,8 @@ document.addEventListener("click", async e => {
   else if (a === "save") opsSave(el);
   else if (a === "copy") opsCopy();
   else if (a === "clear") opsClearDay(el);
-  else if (a === "pdf") opsPrint();
+  else if (a === "pdf") opsPrint(false);
+  else if (a === "pdfeod") opsPrint(true);
   else if (a === "log") { OPS.logOpen = !OPS.logOpen; renderOps($("#view")); if (OPS.logOpen) { const c = $("#ops-log"); if (c) c.scrollIntoView({ block: "start" }); } }
   else if (a === "logplan") opsLogPlanned(el);
   else if (a === "logcx") { const L = opsLogLine(el.dataset.k).log || {}; opsLogSave(el.dataset.k, null, null, L.st === "cx" ? "" : "cx", true); }
@@ -851,19 +852,20 @@ async function opsCopy() {
 }
 
 /* ---------- PDF (print view in the sheet's layout) ---------- */
-function opsPrint() {
+// eod = end-of-day copy for filing: same sheet plus ATD / ATA / HRS per line and flown totals (Gordon, 10 Oct).
+function opsPrint(eod) {
   if (OPS.rowsDay !== OPS.day) return toast("Still loading.");
   const h = opsGet("header"), fl = opsGet("flying"), sim = opsGet("sim"), st = opsStats(fl), e = v => esc(v ?? "");
   const nl = v => e(v).replace(/\n/g, "<br>");
   const waves = fl.waves || [];
   let n = 0;
   const flying = waves.map(w => {
-    let rows = `<tr class="wv"><td colspan="12">${e(w.name)}${w.rmks ? ` <span class="r">${nl(w.rmks)}</span>` : ""}</td></tr>`;
+    let rows = `<tr class="wv"><td colspan="${eod ? 15 : 12}">${e(w.name)}${w.rmks ? ` <span class="r">${nl(w.rmks)}</span>` : ""}</td></tr>`;
     for (const f of w.flights || []) {
       const ac = (f.ac || []).length ? f.ac : [opsTpl.ac("")];
       ac.forEach((a, i) => {
         const no = opsIsAdd(f, a) ? "*" : opsLineUsed(a) ? String(++n).padStart(2, "0") : "";
-        rows += `<tr${i === 0 ? ' class="f"' : ""}><td>${no}</td>${i === 0 ? `<td rowspan="${ac.length}">${e(f.brief)} ${e(f.step)}</td><td rowspan="${ac.length}">${e(f.etd)}</td><td rowspan="${ac.length}">${e(f.eta)}</td>` : ""}<td>${e([i === 0 ? f.callsign : "", a.n].filter(Boolean).join(" "))}</td><td>${e(a.crew1)}</td><td>${e(a.crew2)}</td><td>${e(a.mission)}</td>${i === 0 ? `<td rowspan="${ac.length}">${e(f.area)}<br>${e(f.areaTime)}</td>` : ""}<td>${e(opsTail(a.tail, OPS.day))}</td><td>${e(a.config)}</td><td>${nl(a.rmks)}</td></tr>`;
+        rows += `<tr${i === 0 ? ' class="f"' : ""}><td>${no}</td>${i === 0 ? `<td rowspan="${ac.length}">${e(f.brief)} ${e(f.step)}</td><td rowspan="${ac.length}">${e(f.etd)}</td><td rowspan="${ac.length}">${e(f.eta)}</td>` : ""}<td>${e([i === 0 ? f.callsign : "", a.n].filter(Boolean).join(" "))}</td><td>${e(a.crew1)}</td><td>${e(a.crew2)}</td><td>${e(a.mission)}</td>${i === 0 ? `<td rowspan="${ac.length}">${e(f.area)}<br>${e(f.areaTime)}</td>` : ""}<td>${e(opsTail(a.tail, OPS.day))}</td><td>${e(a.config)}</td>${eod ? opsPrintAct(a.log) : ""}<td>${nl(a.rmks)}</td></tr>`;
       });
     }
     return rows;
@@ -882,15 +884,16 @@ function opsPrint() {
   let el = document.getElementById("opsPrint");
   if (!el) { el = document.createElement("div"); el.id = "opsPrint"; document.body.appendChild(el); }
   el.innerHTML = `<div class="cls">RESTRICTED</div>
-    <h1>150 SQUADRON FLYING PROGRAM</h1><div class="sub">${e(opsLongDay(OPS.day))}</div>
+    <h1>150 SQUADRON FLYING PROGRAM${eod ? " · END OF DAY" : ""}</h1><div class="sub">${e(opsLongDay(OPS.day))}${eod ? " · with flown times" : ""}</div>
     <div class="cols">
       <div><table>${kv("IN TIME", h.inTime)}${kv("LATE IN", h.lateIn)}${kv("WX/NTM BRIEF", h.wxBrief)}${kv("MODB", h.modb)}${kv("NIGHT OPS BRIEF", h.nightBrief)}${kv("SQN SII OF THE QTR", h.sqnSii)}${kv("EMER OF THE DAY", h.emer)}</table></div>
       <div><table>${waves.map(w => kv(e(w.name) + " SXO", w.sxo)).join("")}</table>
         <table><tr><th>DAILY REQ</th><th>PLANNED SORTIES</th><th>PLANNED HOURS</th></tr><tr><td>${e(h.dailyReq)}</td><td>${st.sorties}</td><td>${st.hours}</td></tr>
-        <tr><th>FIRST TAKEOFF</th><th>LAST LANDING</th><th>HH:MM</th></tr><tr><td>${opsHM(st.first)}</td><td>${opsHM(st.last)}</td><td>${opsHM(st.span)}</td></tr></table></div>
+        <tr><th>FIRST TAKEOFF</th><th>LAST LANDING</th><th>HH:MM</th></tr><tr><td>${opsHM(st.first)}</td><td>${opsHM(st.last)}</td><td>${opsHM(st.span)}</td></tr>
+        ${eod ? (() => { const fs = opsFlownStats(fl); return `<tr><th>FLOWN SORTIES</th><th>FLOWN HOURS</th><th>CX / NOT LOGGED</th></tr><tr><td>${fs.sorties}</td><td>${opsHrs(fs.mins) || "0.0"}</td><td>${fs.cx} / ${fs.open}</td></tr>`; })() : ""}</table></div>
       <div><table>${waves.map(w => kv(e(w.name) + " OPS O", w.opsO)).join("")}${kv("TOWER", h.tower)}${kv("DI", h.di)}</table></div>
     </div>
-    <table><tr><th>NO</th><th>FLT / STEP BRIEF</th><th>ETD (Z)</th><th>ETA (Z)</th><th>CALLSIGN</th><th colspan="2">AIRCREW</th><th>MISSION</th><th>AREA</th><th>A/C</th><th>CONFIG</th><th>RMKS</th></tr>${flying}</table>
+    <table><tr><th>NO</th><th>FLT / STEP BRIEF</th><th>ETD (Z)</th><th>ETA (Z)</th><th>CALLSIGN</th><th colspan="2">AIRCREW</th><th>MISSION</th><th>AREA</th><th>A/C</th><th>CONFIG</th>${eod ? "<th>ATD (Z)</th><th>ATA (Z)</th><th>HRS</th>" : ""}<th>RMKS</th></tr>${flying}</table>
     ${sims ? `<h2>150 SQUADRON SIMULATOR PROGRAM</h2><table><tr><th>NO</th><th>ETD (Z)</th><th>ETA (Z)</th><th>CALLSIGN</th><th>AIRCREW</th><th>CONSOLE</th><th>MISSION</th><th>FMS</th><th>CONFIG</th><th>RMKS</th></tr>${sims}</table>` : ""}
     <div class="cols">
       <div style="flex:1.4">${ground ? `<table><tr><th>TIME</th><th>EVENT</th><th>PERSONNEL</th><th>VENUE</th></tr>${ground}</table>` : ""}</div>
@@ -906,6 +909,18 @@ function opsPrint() {
     <div class="stamp">Printed ${e(new Date().toLocaleString("en-GB"))}</div>
     <div class="cls">RESTRICTED</div>`;
   window.print();
+}
+
+const opsPrintAct = L => !L || !L.st ? "<td></td><td></td><td></td>" : L.st === "cx" ? `<td colspan="3"><b>CX</b></td>` : `<td>${esc(L.to || "")}</td><td>${esc(L.ldg || "")}</td><td>${opsLogMins(L) != null ? opsHrs(opsLogMins(L)) : ""}</td>`;
+// Flown totals for the end-of-day sheet: every flown line counts (ops adds too), CX and lines not yet logged are counted separately.
+function opsFlownStats(fl) {
+  let sorties = 0, mins = 0, cx = 0, open = 0;
+  for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) {
+    if (!opsLineUsed(a)) continue;
+    const L = a.log || {}, m = opsLogMins(L);
+    if (L.st === "flown" && m != null) { sorties++; mins += m; } else if (L.st === "cx") cx++; else if (!opsIsAdd(f, a)) open++;
+  }
+  return { sorties, mins, cx, open };
 }
 
 /* ---------- styles ---------- */
