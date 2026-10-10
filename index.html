@@ -328,7 +328,8 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
   <div id="eApptWrap">
     <label>Appointment<select id="eAppt"><option value="">None</option><option>CO</option><option>DYCO</option><option>OC A</option><option>OC B</option><option>CC</option><option>QFI</option></select></label>
   </div>
-  <label id="eOpsWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eOps" type="checkbox" style="width:auto;margin:0">Can edit the ops board</label>
+  <label id="eOpsWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eOps" type="checkbox" style="width:auto;margin:0">Can edit the ops board (incl. Go / No-Go)</label>
+  <label id="eProgWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eProg" type="checkbox" style="width:auto;margin:0">Can edit the flying program (incl. flown times)</label>
   <label id="eEngWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eEng" type="checkbox" style="width:auto;margin:0">Can edit aircraft status</label>
   <label id="eNoGeoWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eNoGeo" type="checkbox" style="width:auto;margin:0">No location check (e.g. ops room laptop)</label>
   <label id="eUserWrap">Username<input id="eUser" maxlength="30" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
@@ -388,8 +389,8 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 
 <div class="toast" id="toast" hidden></div>
 
-<script src="ops.js?v=34"></script>
-<script src="opsboard.js?v=36"></script>
+<script src="ops.js?v=35"></script>
+<script src="opsboard.js?v=37"></script>
 <script>
 /* =====================================================================
    SETUP: paste your Supabase Project URL and anon (public) key here.
@@ -528,7 +529,7 @@ async function fetchAll() {
   const sb = S.sb;
   const res = await Promise.all([
     sb.from("trainees").select("*").order("course").order("name"),
-    sb.from("profiles").select("id,email,display_name,role,trainee_id,must_change_password,appointment,ops_editor,eng_editor,no_geo,callsign,staff_role,qfi_cat,quals"),
+    sb.from("profiles").select("id,email,display_name,role,trainee_id,must_change_password,appointment,ops_editor,prog_editor,eng_editor,no_geo,callsign,staff_role,qfi_cat,quals"),
     sb.from("vehicles").select("*").order("description"),
     sb.from("movements").select("*").in("status", ["out", "pending"]),
     sb.from("movements").select("*").order("out_at", { ascending: false }).limit(300),
@@ -573,7 +574,7 @@ async function startSession(session) {
   // Accounts an admin has exempted (e.g. the ops room laptop, which blocks location) skip the France check.
   if (!data.no_geo && !await franceGate()) return;
   S.me = data;
-  if (isOpsAssistant(S.me)) S.tab = S.me.eng_editor && !S.me.ops_editor ? "aircraft" : "opsboard";
+  if (isOpsAssistant(S.me)) S.tab = S.me.eng_editor && !S.me.ops_editor && !S.me.prog_editor ? "aircraft" : !S.me.ops_editor && S.me.prog_editor ? "ops" : "opsboard";
   if (S.me.must_change_password) { render(); return; }
   await fetchAll(); subscribe(); obLoad();
 }
@@ -749,7 +750,7 @@ function renderBoard(v) {
   }
   let idCard = "";
   if (mine) idCard = `<p class="hint idline">Signed in as <strong>${esc(mine.name)}</strong>${mine.can_drive === false ? " (non-driver)" : ""}.</p>`;
-  else if (!isAdmin() && !S.me.ops_editor && !S.me.eng_editor && !S.me.staff_role) idCard = `<div class="card idcard"><h2>Account not linked</h2><p class="hint">Your login isn't linked to a name on the roster yet. Ask a QFI to fix it.</p></div>`;
+  else if (!isAdmin() && !S.me.ops_editor && !S.me.prog_editor && !S.me.eng_editor && !S.me.staff_role) idCard = `<div class="card idcard"><h2>Account not linked</h2><p class="hint">Your login isn't linked to a name on the roster yet. Ask a QFI to fix it.</p></div>`;
 
   const pend = S.open.filter(isPend).sort((a, b) => ms(a.etd) - ms(b.etd));
   const pendHtml = pend.map(m => {
@@ -1322,7 +1323,7 @@ function renderAdmin(v) {
     // Management appointment first (CO, DYCO, OC A, OC B, CC, QFI), then QFI CAT (A, B1, B2, C), then callsign.
     .sort((a, b) => (APPT_ORDER[a.appointment] ?? 9) - (APPT_ORDER[b.appointment] ?? 9) || (CAT_ORDER[a.qfi_cat] ?? 9) - (CAT_ORDER[b.qfi_cat] ?? 9) || pLabel(a).localeCompare(pLabel(b)));
   const alist = admins.map(p => `<li class="qrow">
-      <span class="qname"><strong>${esc(pLabel(p))}</strong>${p.callsign && p.display_name && p.display_name !== p.callsign ? ` <span class="hint">${esc(p.display_name)}</span>` : p.callsign ? ` <span class="hint">(name not set)</span>` : ""}<span class="qtags">${apptText(p) ? `<span class="tag open">${esc(apptText(p))}</span>` : ""}${p.qfi_cat ? `<span class="tag qcat">CAT ${esc(p.qfi_cat)}</span>` : ""}${p.ops_editor && !APPROVER(p) ? `<span class="tag nd">Ops</span>` : ""}</span></span>
+      <span class="qname"><strong>${esc(pLabel(p))}</strong>${p.callsign && p.display_name && p.display_name !== p.callsign ? ` <span class="hint">${esc(p.display_name)}</span>` : p.callsign ? ` <span class="hint">(name not set)</span>` : ""}<span class="qtags">${apptText(p) ? `<span class="tag open">${esc(apptText(p))}</span>` : ""}${p.qfi_cat ? `<span class="tag qcat">CAT ${esc(p.qfi_cat)}</span>` : ""}${p.ops_editor && !APPROVER(p) ? `<span class="tag nd">Ops board</span>` : ""}${p.prog_editor && !APPROVER(p) ? `<span class="tag nd">Flying prog</span>` : ""}</span></span>
       <span class="hint qlogin">Login: ${esc(showLogin(p.email))}${p.id === S.me.id ? " (you)" : ""}${p.no_geo ? " · no location check" : ""}</span>
       <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button>${p.id === S.me.id ? "" : `<button class="btn small" data-act="resetpw" data-id="${esc(p.id)}" title="Reset password">Reset pw</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button>`}</span></li>`).join("");
 
@@ -1340,7 +1341,7 @@ function renderAdmin(v) {
       <div class="card"><h2>Perm staff (${admins.length + perm.length})</h2><ul class="rlist">
         <li class="chead">QFI<span>${admins.length}</span></li>${alist}
         ${["ST", "CEN", "AOSX", "ATCO"].map(t => { const g = perm.filter(p => (p.staff_role || "AOSX") === t); return g.length ? `<li class="chead">${t === "ST" ? "ST Tow" : t}<span>${g.length}</span></li>${g.map(staffRow).join("")}` : ""; }).join("")}</ul>
-        <p class="hint" style="margin-top:10px">QFI are instructors (the CO, DYCO and OCs approve travel; tick other QFI under Edit to let them edit the ops board). The AOSX edits the flying program, ops board and Go / No-Go. ST Tow, CEN and ATCO can view everything; tick "Can edit the ops board" under Edit if they should change it.</p>
+        <p class="hint" style="margin-top:10px">QFI are instructors (the CO, DYCO and OCs approve travel; under Edit, tick "Can edit the ops board" and / or "Can edit the flying program" for anyone else who should). The AOSX gets both by default. ST Tow, CEN and ATCO can view everything unless ticked.</p>
         <p class="hint" style="margin-top:10px">Add perm staff:</p>
         <label>Type<select id="psType"><option value="QFI">QFI (instructor)</option><option value="ST">ST Tow</option><option value="CEN">CEN (contracts &amp; squadron logistics)</option><option value="AOSX">AOSX (ops assistant)</option><option value="ATCO">ATCO (air traffic controller)</option></select></label>
         <label>Name (as on the flying lines)<input id="iName" maxlength="60" placeholder="e.g. LEE G"></label>
@@ -1448,7 +1449,7 @@ const isOpsAssistant = p => !!p && p.role !== "admin" && !p.trainee_id;
 const STAFF_LABEL = { AOSX: "AOSX", ATCO: "ATCO", CEN: "CEN", ST: "ST Tow", ENG: "Engineer" };
 // A staff row (CEN / AOSX / ATCO / engineer) in the same two-line style as the QFI rows.
 const staffRow = p => `<li class="qrow">
-      <span class="qname"><strong>${esc(pLabel(p))}</strong><span class="qtags">${(p.quals || []).map(q => `<span class="tag qcat">${esc(q)}</span>`).join("")}${p.ops_editor ? `<span class="tag open">Ops</span>` : ""}${p.eng_editor ? `<span class="tag open">Aircraft</span>` : ""}${p.ops_editor || p.eng_editor ? "" : `<span class="tag nd">View only</span>`}</span></span>
+      <span class="qname"><strong>${esc(pLabel(p))}</strong><span class="qtags">${(p.quals || []).map(q => `<span class="tag qcat">${esc(q)}</span>`).join("")}${p.ops_editor ? `<span class="tag open">Ops board</span>` : ""}${p.prog_editor ? `<span class="tag open">Flying prog</span>` : ""}${p.eng_editor ? `<span class="tag open">Aircraft</span>` : ""}${p.ops_editor || p.prog_editor || p.eng_editor ? "" : `<span class="tag nd">View only</span>`}</span></span>
       <span class="hint qlogin">Login: ${esc(showLogin(p.email))}${p.must_change_password ? " (temp pw)" : ""}${p.no_geo ? " · no location check" : ""}</span>
       <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button><button class="btn small" data-act="resetpw" data-id="${esc(p.id)}" title="Reset password">Reset pw</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button></span></li>`;
 async function addStaff(type, nameEl, userEl) {
@@ -1461,6 +1462,7 @@ async function addStaff(type, nameEl, userEl) {
     if (e1) throw e1;
     if (type === "ST") { const q = ["TOW", "FCF"].filter(x => $("#iQ" + x) && $("#iQ" + x).checked); if (q.length) { const { error } = await S.sb.rpc("set_quals", { p_user: r.user_id, p_quals: q }); if (error) throw error; } }
     if (type === "AOSX" || type === "ENG") { const { error } = await S.sb.rpc(type === "ENG" ? "set_eng_editor" : "set_ops_editor", { p_user: r.user_id, p_on: true }); if (error) throw error; }
+    if (type === "AOSX") { const { error } = await S.sb.rpc("set_prog_editor", { p_user: r.user_id, p_on: true }); if (error) throw error; } // AOSX edits both by default
     fetchAll(); await ask(`${STAFF_LABEL[type]} login added`, `${name}: username ${user}, temporary password ${r.password}. They must set their own password at first sign-in.`, "OK");
   } catch (e) { toast(e.message); }
 }
@@ -1518,6 +1520,7 @@ function openEdit(key) {
   $("#eApptWrap").hidden = !inst;
   $("#eAppt").value = inst ? (acct.appointment || "") : "";
   $("#eOpsWrap").hidden = !acct || (!inst && !isOpsAssistant(acct)); $("#eOps").checked = !!(acct && acct.ops_editor);
+  $("#eProgWrap").hidden = $("#eOpsWrap").hidden; $("#eProg").checked = !!(acct && acct.prog_editor);
   $("#eEngWrap").hidden = !acct || !isOpsAssistant(acct); $("#eEng").checked = !!(acct && acct.eng_editor);
   $("#eNoGeoWrap").hidden = !acct; $("#eNoGeo").checked = !!(acct && acct.no_geo);
   $("#eCallWrap").hidden = !inst; $("#eCall").value = inst ? (acct.callsign || "") : "";
@@ -1573,6 +1576,10 @@ $("#btnEdit").onclick = async () => {
       }
       if (!$("#eOpsWrap").hidden && $("#eOps").checked !== !!acct.ops_editor) {
         const { error } = await S.sb.rpc("set_ops_editor", { p_user: acct.id, p_on: $("#eOps").checked });
+        if (error) throw error;
+      }
+      if (!$("#eProgWrap").hidden && $("#eProg").checked !== !!acct.prog_editor) {
+        const { error } = await S.sb.rpc("set_prog_editor", { p_user: acct.id, p_on: $("#eProg").checked });
         if (error) throw error;
       }
     }

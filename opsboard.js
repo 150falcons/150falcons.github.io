@@ -67,7 +67,7 @@ const obDoc = k => {
   return d;
 };
 const obGet = k => (OB.edit && OB.edit.key === k) ? OB.edit.data : obDoc(k);
-const obCanEditAc = () => opsCanEdit() || !!(S.me && S.me.eng_editor);
+const obCanEditAc = () => obCanBoard() || !!(S.me && S.me.eng_editor);
 const obMyCrew = () => OB.crew.filter(c => c.active && S.me && c.profile_id === S.me.id);
 
 /* ---------- data ---------- */
@@ -251,7 +251,7 @@ function obHomeLine() {
 /* ---------- Ops board page ---------- */
 function renderOpsBoard(v) {
   if (!OB.loaded) return obNotLoaded(v);
-  const editing = OB.edit && OB.edit.key === "board", can = opsCanEdit();
+  const editing = OB.edit && OB.edit.key === "board", can = obCanBoard();
   const nm = obNewMetar();
   const top = `<div class="opsbar"><span class="grow"></span>${can ? `<button class="btn small ${nm ? "obpulse" : ""}" data-ob="metar">${nm ? "New METAR · Refresh" : "Refresh METARs"}</button>` : ""}<button class="btn small primary" data-tab="tv">TV mode</button></div>`;
   v.innerHTML = top + (editing ? obCard("ob-board", "Ops board", "", obEditor("board")) : obBoardView(false) + obChartsCard() + `<p class="opsmeta" style="justify-content:flex-end">${obMeta("board")} ${obEditBtn("board", can, "Edit ops board")}</p>`);
@@ -301,7 +301,7 @@ function obValCell(q, key, attrs, val, st, setS, ph) {
 function obBoardView(tv, extra) {
   const b = obGet("board"), z = obCzx();
   const wxAge = obWxAll().LFBC ? obObsZ(obWxAll().LFBC.data) : "";
-  const q = !tv && opsCanEdit(); // ops editors change these straight on the board
+  const q = !tv && obCanBoard(); // ops editors change these straight on the board
   const csCell = (a, i, kind) => {
     const st = obState(a, kind), list = kind === "fasf" ? OB_FASF : OB_RSAF;
     if (!q) return `<span class="obcs ${obCsCls(st.v)}" title="${st.auto ? "Worked out from the METAR" : "Set by ops"}">${esc(st.v || "-")}${st.auto ? "" : " ✎"}</span>`;
@@ -431,7 +431,7 @@ function obCaptieuxActive() {
 const obFile = key => { const f = OB.files[key], cl = (obGet("board").chartsCleared || {})[key], at = f && obChartAge(f); return f && !(cl && at && at <= new Date(cl)) ? f : null; };
 const obChartAge = f => f && (f.updated_at || f.created_at) ? new Date(f.updated_at || f.created_at) : null;
 function obChartsCard() {
-  const can = opsCanEdit(), today = todayStr();
+  const can = obCanBoard(), today = todayStr();
   const rows = OB_CHARTS.map(c => {
     const f = obFile(c.key), at = obChartAge(f);
     const stale = c.daily && at && at.toISOString().slice(0, 10) !== today && at.toLocaleDateString("en-CA") !== today;
@@ -454,7 +454,7 @@ async function obChartUrl(key) {
 }
 async function obShowChart(key) {
   const c = OB_CHARTS.find(x => x.key === key); if (!c) return;
-  if (!obFile(key)) return ask(c.label, opsCanEdit() ? `No ${c.label} map has been uploaded yet. Use Upload next to it in the Charts card at the bottom of the Ops board.` : `No ${c.label} map has been uploaded yet. Ask ops to upload it.`, "OK");
+  if (!obFile(key)) return ask(c.label, obCanBoard() ? `No ${c.label} map has been uploaded yet. Use Upload next to it in the Charts card at the bottom of the Ops board.` : `No ${c.label} map has been uploaded yet. Ask ops to upload it.`, "OK");
   let d = document.getElementById("dlgChart");
   if (!d) { d = document.createElement("dialog"); d.id = "dlgChart"; document.body.appendChild(d); }
   d.innerHTML = `<div class="dlg"><div class="opshead"><h2 tabindex="-1" autofocus>${esc(c.label)}</h2><button class="btn small" data-x="close">Close</button></div><div class="obchartview"><p class="hint">Loading…</p></div></div>`;
@@ -490,7 +490,7 @@ document.addEventListener("change", e => { if (e.target.dataset && e.target.data
 /* ---------- Go / No-Go page ---------- */
 function renderGoNoGo(v) {
   if (!OB.loaded) return obNotLoaded(v);
-  const can = opsCanEdit(), gm = obGet("gonogo");
+  const can = obCanBoard(), gm = obGet("gonogo");
   let html = obMyItemsCard();
   // status: one compact block per group, side by side; big groups spread over columns
   const crew = OB.crew.filter(c => c.active), tg = obTodayGet();

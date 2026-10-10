@@ -64,7 +64,10 @@ function opsNameWaves(fl) {
   }
   return fl;
 }
-const opsCanEdit = () => !!S.me && ((S.me.role === "admin" && ["CO", "DYCO", "OC A", "OC B"].includes(S.me.appointment)) || !!S.me.ops_editor);
+// Flying program editing (incl. flown times) is its own permission, separate from the ops board (Gordon, 10 Oct).
+const opsCommand = () => !!S.me && S.me.role === "admin" && ["CO", "DYCO", "OC A", "OC B"].includes(S.me.appointment);
+const opsCanEdit = () => opsCommand() || !!(S.me && S.me.prog_editor);
+const obCanBoard = () => opsCommand() || !!(S.me && S.me.ops_editor);
 const opsShift = (day, n) => { const d = new Date(day + "T12:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 const opsLongDay = day => new Date(day + "T12:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric", weekday: "long" });
 // "0725", "725", "7:25", "0725Z" -> minutes after midnight, else null
