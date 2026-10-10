@@ -516,23 +516,25 @@ function opsMyDay() {
   return `<section class="card opscard opsmine"><div class="opshead"><h2>Your day</h2></div><ul>${items.join("")}</ul></section>`;
 }
 // The signed-in person's lines on a day's programme (get = section → data), as <li> items. Used by "Your day" and the home dashboard.
-function opsMyItems(get) {
+// opts.now (Z minutes) greys out finished lines; opts.noDuty leaves SXO / OPS O out (the home card shows them on their own row).
+function opsMyItems(get, opts) {
   const names = opsMyNames(); if (!names.length) return [];
-  const opsGet = get;
+  const opsGet = get, o = opts || {};
+  const li = end => o.now != null && end != null && end < o.now ? `<li class="done">` : `<li>`;
   const fl = opsNameWaves(opsGet("flying")), sim = opsGet("sim"), items = [];
   for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) {
     const n = names.find(n => opsCrewHas(a, n)); if (!n) continue;
     const mate = opsNorm(a.crew1) === n ? a.crew2 : a.crew1;
-    items.push(`<li><b>${esc(w.name)}</b> ${esc(f.etd)}–${esc(f.eta)}Z · ${esc([f.callsign, a.n].filter(Boolean).join(" "))} · ${esc(a.mission)}${mate ? " with " + esc(mate) : ""}${a.tail ? " · " + esc(opsTail(a.tail)) : ""}${f.area ? " · " + esc(f.area) : ""}${opsIsAdd(f, a) ? " <em>(ops add)</em>" : ""}</li>`);
+    items.push(`${li(opsMin(f.eta))}<b>${esc(w.name)}</b> ${esc(f.etd)}–${esc(f.eta)}Z · ${esc([f.callsign, a.n].filter(Boolean).join(" "))} · ${esc(a.mission)}${mate ? " with " + esc(mate) : ""}${a.tail ? " · " + esc(opsTail(a.tail)) : ""}${f.area ? " · " + esc(f.area) : ""}${opsIsAdd(f, a) ? " <em>(ops add)</em>" : ""}</li>`);
   }
   for (const s of sim.rows || []) for (const a of s.ac || []) {
     const n = names.find(n => opsCrewHas(a, n)); if (!n) continue;
     const mate = opsNorm(a.crew1) === n ? a.crew2 : a.crew1;
-    items.push(`<li><b>SIM</b> ${esc(s.etd)}–${esc(s.eta)}Z · ${esc([s.callsign, a.n].filter(Boolean).join(" "))} · ${esc(a.mission)}${mate ? " with " + esc(mate) : ""}</li>`);
+    items.push(`${li(opsMin(s.eta))}<b>SIM</b> ${esc(s.etd)}–${esc(s.eta)}Z · ${esc([s.callsign, a.n].filter(Boolean).join(" "))} · ${esc(a.mission)}${mate ? " with " + esc(mate) : ""}</li>`);
   }
   for (const g of opsGet("ground").groups || []) for (const r of g.rows || [])
-    if (names.some(n => opsGroundHas(r.personnel, n))) items.push(`<li><b>${esc(r.time)}</b> ${esc(r.event)}${r.venue ? " · " + esc(r.venue) : ""}</li>`);
-  (fl.waves || []).forEach(w => {
+    if (names.some(n => opsGroundHas(r.personnel, n))) items.push(`${li(opsMin(r.time))}<b>${esc(r.time)}</b> ${esc(r.event)}${r.venue ? " · " + esc(r.venue) : ""}</li>`);
+  if (!o.noDuty) (fl.waves || []).forEach(w => {
     if (names.some(n => opsHas(w.sxo, n))) items.push(`<li><b>${esc(w.name)}</b> SXO</li>`);
     if (names.some(n => opsHas(w.opsO, n))) items.push(`<li><b>${esc(w.name)}</b> OPS O</li>`);
   });
@@ -542,6 +544,45 @@ function opsMyItems(get) {
       if (notes.length) items.push(`<li>${esc(notes.join(" · "))}</li>`);
     }
   return items;
+}
+// The signed-in person's timed events on a day (Z minutes), for the home card's "Next up":
+// brief / step / take-off for their flights, sim start, ground events, and the start of a wave they are SXO / OPS O for.
+function opsMyEvents(get) {
+  const names = opsMyNames(); if (!names.length) return [];
+  const fl = opsNameWaves(get("flying")), out = [], add = (t, label) => { const m = opsMin(t); if (m != null) out.push({ t: m, label }); };
+  for (const w of fl.waves || []) {
+    for (const f of w.flights || []) for (const a of f.ac || []) {
+      if (!names.some(n => opsCrewHas(a, n))) continue;
+      const cs = esc([f.callsign, a.n].filter(Boolean).join(" ")), wn = esc(w.name);
+      if (f.brief && f.brief !== "NA") add(f.brief, `Brief · <b>${wn}</b> ${cs}`);
+      if (f.step && f.step !== "NA") add(f.step, `Step · <b>${wn}</b> ${cs}`);
+      add(f.etd, `Take-off · <b>${wn}</b> ${cs}${a.tail ? " · " + esc(opsTail(a.tail)) : ""}`);
+    }
+    const duty = [names.some(n => opsHas(w.sxo, n)) && "SXO", names.some(n => opsHas(w.opsO, n)) && "OPS O"].filter(Boolean);
+    if (duty.length) {
+      const ts = (w.flights || []).flatMap(f => [f.brief, f.step, f.etd].map(opsMin)).filter(x => x != null);
+      if (ts.length) out.push({ t: Math.min(...ts), label: `${duty.join(" + ")} · <b>${esc(w.name)}</b>` });
+    }
+  }
+  for (const s of get("sim").rows || []) for (const a of s.ac || []) if (names.some(n => opsCrewHas(a, n))) add(s.etd, `Sim · ${esc([s.callsign, a.n].filter(Boolean).join(" "))} ${esc(a.mission || "")}`);
+  for (const g of get("ground").groups || []) for (const r of g.rows || []) if (names.some(n => opsGroundHas(r.personnel, n))) add(r.time, `${esc(r.event)}${r.venue ? " · " + esc(r.venue) : ""}`);
+  return out.sort((a, b) => a.t - b.t);
+}
+// The signed-in person's SXO / OPS O duties on a day: ["WAVE 1 SXO", …].
+function opsMyDuties(get) {
+  const names = opsMyNames(), fl = opsNameWaves(get("flying")), out = [];
+  for (const w of fl.waves || []) {
+    if (names.some(n => opsHas(w.sxo, n))) out.push(`${w.name} SXO`);
+    if (names.some(n => opsHas(w.opsO, n))) out.push(`${w.name} OPS O`);
+  }
+  return out;
+}
+// Tails the signed-in person flies on a day.
+function opsMyTails(get) {
+  const names = opsMyNames(), fl = get("flying"), out = [];
+  for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || [])
+    if (a.tail && names.some(n => opsCrewHas(a, n))) out.push(String(a.tail).replace(/[#@\s]/g, ""));
+  return [...new Set(out)];
 }
 const opsView = {
   header(h) {
