@@ -87,7 +87,7 @@ async function obLoad() {
   [OB.crew, OB.items, OB.acks] = [res[2].data, res[3].data, res[4].data];
   OB.files = {}; for (const f of res[5].data || []) OB.files[f.name] = f;
   OB.loaded = true;
-  if (["opsboard", "gonogo", "aircraft", "tv", "home", "ops"].includes(S.tab) && !OB.edit && !obTyping()) render();
+  if (["opsboard", "gonogo", "aircraft", "tv", "flytv", "home", "ops"].includes(S.tab) && !OB.edit && !obTyping()) render();
 }
 const obTyping = () => { const a = document.activeElement; return !!(a && a.tagName === "INPUT" && a.dataset && a.dataset.obq); };
 // The board shows the METARs ops last accepted with Refresh (like the Excel); new ones wait in ops_wx until then.

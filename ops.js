@@ -79,6 +79,15 @@ const opsSpan = (a, b) => (a == null || b == null) ? null : (b - a + 1440) % 144
 const opsNorm = s => String(s ?? "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
 const opsHas = (text, name) => { const n = opsNorm(name); return !!n && (" " + opsNorm(text) + " ").includes(" " + n + " "); };
 const opsCrewHas = (a, n) => opsNorm(a.crew1) === n || opsNorm(a.crew2) === n;
+// A/C as shown on the programme: the CFH mark comes from the Aircraft page (CFH 3 "#", CFH 2 "@"; Gordon, 10 Oct).
+// For a tail on the Aircraft page any typed #/@ is replaced by its current mark; other tails show as typed. Past days keep what was typed.
+function opsTail(tail, day) {
+  const t = String(tail ?? "").trim(), m = /^\d{3}/.exec(t);
+  if (!m || (day && day < todayStr()) || typeof OB === "undefined" || !OB.loaded) return t;
+  const ac = ((OB.state.aircraft || {}).data || {}).tails || [], hit = ac.find(x => String(x.tail || "").trim().startsWith(m[0]));
+  if (!hit) return t;
+  return m[0] + (hit.cfh3 ? "#" : hit.cfh2 ? "@" : "") + t.slice(3).replace(/[#@]/g, "");
+}
 const opsLineUsed = a => !!(a.crew1 || a.crew2 || a.tail || a.mission);
 // Ops add: the whole flight, or just one aircraft in it (e.g. "#1 OPS ADD"). Shown as *, not counted.
 const opsIsAdd = (f, a) => !!(f.opsAdd || (a && a.opsAdd));
@@ -294,7 +303,7 @@ function opsMyItems(get) {
   for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) {
     const n = names.find(n => opsCrewHas(a, n)); if (!n) continue;
     const mate = opsNorm(a.crew1) === n ? a.crew2 : a.crew1;
-    items.push(`<li><b>${esc(w.name)}</b> ${esc(f.etd)}–${esc(f.eta)}Z · ${esc([f.callsign, a.n].filter(Boolean).join(" "))} · ${esc(a.mission)}${mate ? " with " + esc(mate) : ""}${a.tail ? " · " + esc(a.tail) : ""}${f.area ? " · " + esc(f.area) : ""}${opsIsAdd(f, a) ? " <em>(ops add)</em>" : ""}</li>`);
+    items.push(`<li><b>${esc(w.name)}</b> ${esc(f.etd)}–${esc(f.eta)}Z · ${esc([f.callsign, a.n].filter(Boolean).join(" "))} · ${esc(a.mission)}${mate ? " with " + esc(mate) : ""}${a.tail ? " · " + esc(opsTail(a.tail)) : ""}${f.area ? " · " + esc(f.area) : ""}${opsIsAdd(f, a) ? " <em>(ops add)</em>" : ""}</li>`);
   }
   for (const s of sim.rows || []) for (const a of s.ac || []) {
     const n = names.find(n => opsCrewHas(a, n)); if (!n) continue;
@@ -344,7 +353,7 @@ const opsView = {
           out += `<tr class="${add ? "opsadd" : ""}"><td class="no">${no}</td>
             ${i === 0 ? `<td rowspan="${span}" class="tm rs"><b>${esc(f.etd)}–${esc(f.eta)}</b>${bs ? `<small>${esc(bs)}</small>` : ""}</td><td rowspan="${span}" class="cs rs">${esc(f.callsign)}</td>` : ""}
             <td class="n">${esc(a.n)}</td><td class="fcrew">${opsX(a.crew1)}${a.crew2 ? `<span class="c2"> / ${opsX(a.crew2)}</span>` : ""}</td><td class="nw">${esc(a.mission)}</td>
-            ${i === 0 ? `<td rowspan="${span}" class="area rs">${esc(f.area)}${f.areaTime ? `<small>${esc(f.areaTime)}</small>` : ""}</td>` : ""}<td class="nw">${esc(a.tail)}</td><td class="nw">${esc(a.config)}</td><td class="rm">${opsNl(a.rmks)}</td></tr>`;
+            ${i === 0 ? `<td rowspan="${span}" class="area rs">${esc(f.area)}${f.areaTime ? `<small>${esc(f.areaTime)}</small>` : ""}</td>` : ""}<td class="nw">${esc(opsTail(a.tail, OPS.day))}</td><td class="nw">${esc(a.config)}</td><td class="rm">${opsNl(a.rmks)}</td></tr>`;
         });
         out += `</tbody>`;
       }
@@ -623,7 +632,7 @@ function opsPrint() {
       const ac = (f.ac || []).length ? f.ac : [opsTpl.ac("")];
       ac.forEach((a, i) => {
         const no = opsIsAdd(f, a) ? "*" : opsLineUsed(a) ? String(++n).padStart(2, "0") : "";
-        rows += `<tr${i === 0 ? ' class="f"' : ""}><td>${no}</td>${i === 0 ? `<td rowspan="${ac.length}">${e(f.brief)} ${e(f.step)}</td><td rowspan="${ac.length}">${e(f.etd)}</td><td rowspan="${ac.length}">${e(f.eta)}</td>` : ""}<td>${e([i === 0 ? f.callsign : "", a.n].filter(Boolean).join(" "))}</td><td>${e(a.crew1)}</td><td>${e(a.crew2)}</td><td>${e(a.mission)}</td>${i === 0 ? `<td rowspan="${ac.length}">${e(f.area)}<br>${e(f.areaTime)}</td>` : ""}<td>${e(a.tail)}</td><td>${e(a.config)}</td><td>${nl(a.rmks)}</td></tr>`;
+        rows += `<tr${i === 0 ? ' class="f"' : ""}><td>${no}</td>${i === 0 ? `<td rowspan="${ac.length}">${e(f.brief)} ${e(f.step)}</td><td rowspan="${ac.length}">${e(f.etd)}</td><td rowspan="${ac.length}">${e(f.eta)}</td>` : ""}<td>${e([i === 0 ? f.callsign : "", a.n].filter(Boolean).join(" "))}</td><td>${e(a.crew1)}</td><td>${e(a.crew2)}</td><td>${e(a.mission)}</td>${i === 0 ? `<td rowspan="${ac.length}">${e(f.area)}<br>${e(f.areaTime)}</td>` : ""}<td>${e(opsTail(a.tail, OPS.day))}</td><td>${e(a.config)}</td><td>${nl(a.rmks)}</td></tr>`;
       });
     }
     return rows;
