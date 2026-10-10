@@ -204,6 +204,41 @@ function obSun(day) {
   const z = m => { m = Math.round(m); return String(Math.floor(m / 60)).padStart(2, "0") + String(m % 60).padStart(2, "0") + "Z"; };
   return { rise: z(720 - 4 * (CZX.lng + ha) - eq), set: z(720 - 4 * (CZX.lng - ha) - eq) };
 }
+// "How is this worked out?" (Gordon, 10 Oct): hover a dotted label for the criteria, or tap it on a phone.
+const OB_HELP = {
+  sun: "Worked out for Cazaux from today's date (NOAA sun formula, about ±1 min): the moment the top of the sun crosses the horizon. Type a value under Edit board to override it.",
+  rh: "Relative humidity from the METAR temperature and dewpoint (Magnus formula).",
+  icing: "YES when the temperature is below 6°C AND the humidity is above 50%. Otherwise NO.",
+  sea: "Typed by ops from the FASF forecast. Yellow at 15.5°C or colder, green above. It also drives the immersion suit.",
+  wind: "Governing wind = the higher of the mean wind and the gust. Headwind (or tailwind) and crosswind are the parts of the governing wind along and across the runway in use.",
+  windHazard: "Picked by ops. A = yellow, B = amber, C and D = red.",
+  canopy: "Available when the governing wind is below 50 kt AND both the headwind / tailwind and the crosswind are below 35 kt. Otherwise Not available. Ops can tap it to mark Not available; Refresh METARs puts it back to auto.",
+  apu1: "APU (A11–15): Not available when the temperature is below 1°C OR the crosswind against heading 280° is more than 14.9 kt. Otherwise Available. Ops can tap it to override; Refresh METARs puts it back to auto.",
+  apu2: "APU (A16–23): Not available when the temperature is below 1°C OR the crosswind against heading 315° is more than 14.9 kt. Otherwise Available. Ops can tap it to override; Refresh METARs puts it back to auto.",
+  parachute: "Number typed by ops. 0 = green, anything above 0 = red.",
+  samar: "Typed by ops. Colour follows the first letter: G = green, Y = amber, R = red.",
+  immersion: "From the sea surface and air temperature: sea 16°C or warmer → NO. Sea below 15.5°C AND air below 22°C → YES. Anything else → NO. Shows - until the sea surface is filled in.",
+  bingo: "Auto from the Cazaux RSAF: Y2 → UPG BINGO, A1 → IFR BINGO, otherwise BINGO. Ops can pick one; the next Refresh METARs puts it back to auto.",
+  fasf: "FASF on Auto (default for LFBZ, LFSL, LFBE): the worse of visibility and cloud base. Visibility: 8 km+ B, 5 km+ W, 3 km+ G IFR, 1.6 km+ Y, 0.8 km+ A, below R. Cloud base (lowest BKN / OVC / VV, TEMPO and BECMG ignored): 2500 ft+ B, 1500+ W, 1000+ G VFR, 700+ G IFR, 300+ Y, 200+ A, below R. CAVOK = B. Elsewhere ops set it.",
+  rsaf: "RSAF on Auto: the worse of visibility and cloud base. Visibility: 10 km+ B, 8 km+ Y1, 6 km+ Y2, 3 km+ A1, 1 km+ A2, below R. Cloud base (lowest BKN / OVC / VV, TEMPO and BECMG ignored): 2500 ft+ B, 1500+ Y1, 1000+ Y2, 500+ A1, 300+ A2, below R. CAVOK = B. Refresh METARs sets every RSAF back to Auto.",
+  wxvis: "From the latest METAR accepted at the last Refresh, unless ops typed an override. LFBD on RWY 05 adds ZONE TAMPON ACTIVE to its restrictions.",
+  aids: "Tap an aid to cycle green → yellow → red. The LFBC CAT 1 LINE on auto is green when the Cazaux FASF is B or W, otherwise yellow.",
+  rangewx: "Range weather as declared for R115. BLUE = good. WHITE n = visibility 8 km+. GREEN n = visibility 5–8 km. The number is the cloud base: 0 = 1000 ft, 1 = 1500 ft, 2 = 2000 ft, 3 = 3000 ft, 4 = 4000 ft and so on. YELLOW = visibility 1.5–5 km or base 200–1000 ft. RED = visibility below 1.5 km or base below 200 ft.",
+};
+const obH = (k, label) => `<span class="obhelp" data-obhelp="${k}" title="${esc(OB_HELP[k])}" tabindex="0">${label}</span>`;
+document.addEventListener("click", e => {
+  const pop = document.getElementById("obHelpPop"), h = e.target.closest(".obhelp");
+  if (!h) { if (pop) pop.remove(); return; }
+  e.preventDefault();
+  if (pop) { const same = pop.dataset.k === h.dataset.obhelp; pop.remove(); if (same) return; }
+  const r = h.getBoundingClientRect(), d = document.createElement("div");
+  d.id = "obHelpPop"; d.className = "obhelpop"; d.dataset.k = h.dataset.obhelp;
+  d.innerHTML = `<b>${esc(h.textContent.trim())}</b><br>${esc(OB_HELP[h.dataset.obhelp] || "")}`;
+  document.body.appendChild(d);
+  const w = d.offsetWidth, x = Math.max(8, Math.min(r.left, innerWidth - w - 8));
+  d.style.left = x + "px"; d.style.top = (r.bottom + 6 + d.offsetHeight > innerHeight ? Math.max(8, r.top - d.offsetHeight - 6) : r.bottom + 6) + "px";
+});
+addEventListener("scroll", () => { const p = document.getElementById("obHelpPop"); if (p) p.remove(); }, true);
 // Everything the Excel worked out for Cazaux.
 function obCzx() {
   const b = obGet("board"), m = obWxAll().LFBC && obWxAll().LFBC.data, w = obWind(m);
@@ -343,36 +378,36 @@ function obBoardView(tv, extra) {
   const czx = b.czx || {};
   return `
     <div class="obhead"><span class="obeor">EOR: ${["NORMAL", "IN HSE"].map(e => q ? `<button class="obpill ${b.eor === e ? (e === "NORMAL" ? "obst-g" : "obst-a") : ""} obtap" data-obq="eor" data-v="${e}">${e}</button>` : b.eor === e ? obPill(e === "NORMAL" ? "g" : "a", e) : "").join(" ")}</span>
-      ${q ? `<select class="obsel ${/UPG|IFR/.test(bingo) ? "obst-y" : ""}" data-obq="bingo" aria-label="Bingo"><option value="AUTO" ${bsel === "AUTO" ? "selected" : ""}>${esc(bg.auto)} (auto)</option>${[["NONE", "— (blank)"], ["BINGO", "BINGO"], ["UPG BINGO", "UPG BINGO"], ["IFR BINGO", "IFR BINGO"]].map(([k2, l]) => `<option value="${k2}" ${bsel === k2 ? "selected" : ""}>${l}</option>`).join("")}</select>` : bingo ? obPill(/UPG|IFR/.test(bingo) ? "y" : "", bingo) : ""}
+      ${q ? `${obH("bingo", "Bingo")} <select class="obsel ${/UPG|IFR/.test(bingo) ? "obst-y" : ""}" data-obq="bingo" aria-label="Bingo"><option value="AUTO" ${bsel === "AUTO" ? "selected" : ""}>${esc(bg.auto)} (auto)</option>${[["NONE", "— (blank)"], ["BINGO", "BINGO"], ["UPG BINGO", "UPG BINGO"], ["IFR BINGO", "IFR BINGO"]].map(([k2, l]) => `<option value="${k2}" ${bsel === k2 ? "selected" : ""}>${l}</option>`).join("")}</select>` : bingo ? obPill(/UPG|IFR/.test(bingo) ? "y" : "", bingo) : ""}
       ${obNewMetar() ? `<span class="obpill obst-a obpulse">New METAR waiting${q ? "" : " for ops"}</span>` : ""}<b>Airfield status${asOf ? " as of " + esc(asOf) : ""}</b>${wxAge ? ` <span class="hint">METAR ${esc(wxAge)}</span>` : ""}</div>
     ${b.banner ? `<div class="obbanner">${esc(b.banner)}</div>` : ""}
     <div class="obgrid ${tv ? "tv" : ""}">
-      <section class="card opscard obwide obafcard"><div class="tablewrap"><table class="opst obt"><thead><tr><th>Airfield</th><th>P</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS</th><th>Restrictions</th><th>Aids</th></tr></thead><tbody>${main.map(([a, i]) => afRow(a, i)).join("")}</tbody></table></div>
-        ${alt.length ? `<div class="tablewrap" style="margin-top:8px"><table class="opst obt"><thead><tr><th>Airfield</th><th>RWY</th><th>FASF</th><th>RSAF</th><th>WX / VIS</th><th>Restrictions</th></tr></thead><tbody>${alt.map(([a, i]) => afRow(a, i)).join("")}</tbody></table></div>` : ""}
+      <section class="card opscard obwide obafcard"><div class="tablewrap"><table class="opst obt"><thead><tr><th>Airfield</th><th>P</th><th>RWY</th><th>${obH("fasf", "FASF")}</th><th>${obH("rsaf", "RSAF")}</th><th>${obH("wxvis", "WX / VIS")}</th><th>Restrictions</th><th>${obH("aids", "Aids")}</th></tr></thead><tbody>${main.map(([a, i]) => afRow(a, i)).join("")}</tbody></table></div>
+        ${alt.length ? `<div class="tablewrap" style="margin-top:8px"><table class="opst obt"><thead><tr><th>Airfield</th><th>RWY</th><th>${obH("fasf", "FASF")}</th><th>${obH("rsaf", "RSAF")}</th><th>${obH("wxvis", "WX / VIS")}</th><th>Restrictions</th></tr></thead><tbody>${alt.map(([a, i]) => afRow(a, i)).join("")}</tbody></table></div>` : ""}
         ${b.zrt ? `<p class="obnote">${esc(b.zrt)}</p>` : ""}</section>
       ${tv ? `<section class="card opscard obtvwx"><h2>Cazaux weather &amp; wind</h2><div class="obwind">${obRose(w, z.rwy)}<div><div class="obbig">${esc(windTxt)}</div>
-        ${comp ? `<div>${comp.head < 0 ? "Tailwind" : "Headwind"} <b>${Math.abs(comp.head).toFixed(1)}</b> KT</div><div>Crosswind <b>${comp.cross.toFixed(1)}</b> KT</div><div class="hint">RWY ${esc(String(z.rwy / 10).padStart(2, "0"))} · governing wind ${w.gov} KT</div>` : ""}
-        <div>Wind hazard ${q ? `<select class="obsel ${obHazS(czx.windHazard) ? "obst-" + obHazS(czx.windHazard) : ""}" data-obq="czx" data-f="windHazard" aria-label="Wind hazard">${["", "A", "B", "C", "D"].map(o => `<option value="${o}" ${o === (czx.windHazard || "") ? "selected" : ""}>${o || "-"}</option>`).join("")}</select>` : czx.windHazard ? obPill(obHazS(czx.windHazard), czx.windHazard) : "-"}</div></div></div><dl class="opsdl">
-        <dt>Sunrise / sunset</dt><dd>${czx.sun ? esc(czx.sun) : `${esc(z.sun.rise)} / ${esc(z.sun.set)}`}</dd>
+        ${comp ? `<div>${obH("wind", comp.head < 0 ? "Tailwind" : "Headwind")} <b>${Math.abs(comp.head).toFixed(1)}</b> KT</div><div>${obH("wind", "Crosswind")} <b>${comp.cross.toFixed(1)}</b> KT</div><div class="hint">RWY ${esc(String(z.rwy / 10).padStart(2, "0"))} · ${obH("wind", "governing wind")} ${w.gov} KT</div>` : ""}
+        <div>${obH("windHazard", "Wind hazard")} ${q ? `<select class="obsel ${obHazS(czx.windHazard) ? "obst-" + obHazS(czx.windHazard) : ""}" data-obq="czx" data-f="windHazard" aria-label="Wind hazard">${["", "A", "B", "C", "D"].map(o => `<option value="${o}" ${o === (czx.windHazard || "") ? "selected" : ""}>${o || "-"}</option>`).join("")}</select>` : czx.windHazard ? obPill(obHazS(czx.windHazard), czx.windHazard) : "-"}</div></div></div><dl class="opsdl">
+        <dt>${obH("sun", "Sunrise / sunset")}</dt><dd>${czx.sun ? esc(czx.sun) : `${esc(z.sun.rise)} / ${esc(z.sun.set)}`}</dd>
         <dt>Icing band</dt><dd>${q ? obQIn("icingBand", czx.icingBand, "e.g. FL120 - FL170", "130px") : esc(czx.icingBand || "-")}</dd>
-        <dt>Temperature</dt><dd>${z.t ?? "-"}°C</dd><dt>Humidity</dt><dd>${z.rh ?? "-"}%</dd><dt>QNH</dt><dd>${z.qnh ?? "-"}</dd>
-        <dt>Runway surface</dt><dd>${q ? obQSel("rwySurface", czx.rwySurface, ["DRY", "DAMP", "WET", "FLOODED"]) : obPill(/FLOOD/i.test(czx.rwySurface) ? "r" : /WET|DAMP/i.test(czx.rwySurface) ? "a" : czx.rwySurface ? "g" : "", czx.rwySurface || "-")}</dd><dt>Sea surface</dt><dd>${q ? obQIn("seaTemp", czx.seaTemp, "°C", "64px", obSeaS(czx.seaTemp)) + " °C" : czx.seaTemp ? obPill(obSeaS(czx.seaTemp), czx.seaTemp + "°C") : "-"}</dd>
+        <dt>Temperature</dt><dd>${z.t ?? "-"}°C</dd><dt>${obH("rh", "Humidity")}</dt><dd>${z.rh ?? "-"}%</dd><dt>QNH</dt><dd>${z.qnh ?? "-"}</dd>
+        <dt>Runway surface</dt><dd>${q ? obQSel("rwySurface", czx.rwySurface, ["DRY", "DAMP", "WET", "FLOODED"]) : obPill(/FLOOD/i.test(czx.rwySurface) ? "r" : /WET|DAMP/i.test(czx.rwySurface) ? "a" : czx.rwySurface ? "g" : "", czx.rwySurface || "-")}</dd><dt>${obH("sea", "Sea surface")}</dt><dd>${q ? obQIn("seaTemp", czx.seaTemp, "°C", "64px", obSeaS(czx.seaTemp)) + " °C" : czx.seaTemp ? obPill(obSeaS(czx.seaTemp), czx.seaTemp + "°C") : "-"}</dd>
         <dt>Sea swell</dt><dd>${q ? obQIn("swell", czx.swell, "e.g. 1.6-1.9M", "110px") : esc(czx.swell || "-")}</dd><dt>Bird hazard</dt><dd>${q ? obQSel("bird", czx.bird, ["LOW (1)", "LOW (2)", "MED (2)", "HIGH (3)"]) : obPill(/HIGH/i.test(czx.bird) ? "r" : /MED/i.test(czx.bird) ? "a" : czx.bird ? "g" : "", czx.bird || "-")}</dd>
-        <dt>Icing conditions</dt><dd>${yn(z.icing, "YES")}</dd></dl>
+        <dt>${obH("icing", "Icing conditions")}</dt><dd>${yn(z.icing, "YES")}</dd></dl>
         ${z.m ? `<p class="obraw">${esc(z.m.rawOb)}</p>` : `<p class="hint">No METAR yet.</p>`}</section>` : `<section class="card opscard obwx"><h2>Cazaux weather &amp; wind</h2><div class="obwxin"><div><dl class="opsdl">
-        <dt>Sunrise / sunset</dt><dd>${czx.sun ? esc(czx.sun) : `${esc(z.sun.rise)} / ${esc(z.sun.set)}`}</dd>
+        <dt>${obH("sun", "Sunrise / sunset")}</dt><dd>${czx.sun ? esc(czx.sun) : `${esc(z.sun.rise)} / ${esc(z.sun.set)}`}</dd>
         <dt>Icing band</dt><dd>${q ? obQIn("icingBand", czx.icingBand, "e.g. FL120 - FL170", "130px") : esc(czx.icingBand || "-")}</dd>
-        <dt>Temperature</dt><dd>${z.t ?? "-"}°C</dd><dt>Humidity</dt><dd>${z.rh ?? "-"}%</dd><dt>QNH</dt><dd>${z.qnh ?? "-"}</dd>
-        <dt>Runway surface</dt><dd>${q ? obQSel("rwySurface", czx.rwySurface, ["DRY", "DAMP", "WET", "FLOODED"]) : obPill(/FLOOD/i.test(czx.rwySurface) ? "r" : /WET|DAMP/i.test(czx.rwySurface) ? "a" : czx.rwySurface ? "g" : "", czx.rwySurface || "-")}</dd><dt>Sea surface</dt><dd>${q ? obQIn("seaTemp", czx.seaTemp, "°C", "64px", obSeaS(czx.seaTemp)) + " °C" : czx.seaTemp ? obPill(obSeaS(czx.seaTemp), czx.seaTemp + "°C") : "-"}</dd>
+        <dt>Temperature</dt><dd>${z.t ?? "-"}°C</dd><dt>${obH("rh", "Humidity")}</dt><dd>${z.rh ?? "-"}%</dd><dt>QNH</dt><dd>${z.qnh ?? "-"}</dd>
+        <dt>Runway surface</dt><dd>${q ? obQSel("rwySurface", czx.rwySurface, ["DRY", "DAMP", "WET", "FLOODED"]) : obPill(/FLOOD/i.test(czx.rwySurface) ? "r" : /WET|DAMP/i.test(czx.rwySurface) ? "a" : czx.rwySurface ? "g" : "", czx.rwySurface || "-")}</dd><dt>${obH("sea", "Sea surface")}</dt><dd>${q ? obQIn("seaTemp", czx.seaTemp, "°C", "64px", obSeaS(czx.seaTemp)) + " °C" : czx.seaTemp ? obPill(obSeaS(czx.seaTemp), czx.seaTemp + "°C") : "-"}</dd>
         <dt>Sea swell</dt><dd>${q ? obQIn("swell", czx.swell, "e.g. 1.6-1.9M", "110px") : esc(czx.swell || "-")}</dd><dt>Bird hazard</dt><dd>${q ? obQSel("bird", czx.bird, ["LOW (1)", "LOW (2)", "MED (2)", "HIGH (3)"]) : obPill(/HIGH/i.test(czx.bird) ? "r" : /MED/i.test(czx.bird) ? "a" : czx.bird ? "g" : "", czx.bird || "-")}</dd>
-        <dt>Icing conditions</dt><dd>${yn(z.icing, "YES")}</dd></dl></div><div class="obwxwind"><div class="obwind">${obRose(w, z.rwy)}<div><div class="obbig">${esc(windTxt)}</div>
-        ${comp ? `<div>${comp.head < 0 ? "Tailwind" : "Headwind"} <b>${Math.abs(comp.head).toFixed(1)}</b> KT</div><div>Crosswind <b>${comp.cross.toFixed(1)}</b> KT</div><div class="hint">RWY ${esc(String(z.rwy / 10).padStart(2, "0"))} · governing wind ${w.gov} KT</div>` : ""}
-        <div>Wind hazard ${q ? `<select class="obsel ${obHazS(czx.windHazard) ? "obst-" + obHazS(czx.windHazard) : ""}" data-obq="czx" data-f="windHazard" aria-label="Wind hazard">${["", "A", "B", "C", "D"].map(o => `<option value="${o}" ${o === (czx.windHazard || "") ? "selected" : ""}>${o || "-"}</option>`).join("")}</select>` : czx.windHazard ? obPill(obHazS(czx.windHazard), czx.windHazard) : "-"}</div></div></div></div></div>
+        <dt>${obH("icing", "Icing conditions")}</dt><dd>${yn(z.icing, "YES")}</dd></dl></div><div class="obwxwind"><div class="obwind">${obRose(w, z.rwy)}<div><div class="obbig">${esc(windTxt)}</div>
+        ${comp ? `<div>${obH("wind", comp.head < 0 ? "Tailwind" : "Headwind")} <b>${Math.abs(comp.head).toFixed(1)}</b> KT</div><div>${obH("wind", "Crosswind")} <b>${comp.cross.toFixed(1)}</b> KT</div><div class="hint">RWY ${esc(String(z.rwy / 10).padStart(2, "0"))} · ${obH("wind", "governing wind")} ${w.gov} KT</div>` : ""}
+        <div>${obH("windHazard", "Wind hazard")} ${q ? `<select class="obsel ${obHazS(czx.windHazard) ? "obst-" + obHazS(czx.windHazard) : ""}" data-obq="czx" data-f="windHazard" aria-label="Wind hazard">${["", "A", "B", "C", "D"].map(o => `<option value="${o}" ${o === (czx.windHazard || "") ? "selected" : ""}>${o || "-"}</option>`).join("")}</select>` : czx.windHazard ? obPill(obHazS(czx.windHazard), czx.windHazard) : "-"}</div></div></div></div></div>
         ${z.m ? `<p class="obraw">${esc(z.m.rawOb)}</p>` : `<p class="hint">No METAR yet.</p>`}</section>`}
       <section class="card opscard" id="ob-eq"><h2>Canopy / equipment</h2><div class="obeq">
         ${[["canopy", "Canopy"], ["apu1", "APU (A11–15)"], ["apu2", "APU (A16–23)"]].map(([f, l]) => obEqCell(b, z, f, l, q)).join("")}
-        <div>Parachute ${q ? `<select class="obsel obst-${obParaS(b.equip.parachute) || "n"}" data-obq="eqv" data-f="parachute" aria-label="Parachute">${[...new Set(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", String(b.equip.parachute ?? "")])].filter(x => x !== "").map(o => `<option ${o === String(b.equip.parachute) ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>` : obPill(obParaS(b.equip.parachute), b.equip.parachute ?? "-")}</div>
-        <div>SAMAR ${q ? `<input class="obval obst-${obSamarS(b.equip.samar) || "n"}" style="width:64px" data-obq="eqv" data-f="samar" value="${esc(b.equip.samar || "")}" aria-label="SAMAR">` : obPill(obSamarS(b.equip.samar), b.equip.samar || "-")}</div></div>
+        <div>${obH("parachute", "Parachute")} ${q ? `<select class="obsel obst-${obParaS(b.equip.parachute) || "n"}" data-obq="eqv" data-f="parachute" aria-label="Parachute">${[...new Set(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", String(b.equip.parachute ?? "")])].filter(x => x !== "").map(o => `<option ${o === String(b.equip.parachute) ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>` : obPill(obParaS(b.equip.parachute), b.equip.parachute ?? "-")}</div>
+        <div>${obH("samar", "SAMAR")} ${q ? `<input class="obval obst-${obSamarS(b.equip.samar) || "n"}" style="width:64px" data-obq="eqv" data-f="samar" value="${esc(b.equip.samar || "")}" aria-label="SAMAR">` : obPill(obSamarS(b.equip.samar), b.equip.samar || "-")}</div></div>
         <p class="hint" style="margin:6px 0 0">Canopy and APU are worked out from the Cazaux wind and temperature.${q ? " Tap one to mark it Not available; Refresh METARs puts them back to auto." : ""}</p></section>
       <section class="card opscard obwide" id="ob-ra"><h2>Restricted areas</h2>${obAreasView(b, q, z, tv)}</section>
       ${tv ? "" : obCallsignsCard()}${extra || ""}
@@ -388,9 +423,9 @@ function obAreasView(b, q, z, tv) {
   const rm = j => q && !tv ? `<button class="obrm" data-obarea="rm" data-j="${j}" title="Remove this area" aria-label="Remove">✕</button>` : "";
   const areas = (b.areas || []).map((x, j) => `<div class="obarea"><span>${esc(x.item)}</span><span class="obvc2">${obValCell(q, "aval", `data-j="${j}"`, x.val, obValS(x.val, x.s), x.s)}${rm(j)}</span></div>`).join("")
     + (q && !tv ? `<div class="obaddarea"><button class="btn small" data-obarea="add">+ Area</button></div>` : "");
-  const r115 = tv ? `<div class="obr115"><b>R115 (CAPTIEUX)</b><span>TGT <b>${esc(r.tgt || "-")}</b></span><span>WX ${wx}</span><span>Before <b>${esc(r.before || "-")}</b></span><span>After <b>${esc(r.after || "-")}</b></span><span>Restr <b>${esc(r.restr || "-")}</b></span></div>`
+  const r115 = tv ? `<div class="obr115"><b>R115 (CAPTIEUX)</b><span>TGT <b>${esc(r.tgt || "-")}</b></span><span>${obH("rangewx", "WX")} ${wx}</span><span>Before <b>${esc(r.before || "-")}</b></span><span>After <b>${esc(r.after || "-")}</b></span><span>Restr <b>${esc(r.restr || "-")}</b></span></div>`
     : "";
-  const other = `<div class="obarea"><span>Immersion suit</span>${z.immersion ? obPill(z.immersion === "YES" ? "r" : "g", z.immersion) : `<span class="hint">-</span>`}</div>
+  const other = `<div class="obarea"><span>${obH("immersion", "Immersion suit")}</span>${z.immersion ? obPill(z.immersion === "YES" ? "r" : "g", z.immersion) : `<span class="hint">-</span>`}</div>
       <div class="obarea"><span>Firing sch</span>${obValCell(q, "czxv", `data-f="firing"`, czx.firing, obValS(czx.firing, czx.firingS), czx.firingS)}</div>
       <div class="obarea"><span>CALAMAR</span>${obValCell(q, "czxv", `data-f="calamar"`, czx.calamar, obValS(czx.calamar, czx.calamarS, true), czx.calamarS)}</div>`;
   if (tv) return `${r115}<div class="obareas">${areas}${other}</div>`;
@@ -398,7 +433,7 @@ function obAreasView(b, q, z, tv) {
   const row = (l, v) => `<div class="obarea"><span>${l}</span>${v}</div>`;
   return `<div class="obra3">
       <div class="obracol"><h3 class="opssub">R115 (CAPTIEUX) <button class="btn small" data-ob="chart" data-k="captieux">Map</button></h3>
-        ${row("TGT", q ? f("tgt", "90px") : `<b>${esc(r.tgt || "-")}</b>`)}${row("WX", wx)}${row("Before", q ? f("before", "90px") : `<b>${esc(r.before || "-")}</b>`)}${row("After", q ? f("after", "90px") : `<b>${esc(r.after || "-")}</b>`)}${row("Restr", q ? restr : `<b>${restr}</b>`)}</div>
+        ${row("TGT", q ? f("tgt", "90px") : `<b>${esc(r.tgt || "-")}</b>`)}${row(obH("rangewx", "WX"), wx)}${row("Before", q ? f("before", "90px") : `<b>${esc(r.before || "-")}</b>`)}${row("After", q ? f("after", "90px") : `<b>${esc(r.after || "-")}</b>`)}${row("Restr", q ? restr : `<b>${restr}</b>`)}</div>
       <div class="obracol"><h3 class="opssub">Areas</h3>${areas}</div>
       <div class="obracol"><h3 class="opssub">Other</h3>${other}</div></div>
     ${q ? `<p class="hint" style="margin:6px 0 0">Type a value and it shows red (CALAMAR "BOOKED" shows yellow). Tap A to pick another colour. R115 restrictions light up the Captieux map (G1–G7, RADAR).</p>` : ""}`;
@@ -415,7 +450,7 @@ function obEqCell(b, z, f, label, q) {
   const set = !!b.equip[f], st = z[f], txt = !st ? "-" : st === "g" ? "Available" : "Not available";
   const tag = q ? `<button class="obst obst-${st || "n"} obtap" data-obq="eqna" data-f="${f}" title="${set ? "Set by ops. Tap to go back to auto" : "Worked out from the METAR. Tap to mark Not available"}">${txt}${set ? " ✎" : ""}</button>`
     : `<span class="obst obst-${st || "n"}" title="${set ? "Set by ops" : "Worked out from the METAR"}">${txt}${set ? " ✎" : ""}</span>`;
-  return `<div>${label} ${tag}</div>`;
+  return `<div>${obH(f, label)} ${tag}</div>`;
 }
 // Colour state letter → pill colour.
 const obQSel = (f, v, opts) => `<select class="obsel" data-obq="czx" data-f="${f}">${["", ...opts].map(o => `<option value="${esc(o)}" ${o === (v || "") ? "selected" : ""}>${esc(o || "-")}</option>`).join("")}</select>`;
@@ -1120,6 +1155,8 @@ body.tvmode #dlgChart .obchartimg img{height:calc(100vh - 140px);width:auto;max-
 .obchartimg{position:relative;line-height:0}
 .obchartimg img{width:100%;height:auto;display:block;border-radius:4px}
 .obchartimg svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.obhelp{border-bottom:1px dotted currentColor;cursor:help}
+.obhelpop{position:fixed;z-index:1000;max-width:340px;padding:10px 12px;border-radius:8px;background:var(--paper);color:var(--ink);border:1px solid var(--line);box-shadow:0 6px 24px rgba(0,0,0,.35);font-size:13px;line-height:1.45;font-weight:400;text-transform:none;letter-spacing:0}
 .obrwx{display:inline-flex;gap:4px;align-items:center}.obrwxn{width:auto;min-width:48px}
 .obhot{fill:rgba(255,40,40,.32);stroke:#ff2d2d;stroke-width:2;animation:obpulse 1.6s ease-in-out infinite}
 .obhot.radar{fill:rgba(255,255,255,.25);stroke:#fff}
