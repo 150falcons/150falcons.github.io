@@ -255,7 +255,23 @@ function renderOpsBoard(v) {
   const nm = obNewMetar();
   const top = `<div class="opsbar"><span class="grow"></span>${can ? `<button class="btn small ${nm ? "obpulse" : ""}" data-ob="metar">${nm ? "New METAR · Refresh" : "Refresh METARs"}</button>` : ""}<button class="btn small primary" data-tab="tv">TV mode</button></div>`;
   v.innerHTML = top + (editing ? obCard("ob-board", "Ops board", "", obEditor("board")) : obBoardView(false) + obChartsCard() + `<p class="opsmeta" style="justify-content:flex-end">${obMeta("board")} ${obEditBtn("board", can, "Edit ops board")}</p>`);
+  if (!editing) obPageColumns(v);
 }
+// Wide screens: airfields across the top, then the smaller cards (weather, wind, equipment, callsigns, charts)
+// in balanced columns, then the restricted areas across the bottom, so there are no half-empty rows.
+function obPageColumns(v) {
+  const grid = v.querySelector(".obgrid:not(.tv)"); if (!grid || innerWidth < 1200) return;
+  const n = innerWidth >= 1700 ? 3 : 2, ra = grid.querySelector("#ob-ra"), charts = v.querySelector("#ob-charts");
+  const cards = [...grid.children].filter(c => !c.classList.contains("obafcard") && c !== ra);
+  if (charts) cards.push(charts);
+  const wrap = document.createElement("div"); wrap.className = "obcols measuring"; wrap.style.gridTemplateColumns = `repeat(${n},minmax(0,1fr))`;
+  const cols = Array.from({ length: n }, () => { const c = document.createElement("div"); c.className = "obpcol"; wrap.appendChild(c); return c; });
+  grid.insertBefore(wrap, ra || null);
+  const used = col => [...col.children].reduce((h, x) => h + x.offsetHeight, 0);
+  for (const c of cards) cols.reduce((a, b2) => (used(b2) < used(a) ? b2 : a)).appendChild(c);
+  wrap.classList.remove("measuring");
+}
+let obResizeT; window.addEventListener("resize", () => { if (S.tab !== "opsboard") return; clearTimeout(obResizeT); obResizeT = setTimeout(() => { if (!obTyping()) obRerender(); }, 200); });
 // Colours used by the Excel's conditional formats.
 const obValS = (val, s, booked) => s || (!String(val || "").trim() ? "" : booked && /BOOKED/i.test(val) ? "y" : "r");
 const obHazS = v => ({ A: "y", B: "a", C: "r", D: "r" }[String(v || "").trim().toUpperCase()] || "");
@@ -333,7 +349,7 @@ function obBoardView(tv, extra) {
         <div>Parachute ${q ? `<select class="obsel obst-${obParaS(b.equip.parachute) || "n"}" data-obq="eqv" data-f="parachute" aria-label="Parachute">${[...new Set(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", String(b.equip.parachute ?? "")])].filter(x => x !== "").map(o => `<option ${o === String(b.equip.parachute) ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>` : obPill(obParaS(b.equip.parachute), b.equip.parachute ?? "-")}</div>
         <div>SAMAR ${q ? `<input class="obval obst-${obSamarS(b.equip.samar) || "n"}" style="width:64px" data-obq="eqv" data-f="samar" value="${esc(b.equip.samar || "")}" aria-label="SAMAR">` : obPill(obSamarS(b.equip.samar), b.equip.samar || "-")}</div></div>
         <p class="hint" style="margin:6px 0 0">Canopy and APU are worked out from the Cazaux wind and temperature.${q ? " Tap one to mark it Not available; Refresh METARs puts them back to auto." : ""}</p></section>
-      <section class="card opscard obwide"><h2>Restricted areas</h2>${obAreasView(b, q, z, tv)}</section>
+      <section class="card opscard obwide" id="ob-ra"><h2>Restricted areas</h2>${obAreasView(b, q, z, tv)}</section>
       ${tv ? "" : obCallsignsCard()}${extra || ""}
     </div>`;
 }
@@ -959,6 +975,13 @@ body.tvmode .wrap{max-width:none;padding:10px 16px}
 body.tvmode{font-size:17px}
 .tvbar{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-bottom:10px}
 .tvbar b{font:700 1.5rem var(--cond)} .tvclock{font:700 1.5rem var(--cond);font-variant-numeric:tabular-nums;min-width:12ch} .tvbar .grow{flex:1}
+/* Ops board page on wide screens (obPageColumns) */
+.obcols{display:grid;gap:0 14px;align-items:stretch;grid-column:1/-1}
+.obpcol{display:flex;flex-direction:column;min-width:0}
+.obpcol>.card{flex:0 0 auto}.obpcol>.card:last-child{flex:1 1 auto}
+.obcols.measuring{align-items:start}.obcols.measuring .card{flex:none!important}
+@media (min-width:1200px){.obgrid:not(.tv){grid-template-columns:minmax(0,1fr)}.obgrid:not(.tv) .obwide{grid-column:1/-1}}
+@media (min-width:1500px){.obgrid:not(.tv) .obafcard{display:grid;grid-template-columns:3fr 2fr;gap:0 12px;align-items:start}.obgrid:not(.tv) .obafcard>.tablewrap{margin-top:0!important}.obgrid:not(.tv) .obafcard>.obnote{grid-column:1/-1}}
 /* TV: everything on one screen. Airfields across the top (main and other side by side), the rest flows in columns; obTvFit zooms to fit. */
 body.tvmode{overflow:hidden}
 body.tvmode .wrap{padding:6px 12px}
