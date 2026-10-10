@@ -425,8 +425,8 @@ const OB_CHARTS = [
 // Captieux target areas, in pixels of the 468 × 486 range map. Lit up when named in the R115 restrictions (e.g. "G1, G3, RADAR").
 const OB_CAPTIEUX = { w: 468, h: 486, areas: {
   G7: "M315 215L323 234L324 253L302 265L273 267L253 268L237 268L226 268L216 268L207 269L200 269L192 270L184 270L176 271L167 272L157 272L147 270L137 266L127 261L118 253L110 244L105 233L102 221L102 209L104 197L108 185L114 175L121 165L130 157L139 150L150 145L160 142L172 141L182 143L192 148L201 153L209 157L216 161L223 166L231 170L238 174L248 179L258 185L271 192L286 201Z",
-  G1: "M197 169L310 220L317 231L298 249L182 238Z",
-  G6: "M206 378L267 382L289 398L209 430Z",
+  G1: "M182 237L197 169L298 213L308 221L315 231L310 238L296 250Z",
+  G6: "M206 379L265 382L290 398L265 410L209 431Z",
   G2: [318, 308, 45], G4: [250, 315, 46], G5: [231, 333, 47], G3: [280, 360, 37], RADAR: [341, 365, 37],
 } };
 function obCaptieuxActive() {
@@ -1096,7 +1096,7 @@ body.tvmode #dlgChart .obchartimg img{height:calc(100vh - 140px);width:auto;max-
 .obchartimg{position:relative;line-height:0}
 .obchartimg img{width:100%;height:auto;display:block;border-radius:4px}
 .obchartimg svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-.obhot{fill:rgba(255,40,40,.32);stroke:#ff2d2d;stroke-width:3;animation:obpulse 1.6s ease-in-out infinite}
+.obhot{fill:rgba(255,40,40,.32);stroke:#ff2d2d;stroke-width:2;animation:obpulse 1.6s ease-in-out infinite}
 .obhot.radar{fill:rgba(255,255,255,.25);stroke:#fff}
 @keyframes obpulse{50%{fill-opacity:.12}}
 @media (prefers-reduced-motion:reduce){.obhot{animation:none}}
