@@ -205,8 +205,11 @@ function renderOps(v) {
   }
   const h = opsGet("header");
   if (any && !h.vettedBy && !OPS.edit) html += `<div class="opsbanner">Not yet vetted &amp; approved. This programme may still change.</div>`;
-  html += opsMyDay();
-  for (const sec of OPS_ORDER) html += opsSection(sec, canEdit);
+  if (OPS.edit) { html += opsMyDay(); for (const sec of OPS_ORDER) html += opsSection(sec, canEdit); }
+  else { // wide screens: pairs side by side so the page width is used; the flying program and duties stay full width
+    const pair = (...xs) => `<div class="opsrow">${xs.join("")}</div>`, s = sec => opsSection(sec, canEdit);
+    html += pair(opsMyDay(), s("header")) + s("flying") + pair(s("sim"), s("ground")) + pair(s("airfield"), s("notes")) + s("duties");
+  }
   v.innerHTML = html;
   const d = $("#opsDate"); if (d) d.onchange = e => { if (e.target.value) opsGo(e.target.value); };
 }
@@ -279,22 +282,29 @@ const opsView = {
   },
   flying(fl) {
     let n = 0, out = "";
+    const z4 = m => String(Math.floor(m / 60) % 24).padStart(2, "0") + String(m % 60).padStart(2, "0");
+    const cols = `<colgroup><col style="width:62px"><col style="width:118px"><col style="width:96px"><col style="width:34px"><col style="width:170px"><col style="width:96px"><col style="width:112px"><col style="width:60px"><col style="width:52px"><col></colgroup>`;
     for (const w of fl.waves || []) {
-      out += `<div class="opswave"><b>${esc(w.name)}</b>${w.sxo ? `<span>SXO <strong>${opsX(w.sxo)}</strong></span>` : ""}${w.opsO ? `<span>OPS O <strong>${opsX(w.opsO)}</strong></span>` : ""}</div>`;
-      if (w.rmks) out += `<div class="opsrmk">${opsNl(w.rmks)}</div>`;
-      const fs = w.flights || [];
+      const fs = w.flights || [], ws = opsStats({ waves: [w] });
+      out += `<div class="opswave${w.night ? " night" : ""}"><b>${esc(w.name)}</b>${w.sxo ? `<span>SXO <strong>${opsX(w.sxo)}</strong></span>` : ""}${w.opsO ? `<span>OPS O <strong>${opsX(w.opsO)}</strong></span>` : ""}
+        <span class="opswavest">${ws.sorties} sortie${ws.sorties === 1 ? "" : "s"}${ws.first != null ? ` · ${z4(ws.first)}–${z4(ws.last)}Z` : ""}</span></div>`;
+      if (w.rmks) out += `<div class="opsrmk">⚠ ${opsNl(w.rmks)}</div>`;
       if (!fs.length) { out += `<p class="hint">No flights.</p>`; continue; }
-      out += `<div class="tablewrap"><table class="opst"><thead><tr><th>No</th><th>Brief / step</th><th>ETD</th><th>ETA</th><th>Callsign</th><th>Aircrew</th><th>Mission</th><th>Area</th><th>A/C</th><th>Config</th><th>Rmks</th></tr></thead><tbody>`;
+      out += `<div class="tablewrap"><table class="opst opsfly">${cols}<thead><tr><th>No</th><th>Time (Z)</th><th>Callsign</th><th>#</th><th>Aircrew</th><th>Mission</th><th>Area</th><th>A/C</th><th>Cfg</th><th>Remarks</th></tr></thead>`;
       for (const f of fs) {
         const ac = (f.ac || []).length ? f.ac : [opsTpl.ac("")], span = ac.length;
+        out += `<tbody class="fl${f.opsAdd ? " opsadd" : ""}">`;
         ac.forEach((a, i) => {
-          const no = opsIsAdd(f, a) ? "*" : opsLineUsed(a) ? String(++n).padStart(2, "0") : "";
-          out += `<tr class="${i === 0 ? "first" : ""}${opsIsAdd(f, a) ? " opsadd" : ""}"><td>${no}</td>${i === 0 ? `<td rowspan="${span}">${esc(f.brief)}${f.step ? " / " + esc(f.step) : ""}</td><td rowspan="${span}">${esc(f.etd)}</td><td rowspan="${span}">${esc(f.eta)}</td>` : ""}
-            <td>${esc([i === 0 ? f.callsign : "", a.n].filter(Boolean).join(" "))}</td><td>${opsX(a.crew1)}${a.crew2 ? " · " + opsX(a.crew2) : ""}</td><td>${esc(a.mission)}</td>
-            ${i === 0 ? `<td rowspan="${span}">${esc(f.area)}${f.areaTime ? `<br><span class="hint">${esc(f.areaTime)}</span>` : ""}</td>` : ""}<td>${esc(a.tail)}</td><td>${esc(a.config)}</td><td>${opsNl(a.rmks)}</td></tr>`;
+          const add = opsIsAdd(f, a), no = add ? `<span class="opsaddtag">OPS ADD</span>` : opsLineUsed(a) ? String(++n).padStart(2, "0") : "";
+          const bs = [f.brief && f.brief !== "NA" ? "Brief " + f.brief : "", f.step && f.step !== "NA" ? "Step " + f.step : ""].filter(Boolean).join(" · ");
+          out += `<tr class="${add ? "opsadd" : ""}"><td class="no">${no}</td>
+            ${i === 0 ? `<td rowspan="${span}" class="tm rs"><b>${esc(f.etd)}–${esc(f.eta)}</b>${bs ? `<small>${esc(bs)}</small>` : ""}</td><td rowspan="${span}" class="cs rs">${esc(f.callsign)}</td>` : ""}
+            <td class="n">${esc(a.n)}</td><td class="crew">${opsX(a.crew1)}${a.crew2 ? `<span class="c2"> / ${opsX(a.crew2)}</span>` : ""}</td><td class="nw">${esc(a.mission)}</td>
+            ${i === 0 ? `<td rowspan="${span}" class="area rs">${esc(f.area)}${f.areaTime ? `<small>${esc(f.areaTime)}</small>` : ""}</td>` : ""}<td class="nw">${esc(a.tail)}</td><td class="nw">${esc(a.config)}</td><td class="rm">${opsNl(a.rmks)}</td></tr>`;
         });
+        out += `</tbody>`;
       }
-      out += `</tbody></table></div>`;
+      out += `</table></div>`;
     }
     return out;
   },
@@ -593,12 +603,35 @@ function opsPrint() {
 .opswave:first-child{margin-top:0}
 .opswave b{font:700 1.15rem var(--cond);text-transform:uppercase}
 .opswave span{color:var(--muted)} .opswave strong{color:var(--ink);font-weight:600}
-.opsrmk{color:var(--out);font-size:.85rem;margin-bottom:6px;font-weight:500}
+.opsrmk{color:var(--out);font-size:.85rem;margin:0 0 6px;font-weight:600;padding:4px 10px;border-radius:4px;background:color-mix(in srgb,var(--out) 12%,transparent)}
+/* Flying program table: fixed columns so every wave lines up; one shaded block per flight */
+.opswave{border-left:4px solid var(--in);padding:4px 0 4px 10px;background:color-mix(in srgb,var(--in) 8%,transparent);border-radius:0 4px 4px 0}
+.opswave.night{border-left-color:#8b5cf6;background:color-mix(in srgb,#8b5cf6 10%,transparent)}
+.opswavest{margin-left:auto;padding-right:10px;font-size:.8rem}
+table.opsfly{table-layout:fixed;min-width:880px;width:100%;border-collapse:collapse}
+table.opsfly td,table.opsfly th{vertical-align:top;padding:6px 8px}
+table.opsfly tbody.fl{border-top:2px solid var(--line)}
+table.opsfly tbody.fl:nth-of-type(even){background:color-mix(in srgb,var(--muted) 7%,transparent)}
+table.opsfly tbody.fl tr+tr td{border-top:1px dashed color-mix(in srgb,var(--line) 70%,transparent)}
+table.opsfly td.tm b{display:block;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.opsfly td small{display:block;color:var(--muted);font-size:.74rem;white-space:nowrap;margin-top:2px}
+table.opsfly td.cs{font:700 .95rem var(--cond);letter-spacing:.02em;white-space:nowrap}
+table.opsfly td.no{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600}
+table.opsfly td.n{color:var(--muted)}
+table.opsfly td.crew{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+table.opsfly td.crew{font-weight:600}table.opsfly td.crew .c2{font-weight:400}
+table.opsfly td.nw,table.opsfly td.area{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+table.opsfly td.rm{font-size:.8rem}
+table.opsfly tr.opsadd td:not(.rs),table.opsfly tbody.opsadd td{color:var(--muted);font-style:italic}
+.opsaddtag{display:inline-block;white-space:nowrap;font:700 .62rem var(--body);font-style:normal;letter-spacing:.03em;padding:1px 4px;border-radius:3px;border:1px dashed var(--muted);color:var(--muted)}
+mark.opsme{white-space:nowrap}
+@media (min-width:1200px){.opsrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 14px;align-items:start}.opsrow>:only-child{grid-column:1/-1}
+  #ops-header .opsdl{grid-template-columns:max-content 1fr max-content 1fr}}
 .opssub{font:700 1rem var(--cond);margin:12px 0 4px;text-transform:uppercase}
 .opssub:first-child{margin-top:0}
 table.opst th,table.opst td{padding:5px 8px;font-size:.85rem}
 table.opst tr.first td{border-top:2px solid var(--line)}
-table.opst tr.opsadd td{color:var(--muted)}
+table.opst:not(.opsfly) tr.opsadd td{color:var(--muted)}
 table.opsnarrow{min-width:560px}
 mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inherit;border-radius:2px;padding:0 2px}
 .opsed input:not([type=checkbox]),.opsed textarea{padding:4px 6px;font-size:.85rem;margin-top:2px}

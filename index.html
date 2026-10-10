@@ -31,7 +31,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--body);-w
 button,input,select,textarea{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 a{color:var(--in)}
-.wrap{max-width:1040px;margin:0 auto;padding:16px 16px 48px}
+.wrap{max-width:none;margin:0 auto;padding:16px 16px 48px}
+@media (min-width:1100px){.wrap,.topbar-in{padding-left:28px;padding-right:28px}}
 
 header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;margin-bottom:18px}
 h1{font:700 2.4rem/1 var(--cond);margin:0;letter-spacing:.01em}
@@ -151,7 +152,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 
 /* Slim top bar with the tabs, same palette as the page */
 .topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--paper);color:var(--ink);border-bottom:1px solid var(--line)}
-.topbar-in{max-width:1040px;margin:0 auto;padding:0 16px;display:flex;align-items:stretch;gap:24px;min-height:48px}
+.topbar-in{max-width:none;margin:0 auto;padding:0 16px;display:flex;align-items:stretch;gap:24px;min-height:48px}
 .brand{font:700 1.15rem/1 var(--cond);white-space:nowrap;display:flex;align-items:center;background:none;border:0;padding:0;color:inherit;cursor:pointer}
 .subtabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:-4px 0 14px;overflow-x:auto}
 .subtabs button{background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:8px 12px;font:600 1rem var(--cond);color:var(--muted);cursor:pointer;white-space:nowrap}
@@ -386,7 +387,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 
 <div class="toast" id="toast" hidden></div>
 
-<script src="ops.js?v=7"></script>
+<script src="ops.js?v=10"></script>
 <script src="opsboard.js?v=18"></script>
 <script>
 /* =====================================================================
