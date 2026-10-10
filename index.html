@@ -202,8 +202,8 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 .rlist .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 /* QFI list: name + tags on the first line, login + buttons on the second, so nothing wraps awkwardly */
 .rlist li.qrow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:2px 10px;padding:8px 0}
-.qrow .qname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.qrow .qtags{display:flex;gap:4px;justify-content:flex-end;flex-wrap:nowrap}
+.qrow .qname{grid-column:1/-1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px}
+.qrow .qtags{display:inline-flex;gap:4px;flex-wrap:nowrap}
 .qrow .qtags .tag{margin:0}
 .qrow .qlogin{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.82rem}
 .qrow .acts{flex-wrap:nowrap}
@@ -1269,8 +1269,7 @@ function renderAdmin(v) {
     // Management appointment first (CO, DYCO, OC A, OC B, CC, QFI), then QFI CAT (A, B1, B2, C), then callsign.
     .sort((a, b) => (APPT_ORDER[a.appointment] ?? 9) - (APPT_ORDER[b.appointment] ?? 9) || (CAT_ORDER[a.qfi_cat] ?? 9) - (CAT_ORDER[b.qfi_cat] ?? 9) || pLabel(a).localeCompare(pLabel(b)));
   const alist = admins.map(p => `<li class="qrow">
-      <span class="qname"><strong>${esc(pLabel(p))}</strong>${p.callsign && p.display_name && p.display_name !== p.callsign ? ` <span class="hint">${esc(p.display_name)}</span>` : p.callsign ? ` <span class="hint">(name not set)</span>` : ""}</span>
-      <span class="qtags">${apptText(p) ? `<span class="tag open">${esc(apptText(p))}</span>` : ""}${p.qfi_cat ? `<span class="tag qcat">CAT ${esc(p.qfi_cat)}</span>` : ""}${p.ops_editor && !APPROVER(p) ? `<span class="tag nd">Ops</span>` : ""}</span>
+      <span class="qname"><strong>${esc(pLabel(p))}</strong>${p.callsign && p.display_name && p.display_name !== p.callsign ? ` <span class="hint">${esc(p.display_name)}</span>` : p.callsign ? ` <span class="hint">(name not set)</span>` : ""}<span class="qtags">${apptText(p) ? `<span class="tag open">${esc(apptText(p))}</span>` : ""}${p.qfi_cat ? `<span class="tag qcat">CAT ${esc(p.qfi_cat)}</span>` : ""}${p.ops_editor && !APPROVER(p) ? `<span class="tag nd">Ops</span>` : ""}</span></span>
       <span class="hint qlogin">Login: ${esc(showLogin(p.email))}${p.id === S.me.id ? " (you)" : ""}${p.no_geo ? " · no location check" : ""}</span>
       <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button>${p.id === S.me.id ? "" : `<button class="btn small" data-act="resetpw" data-id="${esc(p.id)}" title="Reset password">Reset pw</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button>`}</span></li>`).join("");
 
