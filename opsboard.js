@@ -566,7 +566,7 @@ function renderTv(v) {
   const n = new Date();
   v.innerHTML = `<div class="tvbar"><b>150 Falcon Det · Ops board</b><span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 16).replace(":", ""))}Z</small></span>
       <span class="grow"></span>${st ? `<span>Today: ${st.sorties} sorties · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>` : ""}<button class="btn small" data-ob="exittv">Exit TV</button></div>
-    ${obBoardView(true, obAircraftCards().join("") +
+    ${obBoardView(true, obAircraftCards().slice(1).join("") + // TV: no aircraft status table (Gordon, 10 Oct), callsigns only
       obCard("ob-tvgo", "Aircrew status", `${crew.length - nogo.length} of ${crew.length} GO`, nogo.length ? `<div class="obtvgo">${nogo.map(c => `<span>${obPill("r", c.name)} <span class="hint">${esc(obCodes(obOutstanding(c.id)))}</span></span>`).join("")}</div>` : `<p>${obPill("g", "ALL GO")}</p>`))}`;
   v.innerHTML = `<div class="tvstage">${v.innerHTML}</div>`;
   obTvColumns(v);
@@ -586,7 +586,7 @@ function obTvColumns(v) {
 function obTvFit() {
   const st = document.querySelector(".tvstage"); if (!st || !document.body.classList.contains("tvmode")) return;
   const avail = window.innerHeight - st.getBoundingClientRect().top - 6;
-  const fits = z => { st.style.zoom = z; return st.getBoundingClientRect().height <= avail; };
+  const fits = z => { st.style.zoom = z; return st.getBoundingClientRect().height <= avail && document.documentElement.scrollWidth <= window.innerWidth; };
   let lo = 0.3, hi = 2.2;
   if (fits(hi)) return;
   for (let k = 0; k < 9; k++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; }
@@ -952,6 +952,7 @@ body.tvmode .opscard p.hint{display:none}
 body.tvmode .opscard h2{font-size:1.15rem;margin:0 0 6px}
 body.tvmode .obhead{margin-bottom:6px}
 body.tvmode .tablewrap{overflow:visible}
+body.tvmode .opst th,body.tvmode .opst td{padding:3px 6px}
 @media (max-aspect-ratio:1/1){body.tvmode .obgrid.tv>.obafcard{grid-template-columns:1fr}}`;
   document.head.appendChild(s);
 })();
