@@ -605,6 +605,11 @@ async function obShowChart(key) {
       box.insertAdjacentHTML("beforebegin", `<p class="hint" style="margin:0 0 6px">${on.length ? "Lit up from the R115 restrictions: <b>" + esc(on.map(k => k === "RADAR" ? "RADAR SATAN" : k).join(", ")) + "</b>" : "Nothing listed in the R115 restrictions."}</p>`);
     }
     box.innerHTML = `<div class="obchartimg"><img src="${u.url}" alt="${esc(c.label)}">${svg}</div>`;
+    // TV: size the picture itself (not a letterboxed box) to the largest that fits the screen, so the area overlay stays on it
+    // (Gordon, 11 Oct: on a phone in TV mode the drawing was offset).
+    const img = box.querySelector("img"), fit = () => { if (!document.body.classList.contains("tvmode") || !img.naturalWidth) return;
+      const f = Math.min((innerWidth - 70) / img.naturalWidth, (innerHeight - 140) / img.naturalHeight); img.style.width = Math.floor(img.naturalWidth * f) + "px"; };
+    if (img.complete) fit(); else img.onload = fit;
   } catch (e) { d.querySelector(".obchartview").innerHTML = `<p class="err">Couldn't open it: ${esc(errMsg(e))}</p>`; }
 }
 async function obUpload(input) {
@@ -1230,7 +1235,7 @@ body.tvmode #dlgChart .dlg>p.hint{margin:0 0 6px!important;font-size:.8rem}
 body.tvmode #dlgChart .obchartview{text-align:center;line-height:0}
 body.tvmode #dlgChart .obchartview iframe{width:min(1400px,calc(100vw - 70px));height:calc(100vh - 110px)}
 body.tvmode #dlgChart .obchartimg{display:inline-block;max-width:100%}
-body.tvmode #dlgChart .obchartimg img{height:calc(100vh - 140px);width:auto;max-width:calc(100vw - 70px);object-fit:contain;border-radius:6px}
+body.tvmode #dlgChart .obchartimg img{height:auto;max-width:none;border-radius:6px}
 .tvcharts{display:inline-flex;gap:6px;align-items:center;font-size:.85rem;color:var(--muted)}
 .tvcharts .btn.stale{opacity:.55}
 .obchartview iframe{width:100%;height:75vh;border:0;background:#fff}
