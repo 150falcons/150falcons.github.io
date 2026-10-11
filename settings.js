@@ -69,6 +69,12 @@ const CFG_GROUPS = [
     "Vehicle on Auto: formations stepping close together share a van run while seats last. Each run is numbered per wave (VAN 1, VAN 2 …). If the van is still out on its last run, the formation gets the ZOE, which the crew drive themselves and park at the flight line until they land.",
     "If the ZOE is out too, the formation still gets the next van run, with a warning. Ops can pick VAN or ZOE by hand; warnings then show for full vans, a busy ZOE or too many people.",
   ] },
+  { name: "Currencies", rows: [
+    ["cur.amber", "Currency items show amber when expiring within", "days", 30],
+    ["cur.amberDay", "Day currency shows amber within", "days", 7],
+  ], rules: [
+    "The full list of currency rules is on Operations → Currencies → How it's worked out.",
+  ] },
   { name: "Screens and home", rows: [
     ["tv.waves", "Flying program TV shows this many waves at a time", "waves", 3],
     ["home.amber", "Home \"Next up\" turns amber within", "min", 30],
