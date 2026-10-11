@@ -256,6 +256,7 @@ async function opsLoad(day) {
 function opsRealtime(p) {
   const r = p.new && p.new.day ? p.new : p.old;
   if (r && r.section === "flying") { OPS.hrs = null; if (S.tab === "hours") return render(); }
+  if (r && r.section === "sim" && typeof CUR !== "undefined") { CUR.sims = null; if (S.tab === "cur") return render(); }
   if (r && r.section === "flying" && r.day === OPS.day && p.new && OPS.rows.flying && p.new.version <= OPS.rows.flying.version) return; // our own save
   if (document.activeElement && document.activeElement.dataset && document.activeElement.dataset.log) { OPS.pendingLoad = true; return; }
   if (!r || !OPS.day) return;

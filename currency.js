@@ -9,7 +9,8 @@ const CUR_RULES = [
   "Night currency: last night sortie + 91 days. Day > Night: NO GO if more than 14 days since last flown (night-qualified only).",
   "IRT expires at the end of the month, one year after the IRT date.",
   "IPC (FTI): CAT A yearly, B1 6-monthly, B2 2-monthly (all to the end of the month); CAT C monthly, date to date.",
-  "EP sims: last EP sim + 90 days.",
+  "EP sims: last EP sim + 90 days. The last EP sim fills in from i-SATR (keyed EP dates and EP sims on the simulator programme); a date typed under Records overrides it.",
+  "i-SATR: per QFI per half-year (Jan–Jun, Jul–Dec), each List 1 / List 2 / simulator item done vs required. Required numbers are set per QFI (Set standard requirements, then change any). List % counts done items up to the number required. Flying days remaining = working days (Mon–Fri) from today to the end of cycle, less non-flying days. EP 1–8 fill in from the simulator programme (mission containing \"EP n\", aircrew seat) once the sim has ended. Excel note: CAT A / B1 / B2 need only 3 EP sims per quarter, CAT C all 4; set the requirements to match.",
   "ST Tow: FCF sims prof check and TOW qual prof check valid 12 months; FCF flight currency = last flown on type + 15 days.",
   "Trainee solo currency: last solo + 2 days (MOD 1–3), + 3 (MOD 4–6), + 4 (MOD 7+).",
   "Non-syllabus flying days (since last syllabus / DCO sortie): 8–13 optional flex, 14–30 flex, 31–59 2 × flex, 60+ flex package.",
@@ -130,10 +131,10 @@ function curFlex(days) {
 }
 // Dates the board works out from logged sorties (per group: field → which logged date). A typed date overrides it;
 // the Excel's dates sit in rec.seed as a starting point only (the later of seed and logged is used).
-const CUR_AUTO = { QFI: { last: "any", night: "night" }, ST: { last: "any", fcf: "fcf" }, FIC: { "fic.last": "front", "fic.lastBack": "back" }, PGF: { last: "any", ifApp: "ifapp" }, TR: { last: "front", ifApp: "ifapp" }, WSO: { last: "back" } };
+const CUR_AUTO = { QFI: { last: "any", night: "night", ep: "ep" }, ST: { last: "any", fcf: "fcf" }, FIC: { "fic.last": "front", "fic.lastBack": "back" }, PGF: { last: "any", ifApp: "ifapp" }, TR: { last: "front", ifApp: "ifapp" }, WSO: { last: "back" } };
 function curV(x, k, grp) {
   const ov = k.split(".").reduce((o, p) => o && o[p], x.rec);
-  const auto = cuMax((x.rec.seed || {})[k], (x.fl || {})[(CUR_AUTO[grp || x.grp] || {})[k] || ({ last: "any", night: "night", fcf: "fcf", "fic.last": "front", "fic.lastBack": "back", ifApp: "ifapp" })[k]]);
+  const auto = cuMax((x.rec.seed || {})[k], (x.fl || {})[(CUR_AUTO[grp || x.grp] || {})[k] || ({ last: "any", night: "night", ep: "ep", fcf: "fcf", "fic.last": "front", "fic.lastBack": "back", ifApp: "ifapp" })[k]]);
   return ov ? { v: ov, set: true, auto } : { v: auto, set: false, auto };
 }
 const curVv = (x, k) => curV(x, k).v;
@@ -150,7 +151,7 @@ function curCols(grp) {
     { h: "Last flown", f: x => curCell(lastF(x), "info") }, { h: "Day expires", f: x => curCell(lastF(x) ? cuAdd(lastF(x), 31) : "", "expx", amD, lastF(x), "Last flown"), lab: "DAY CURR" }, irt,
     { h: "Night expires", f: x => x.rec.noNight ? { t: "NA", c: "na" } : curCell(curVv(x, "night") ? cuAdd(curVv(x, "night"), 91) : "", "exp", am, curVv(x, "night"), "Last night sortie"), lab: "NIGHT" },
     { h: "Day > Night", f: x => x.rec.noNight ? { t: "NA", c: "na" } : lastF(x) ? curGo(days(lastF(x)) <= 14) : { t: "–", c: "na" }, lab: "DAY>NIGHT" },
-    { h: "EP sims", f: x => curCell(x.rec.ep ? cuAdd(x.rec.ep, 90) : "", "exp", am, x.rec.ep, "Last EP sim"), lab: "EP SIMS" },
+    { h: "EP sims", f: x => { const d = curVv(x, "ep"); return curCell(d ? cuAdd(d, 90) : "", "exp", am, d, "Last EP sim"); }, lab: "EP SIMS" },
     { h: "IPC done", f: x => curCell(x.rec.ipc, "info") },
     { h: "IPC expires", f: x => { const cat = (x.prof && x.prof.qfi_cat) || x.rec.qfiCat, d = x.rec.ipc; if (!d) return { t: "–", c: "na" };
       return curCell(cat === "A" ? cuEom(d, 12) : cat === "B1" ? cuEom(d, 6) : cat === "B2" ? cuEom(d, 2) : cuEdate(d, 1), "exp", am, d, "IPC done"); }, lab: "IPC" }, ifc];
@@ -182,11 +183,13 @@ function renderCur(v) {
   const flown = curFlown();
   if (!flown) { v.innerHTML = `<div class="empty">Loading flown sorties…</div>`; return; }
   const can = curCanEdit(), meta = typeof obMeta === "function" ? obMeta("currency") : "";
-  const bar = `<div class="opsbar"><span class="seg"><button class="btn small${CUR.view === "board" ? " primary" : ""}" data-cur="view" data-k="board">Currency board</button><button class="btn small${CUR.view === "hours" ? " primary" : ""}" data-cur="view" data-k="hours">Hours limits</button><button class="btn small${CUR.view === "records" ? " primary" : ""}" data-cur="view" data-k="records">Records</button><button class="btn small${CUR.view === "archive" ? " primary" : ""}" data-cur="view" data-k="archive">Archived</button><button class="btn small${CUR.view === "rules" ? " primary" : ""}" data-cur="view" data-k="rules">How it's worked out</button></span><span class="grow"></span><span class="opsmeta">${esc(meta)}</span></div>`;
-  const people = curPeople().map(x => ({ ...x, fl: flown[x.name] || {} }));
+  const bar = `<div class="opsbar"><span class="seg"><button class="btn small${CUR.view === "board" ? " primary" : ""}" data-cur="view" data-k="board">Currency board</button><button class="btn small${CUR.view === "hours" ? " primary" : ""}" data-cur="view" data-k="hours">Hours limits</button><button class="btn small${CUR.view === "isatr" ? " primary" : ""}" data-cur="view" data-k="isatr">i-SATR</button><button class="btn small${CUR.view === "records" ? " primary" : ""}" data-cur="view" data-k="records">Records</button><button class="btn small${CUR.view === "archive" ? " primary" : ""}" data-cur="view" data-k="archive">Archived</button><button class="btn small${CUR.view === "rules" ? " primary" : ""}" data-cur="view" data-k="rules">How it's worked out</button></span><span class="grow"></span><span class="opsmeta">${esc(meta)}</span></div>`;
+  const sims = curSims(); if (!sims) { v.innerHTML = `<div class="empty">Loading the simulator programme…</div>`; return; }
+  const people = curPeople().map(x => { const y = { ...x, fl: { ...(flown[x.name] || {}) } }; if (x.grp === "QFI") y.fl.ep = isLastEp(y); return y; });
   if (CUR.view === "rules") { v.innerHTML = bar + `<section class="card opscard"><div class="opshead"><h2>How it's worked out</h2></div><ul class="cfgrules">${CUR_RULES.map(r => `<li>${esc(r)}</li>`).join("")}<li>${esc(`Amber = expiring within ${cfgN("cur.amber")} days (day currency: ${cfgN("cur.amberDay")} days; change under Operations → Settings). Red = expired or NO GO.`)}</li></ul></section>`; return; }
   if (CUR.view === "records") { v.innerHTML = bar + curRecords(people, can); return; }
   if (CUR.view === "hours") { v.innerHTML = bar + curHoursView(people); return; }
+  if (CUR.view === "isatr") { v.innerHTML = bar + isView(people.filter(x => x.grp === "QFI"), can); return; }
   if (CUR.view === "archive") { v.innerHTML = bar + curArchiveView(can); return; }
   // Board: one card per group, then the Expired / Expiring summary at the top.
   const expired = {}, expiring = {};
@@ -205,7 +208,7 @@ function renderCur(v) {
   const legend = `<div class="culeg"><span><i class="cusw ok"></i>Green = current</span><span><i class="cusw warn"></i>Amber = expiring within ${cfgN("cur.amber")} days (day currency ${cfgN("cur.amberDay")} days)</span><span><i class="cusw bad"></i>Red = expired / NO GO</span><span><i class="cusw na"></i>Grey = not applicable or no date yet</span></div>`;
   v.innerHTML = bar + legend + `<div class="cusum"><section class="card opscard"><div class="opshead"><h2>Items expired</h2></div><div class="cul bad">${sum(expired)}</div></section>
     <section class="card opscard"><div class="opshead"><h2>Items expiring</h2><span class="opsmeta">within ${cfgN("cur.amber")} days</span></div><div class="cul warn">${sum(expiring)}</div></section></div>${cards}
-    <p class="hint">Last flown, night and FCF dates fill in from Log flown times; a date corrected by hand under Records takes over. Hover a date to see when it was done and the days left.</p>`;
+    <p class="hint">Last flown, night and FCF dates fill in from Log flown times, the last EP sim from i-SATR; a date corrected by hand under Records takes over. Hover a date to see when it was done and the days left.</p>`;
 }
 // Hours limits (Excel HRS MONITORING): hours left in each window = limit − flown. Colours by hours left (lim.warn).
 function curHoursView(people) {
@@ -275,9 +278,130 @@ function curRecords(people, can) {
     return `<section class="card opscard"><div class="opshead"><h2>${esc(title)}</h2></div><div class="tablewrap"><table class="opst cut cuedit"><thead><tr><th>Name</th>${fs.map(f => `<th>${esc(f[1])}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
   }).join("");
   const btns = can ? (ed ? `<button class="btn small" data-cur="cancel">Cancel</button><button class="btn small primary" data-cur="save">Save</button>` : `<button class="btn small primary" data-cur="edit">Edit records</button>`) : "";
-  return `<div class="opsbar"><span class="hint">${can ? "Key in the date each item was achieved; the board works out the expiry. Last flown / night / FCF dates fill in from Log flown times (grey); type a date only to correct one (✎), clear it to go back to automatic." : "Only currency editors can change these (Admin → Edit → Can edit currencies). Grey dates fill in from Log flown times; ✎ = corrected by hand."}</span><span class="grow"></span>${btns}</div>${cards}
+  return `<div class="opsbar"><span class="hint">${can ? "Key in the date each item was achieved; the board works out the expiry. Last flown / night / FCF dates fill in from Log flown times and the last EP sim from i-SATR (grey); type a date only to correct one (✎), clear it to go back to automatic." : "Only currency editors can change these (Admin → Edit → Can edit currencies). Grey dates fill in from Log flown times; ✎ = corrected by hand."}</span><span class="grow"></span>${btns}</div>${cards}
     ${ed ? `<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn" data-cur="cancel">Cancel</button><button class="btn primary" data-cur="save">Save</button></div>` : ""}`;
 }
+// ---- i-SATR (phase 3, 11 Oct; replaces the Excel's i-SATR, i-SATR Summary and DATA I-SATR sheets) ----
+// Per QFI, per half-year (Jan–Jun / Jul–Dec): each item's dates done vs the number required. Dates are kept on the
+// person's record (rec.isatr = { req: {item: n}, done: {item: [dates]}, skip: ["day|item"], note }), so they move with
+// the record to the archive. EP sims fill in from the simulator programme (mission "EP n", aircrew seat) for days after
+// data.isatrUpTo (the Excel import); a typed date on the same day isn't counted twice, ✕ on an auto one hides it.
+const IS_LISTS = [
+  ["L1", "List 1", [["gh", "GH / IF"], ["bfm", "BFM / ACM"], ["cap", "CAP / SWP (INT)"], ["sa", "Surface attack (BSA / ASA)"], ["sat", "SAT"], ["night", "Night flying"]]],
+  ["L2", "List 2", [["ncct", "Normal CCT"], ["notef", "No TEF app"], ["seng", "Single eng app"], ["llcct", "Low level CCT"], ["ah", "AH manoeuvres"], ["spat", "Scan pattern S1–S4"], ["ua", "U/A nose high / low"], ["bfm2", "BFM / ACM off / def / neutral"], ["ti", "TI 1 v X / 2 v X"], ["vishi", "Vis delivery (hi / med angle)"], ["vislo", "Vis delivery (low angle)"], ["strafe", "Strafe"], ["eoir", "EO/IR delivery"], ["llthr", "Low level threat reaction"], ["ncctn", "Normal CCT night"], ["tin", "TI 1 v 1 night"]]],
+  ["SIM", "Simulator", [["ep1", "EP 1"], ["ep2", "EP 2 (night IF qual)"], ["ep3", "EP 3"], ["ep4", "EP 4 (night IF qual)"], ["ep5", "EP 5"], ["ep6", "EP 6 (night IF qual)"], ["ep7", "EP 7"], ["ep8", "EP 8 (night IF qual)"], ["x1", "Extra (if req)"], ["x2", "Extra (if req) 2"]]],
+];
+const IS_ITEMS = IS_LISTS.flatMap(l => l[2].map(([k, lab]) => ({ k, lab, list: l[0] })));
+// Standard requirements per half-year (the full row in the Excel, e.g. LIM W), offered for a QFI with none set yet.
+const IS_STD = { gh: 1, bfm: 1, cap: 1, sa: 1, sat: 1, night: 1, ncct: 4, notef: 2, seng: 2, llcct: 2, ah: 1, spat: 1, ua: 3, bfm2: 3, ti: 2, vishi: 2, vislo: 2, strafe: 2, eoir: 1, llthr: 1, ncctn: 2, tin: 2, ep1: 1, ep2: 1, ep3: 1, ep4: 1, ep5: 1, ep6: 1, ep7: 1, ep8: 1 };
+function isPer(key) {
+  const k = key || (todayStr().slice(0, 4) + "H" + (+todayStr().slice(5, 7) <= 6 ? 1 : 2)), y = +k.slice(0, 4), h = +k.slice(5);
+  const cfgP = (curDoc().isatrCfg || {})[k] || {};
+  return { key: k, start: `${y}-${h === 1 ? "01-01" : "07-01"}`, last: `${y}-${h === 1 ? "06-30" : "12-31"}`, end: cfgP.end || `${y}-${h === 1 ? "06-30" : "12-31"}`, nonFly: +cfgP.nonFly || 0,
+    lab: `${h === 1 ? "JAN – JUN" : "JUL – DEC"} ${String(y).slice(2)}`, prev: h === 1 ? `${y - 1}H2` : `${y}H1`, next: h === 1 ? `${y}H2` : `${y + 1}H1` };
+}
+// Working days (Mon–Fri) from a to b inclusive, like the Excel's NETWORKDAYS.
+function isWorkDays(a, b) { let n = 0; for (let t = cuD(a), e = cuD(b); t != null && t <= e; t += 864e5) { const w = new Date(t).getUTCDay(); if (w && w < 6) n++; } return n; }
+// Simulator programme (all days after the Excel import), loaded once and refreshed when a sim section changes.
+function curSims() {
+  if (CUR.sims) return CUR.sims;
+  if (!CUR.simsLoading) { CUR.simsLoading = true; S.sb.from("ops_sections").select("day,data").eq("section", "sim").gt("day", curDoc().isatrUpTo || "2000-01-01").order("day").then(({ data, error }) => { CUR.simsLoading = false; if (error) return toast(errMsg(error)); CUR.sims = data || []; if (S.tab === "cur") render(); }); }
+  return null;
+}
+// EP sims from the simulator programme for one person: [{ day, k: "ep5", mission }], only sims already finished.
+function isAutoEps(name) {
+  const out = [], today = todayStr(), now = new Date(), zNow = now.getUTCHours() * 60 + now.getUTCMinutes(), upTo = curDoc().isatrUpTo || "";
+  for (const r of CUR.sims || []) {
+    if (r.day <= upTo || r.day > today) continue;
+    for (const row of (r.data && r.data.rows) || []) for (const a of row.ac || []) {
+      if (opsNorm(a.crew1) !== name) continue;
+      const m = /\bEP\s*-?\s*([1-8])\b/i.exec(a.mission || ""); if (!m) continue;
+      if (r.day === today) { const e = opsMin(row.eta || ""); if (e == null || e > zNow) continue; }
+      out.push({ day: r.day, k: "ep" + m[1], mission: a.mission });
+    }
+  }
+  return out;
+}
+// Everything done for one person: { item: [{ d, auto, mission }] } (all periods), typed first then auto.
+function isDone(x) {
+  const I = x.rec.isatr || {}, skip = new Set(I.skip || []), o = {};
+  for (const [k, ds] of Object.entries(I.done || {})) o[k] = ds.map(d => ({ d }));
+  for (const e of isAutoEps(x.name)) { const l = o[e.k] || (o[e.k] = []); if (skip.has(e.day + "|" + e.k) || l.some(y => y.d === e.day)) continue; l.push({ d: e.day, auto: true, mission: e.mission }); }
+  for (const l of Object.values(o)) l.sort((a, b) => a.d.localeCompare(b.d));
+  return o;
+}
+const isLastEp = x => { const o = isDone(x); return cuMax(...IS_ITEMS.filter(i => /^ep/.test(i.k)).flatMap(i => (o[i.k] || []).map(y => y.d))); };
+// One person in one period: per item done (in the period) and required; per list totals and what's outstanding.
+function isSum(x, P) {
+  const req = (x.rec.isatr || {}).req, done = isDone(x), items = {}, lists = {};
+  for (const it of IS_ITEMS) {
+    const ds = (done[it.k] || []).filter(y => y.d >= P.start && y.d <= P.last), r = req ? +req[it.k] || 0 : 0;
+    items[it.k] = { ds, n: ds.length, r, owe: Math.max(0, r - ds.length) };
+    const L = lists[it.list] || (lists[it.list] = { n: 0, r: 0, owe: [] });
+    L.n += Math.min(ds.length, r); L.r += r; if (r > ds.length) L.owe.push(`${r - ds.length} × ${it.lab}`);
+  }
+  return { set: !!req, items, lists };
+}
+function isView(people, can) {
+  const P = isPer(CUR.isp), today = todayStr();
+  const left = today > P.end ? 0 : Math.max(0, isWorkDays(today < P.start ? P.start : today, P.end) - P.nonFly);
+  const sel = CUR.isOpen && people.find(x => x.name === CUR.isOpen);
+  const pct = L => L.r ? Math.round(L.n / L.r * 100) : null;
+  const cell = L => { const p = pct(L); return p == null ? `<td class="cu na">–</td>` : `<td class="cu ${p >= 100 ? "ok" : today > P.end ? "bad" : "warn"}"><b>${L.n} / ${L.r}</b><small class="cusub">${p}%</small></td>`; };
+  const rows = people.map(x => { const s = isSum(x, P), cat = (x.prof && x.prof.qfi_cat) || x.rec.qfiCat || "-";
+    const owe = id => s.set ? (s.lists[id].owe.length ? s.lists[id].owe.map(esc).join("<br>") : `<span class="isdone">Completed</span>`) : "";
+    return `<tr class="isrow${sel === x ? " on" : ""}" data-cur="isopen" data-k="${esc(x.name)}"><td class="cuname"><b>${esc(x.name)}</b>${(x.rec.isatr || {}).note ? ` <span class="hint" title="${esc(x.rec.isatr.note)}">📝</span>` : ""}</td><td>${esc(cat)}</td>${s.set ? IS_LISTS.map(l => cell(s.lists[l[0]])).join("") : `<td class="cu na" colspan="3">Requirements not set</td>`}<td class="isowe">${owe("L1")}</td><td class="isowe">${owe("L2")}</td><td class="isowe">${owe("SIM")}</td></tr>`; }).join("");
+  const tot = IS_LISTS.map(l => people.reduce((a, x) => { const s = isSum(x, P); if (s.set) { a.n += s.lists[l[0]].n; a.r += s.lists[l[0]].r; } return a; }, { n: 0, r: 0 }));
+  const perBar = `<div class="opsbar"><span class="seg"><button class="btn small" data-cur="isp" data-k="${P.prev}">‹</button><b style="padding:0 8px">${esc(P.lab)}</b><button class="btn small" data-cur="isp" data-k="${P.next}">›</button>${CUR.isp ? `<button class="btn small" data-cur="isp" data-k="">This half</button>` : ""}</span><span class="grow"></span>
+    <span class="isleft"><b>${left}</b> flying days remaining for i-SATR List 1 &amp; 2</span>
+    ${can ? `<label class="hint">End of cycle <input type="date" data-isc="end" value="${esc(P.end)}"></label><label class="hint">Non-flying days <input type="number" min="0" data-isc="nonFly" value="${P.nonFly}" style="width:64px"></label>` : `<span class="hint">to ${esc(cuFmt(P.end))}${P.nonFly ? `, less ${P.nonFly} non-flying days` : ""}</span>`}</div>`;
+  const legend = `<div class="culeg"><span><i class="cusw ok"></i>Green = all required items done</span><span><i class="cusw warn"></i>Amber = items still to do</span><span><i class="cusw bad"></i>Red = cycle ended with items not done</span><span>Tap a name to see the dates${can ? " and add or remove one" : ""}.</span></div>`;
+  return perBar + legend + `<section class="card opscard"><div class="opshead"><h2>i-SATR summary</h2><span class="opsmeta">${tot.map((t, i) => `${IS_LISTS[i][1]} ${t.r ? Math.round(t.n / t.r * 100) : 0}%`).join(" · ")}</span></div>
+    <div class="tablewrap"><table class="opst cut ist"><thead><tr><th>QFI</th><th>CAT</th><th>List 1</th><th>List 2</th><th>Sims</th><th>List 1 to do</th><th>List 2 to do</th><th>Sims to do</th></tr></thead><tbody>${rows}</tbody></table></div></section>
+    ${sel ? isPerson(sel, P, can) : ""}
+    <p class="hint">Done counts dates in ${esc(P.lab)}; extra items above the requirement don't count towards the list %. EP sims fill in from the simulator programme (mission "EP 1" … "EP 8", aircrew seat) once the sim has ended; ✕ removes a wrong one. Dates up to ${esc(cuFmt(curDoc().isatrUpTo) || "-")} came from the Excel. The latest EP sim also sets "Last EP sim" on the currency board.</p>`;
+}
+function isPerson(x, P, can) {
+  const s = isSum(x, P), I = x.rec.isatr || {}, nm = esc(x.name);
+  const lists = IS_LISTS.map(([id, title, items]) => `<div class="isl"><h3>${esc(title)} <span class="opsmeta">${s.set ? `${s.lists[id].n} / ${s.lists[id].r}` : ""}</span></h3><table class="opst ispt"><tbody>${items.map(([k, lab]) => { const it = s.items[k], c = !s.set || !it.r ? (it.n ? "ok" : "na") : it.n >= it.r ? "ok" : todayStr() > P.end ? "bad" : "warn";
+    return `<tr><td class="isit">${esc(lab)}</td><td class="cu ${c}">${it.n}${s.set ? ` / ${can ? `<input type="number" min="0" max="9" data-isr="${nm}|${k}" value="${it.r}" class="isreq">` : it.r}` : ""}</td><td class="isds">${it.ds.map(y => `<span class="isd${y.auto ? " auto" : ""}" title="${y.auto ? esc(`From the simulator programme: ${y.mission}`) : "Keyed in"}">${esc(cuFmt(y.d))}${can ? `<button class="isx" data-cur="isdel" data-k="${nm}|${k}|${y.d}|${y.auto ? 1 : ""}" title="Remove">✕</button>` : ""}</span>`).join("")}</td></tr>`; }).join("")}</tbody></table></div>`).join("");
+  return `<section class="card opscard" id="isPerson"><div class="opshead"><h2>${nm} · ${esc(P.lab)}</h2><span class="grow"></span>${can && !s.set ? `<button class="btn small primary" data-cur="isstd" data-k="${nm}">Set standard requirements</button>` : ""}<button class="btn small" data-cur="isopen" data-k="">Close</button></div>
+    ${!s.set ? `<p class="hint">No requirements set for ${nm} yet${can ? ": tap Set standard requirements (then change any number), or add dates straight away" : ""}.</p>` : ""}
+    ${can ? `<div class="isaddbar"><b>Add done:</b><select id="isItem">${IS_LISTS.map(([, t, items]) => `<optgroup label="${esc(t)}">${items.map(([k, lab]) => `<option value="${k}"${CUR.isItem === k ? " selected" : ""}>${esc(lab)}</option>`).join("")}</optgroup>`).join("")}</select><input type="date" id="isDate" value="${esc(CUR.isDate || (todayStr() > P.last ? P.last : todayStr()))}"><button class="btn small primary" data-cur="isadd" data-k="${nm}">+ Done</button></div>` : ""}
+    <div class="isls">${lists}</div>
+    <label class="hint" style="display:block;margin-top:8px">Note (e.g. owed from last cycle) ${can ? `<input data-isn="${nm}" value="${esc(I.note || "")}" style="width:100%">` : `<div>${esc(I.note || "–")}</div>`}</label></section>`;
+}
+// Save one change to the latest copy of the record (retry once if someone saved in between).
+async function isSave(name, fn, cfgFn) {
+  for (let tries = 0; tries < 2; tries++) {
+    const { data: row } = await S.sb.from("ops_state").select("*").eq("key", "currency").maybeSingle();
+    const d = JSON.parse(JSON.stringify((row && row.data) || { people: {} })), ppl = d.people || (d.people = {});
+    if (cfgFn) cfgFn(d); else { const k = Object.keys(ppl).find(x => opsNorm(x) === name) || name; const r = ppl[k] || (ppl[k] = { grp: "QFI" }); fn(r.isatr || (r.isatr = {})); }
+    const { data: ver, error } = await S.sb.rpc("ops_state_save", { p_key: "currency", p_data: d, p_version: row ? row.version : 0 });
+    if (!error) { OB.state.currency = { ...(row || { key: "currency" }), data: d, version: ver, updated_at: new Date().toISOString(), updated_by: S.me.id }; return true; }
+    if (!/changed/i.test(error.message)) { toast("Not saved: " + errMsg(error)); return false; }
+  }
+  toast("Not saved: someone else saved at the same time, try again."); return false;
+}
+document.addEventListener("change", async e => {
+  const t = e.target, ds = t.dataset || {}; if (S.tab !== "cur" || !curCanEdit()) return;
+  if (ds.isr) { const [n, k] = ds.isr.split("|"), v = Math.max(0, Math.min(9, parseInt(t.value) || 0)); if (await isSave(n, I => { (I.req ||= {})[k] = v; })) render(); }
+  else if (ds.isn != null) { const n = ds.isn, v = t.value.trim(); if (await isSave(n, I => { if (v) I.note = v; else delete I.note; })) toast("Note saved."); }
+  else if (ds.isc) { const P = isPer(CUR.isp), f = ds.isc, v = t.value; if (await isSave(null, null, d => { const c = (d.isatrCfg ||= {})[P.key] || (d.isatrCfg[P.key] = {}); if (f === "end") { if (v) c.end = v; else delete c.end; } else c.nonFly = Math.max(0, parseInt(v) || 0); })) render(); }
+});
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-cur]"); if (!b || S.tab !== "cur") return;
+  const a = b.dataset.cur, k = b.dataset.k;
+  if (a === "isp") { CUR.isp = k || null; return render(); }
+  if (a === "isopen") { if (e.target.closest("input,button:not([data-cur=isopen])")) return; CUR.isOpen = CUR.isOpen === k || !k ? null : k; render(); const el = $("#isPerson"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+  if (!curCanEdit()) return;
+  if (a === "isstd") { b.disabled = true; if (await isSave(k, I => { I.req = { ...IS_STD }; })) render(); return; }
+  if (a === "isadd") { const n = k, it = ($("#isItem") || {}).value, d = ($("#isDate") || {}).value; if (!it || !d) return toast("Pick the item and the date first.");
+    CUR.isItem = it; CUR.isDate = d;
+    b.disabled = true; if (await isSave(n, I => { const l = ((I.done ||= {})[it] ||= []); l.push(d); l.sort(); I.skip = (I.skip || []).filter(s => s !== d + "|" + it); })) render(); return; }
+  if (a === "isdel") { const [n, it, d, auto] = k.split("|"); if (!confirm(`Remove ${(IS_ITEMS.find(i => i.k === it) || {}).lab} on ${cuFmt(d)} for ${n}?`)) return;
+    if (await isSave(n, I => { if (auto) { (I.skip ||= []).push(d + "|" + it); return; } const l = (I.done || {})[it] || [], i = l.indexOf(d); if (i >= 0) l.splice(i, 1); if (!l.length && I.done) delete I.done[it]; })) render(); return; }
+});
 document.addEventListener("input", e => {
   const k = e.target.dataset && e.target.dataset.cuf; if (!k || !CUR.edit) return;
   const [name, grp, field] = k.split("|"), r = CUR.edit[name] || (CUR.edit[name] = { grp }), val = e.target.type === "checkbox" ? e.target.checked : e.target.value.trim();
@@ -315,4 +439,11 @@ table.cut{min-width:0;width:auto}.cut th{white-space:nowrap;font-size:.78rem}.cu
 .cut td.cuauto{color:var(--muted);font-style:italic}.cut td.cuset{color:var(--out);font-weight:600}.cuedit input.cusetin{border-color:var(--out)}.cuautol{display:block;color:var(--muted);font-size:.72rem;font-style:italic;text-align:left}
 .culeg{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 10px;font-size:.85rem;color:var(--muted)}.culeg span{display:inline-flex;align-items:center;gap:6px}
 .cusw{display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--line)}.cusw.ok{background:var(--ok,#1F8A4C)}.cusw.warn{background:color-mix(in srgb,var(--out) 60%,transparent)}.cusw.bad{background:color-mix(in srgb,var(--late) 70%,transparent)}.cusw.na{background:var(--muted);opacity:.5}
+.ist tr.isrow{cursor:pointer}.ist tr.isrow:hover td,.ist tr.isrow.on td{background:color-mix(in srgb,var(--accent,#2563eb) 10%,var(--paper))}.ist td.isowe{text-align:left;white-space:normal;font-size:.8rem;min-width:170px;vertical-align:top}.isdone{color:var(--ok,#1F8A4C);font-weight:600}
+.isleft{margin-right:12px}.isleft b{font-size:1.3rem}.opsbar label.hint input{width:auto;margin:0 0 0 4px;padding:3px 6px}
+.isls{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,430px),1fr));gap:14px}.isl h3{margin:4px 0 6px;font-size:1rem}
+table.ispt{width:100%;min-width:0;table-layout:fixed}.ispt td{padding:4px 6px;vertical-align:top}.ispt td.isit{white-space:normal;width:40%}.ispt td.isds{white-space:normal}.ispt td.cu{white-space:nowrap;text-align:center;width:70px}.ispt td.cu.ok{color:var(--ok,#1F8A4C);font-weight:600}.ispt td.cu.warn{background:color-mix(in srgb,var(--out) 22%,transparent);font-weight:600}.ispt td.cu.bad{background:color-mix(in srgb,var(--late) 25%,transparent);color:var(--late);font-weight:700}.ispt td.cu.na{color:var(--muted)}
+.isreq{width:42px!important;padding:2px 4px!important;margin:0!important;display:inline-block}
+.isds{font-size:.82rem}.isd{display:inline-flex;align-items:center;gap:2px;background:var(--chip,color-mix(in srgb,var(--muted) 15%,transparent));border-radius:10px;padding:1px 8px;margin:1px 3px 1px 0;white-space:nowrap}.isd.auto{font-style:italic;color:var(--muted)}
+.isx{border:0;background:none;color:var(--muted);cursor:pointer;padding:0 0 0 3px;font-size:.75rem}.isaddbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px}.isaddbar select,.isaddbar input{width:auto;margin:0;padding:4px 6px}.isadd input{width:135px;padding:2px 4px;margin:0}
 </style>`);
