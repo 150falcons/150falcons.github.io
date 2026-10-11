@@ -70,13 +70,15 @@ const opsCanEdit = () => opsCommand() || !!(S.me && S.me.prog_editor);
 const obCanBoard = () => opsCommand() || !!(S.me && S.me.ops_editor);
 const opsShift = (day, n) => { const d = new Date(day + "T12:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 const opsLongDay = day => new Date(day + "T12:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric", weekday: "long" });
-// "0725", "725", "7:25", "0725Z" -> minutes after midnight, else null
+// "0725", "725", "7:25", "0725Z" -> minutes after midnight, else null. A range ("0900-1000Z") gives its start.
 function opsMin(t) {
-  const m = /^\s*(\d{1,2}):?(\d{2})\s*Z?\s*$/i.exec(String(t ?? ""));
+  const m = /^\s*(\d{1,2}):?(\d{2})\s*Z?\s*(?:[-–]\s*\d{1,2}:?\d{2}\s*Z?\s*)?$/i.exec(String(t ?? ""));
   if (!m) return null;
   const h = +m[1], mi = +m[2];
   return h < 24 && mi < 60 ? h * 60 + mi : null;
 }
+// End of a range ("0900-1000Z" -> 1000), else null.
+function opsEndMin(t) { const m = /[-–]\s*(\d{1,2}:?\d{2}\s*Z?)\s*$/i.exec(String(t ?? "")); return m ? opsMin(m[1]) : null; }
 const opsHM = m => m == null ? "" : `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
 const opsSpan = (a, b) => (a == null || b == null) ? null : (b - a + 1440) % 1440;
 const opsNorm = s => String(s ?? "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
@@ -191,22 +193,34 @@ function opsPrevOut(groupName, name) {
   const pr = OPS.prevRows || {};
   return opsAutoInOut(name, sec => (pr[sec] && Object.keys(pr[sec]).length ? pr[sec] : opsBlank[sec]())).out;
 }
-// In / out worked out from the programme (Gordon, 11 Oct): In = the person's first brief / step / take-off / sim /
-// ground event / start of a wave they're SXO or OPS O for; Out = 1 h after their last landing / sim end / event / wave end.
-const OPS_OUT_AFTER = 60;
+// In / out worked out from the programme (Gordon, 11 Oct). In = the person's first brief / step / take-off / sim /
+// ground event / start of a wave they're SXO or OPS O for. Out = the latest of: flights and sims 2 h after landing /
+// sim end; SXO = the wave's last landing; OPS O = the wave's last landing + 30 min; ground events = their end time
+// (type the time as a range, e.g. 0900-1000Z; a single time counts as its start).
+const OPS_OUT = { fly: 120, sim: 120, sxo: 0, opsO: 30 };
 function opsAutoInOut(name, get) {
   const n = opsNorm(name), st = [], en = [];
   if (!n) return { in: "", out: "" };
-  const push = (a, b) => { const x = opsMin(a), y = opsMin(b); if (x != null) st.push(x); if (y != null) en.push(y); else if (x != null) en.push(x); };
+  const s0 = (...ts) => ts.map(opsMin).forEach(x => x != null && st.push(x));
+  const e0 = (t, plus) => { const x = opsMin(t); if (x != null) en.push(x + plus); };
   const fl = opsNameWaves(opsClone(get("flying")));
   for (const w of fl.waves || []) {
-    for (const f of w.flights || []) for (const a of f.ac || []) if (opsCrewHas(a, n)) { [f.brief, f.step].forEach(t => push(t)); push(f.etd, f.eta); }
-    if (opsHas(w.sxo, n) || opsHas(w.opsO, n)) for (const f of w.flights || []) { [f.brief, f.step].forEach(t => push(t)); push(f.etd, f.eta); }
+    const fs = w.flights || [];
+    for (const f of fs) for (const a of f.ac || []) if (opsCrewHas(a, n)) { s0(f.brief, f.step, f.etd); e0(f.eta, OPS_OUT.fly); }
+    const sxo = opsHas(w.sxo, n), oo = opsHas(w.opsO, n);
+    if (sxo || oo) {
+      fs.forEach(f => s0(f.brief, f.step, f.etd));
+      const last = Math.max(...fs.map(f => opsMin(f.eta)).filter(x => x != null));
+      if (isFinite(last)) en.push(last + (oo ? OPS_OUT.opsO : OPS_OUT.sxo));
+    }
   }
-  for (const r of get("sim").rows || []) for (const a of r.ac || []) if (opsCrewHas(a, n)) push(r.etd, r.eta);
-  for (const g of get("ground").groups || []) for (const r of g.rows || []) if (opsGroundHas(r.personnel, n)) push(r.time);
+  for (const r of get("sim").rows || []) for (const a of r.ac || []) if (opsCrewHas(a, n)) { s0(r.etd); e0(r.eta, OPS_OUT.sim); }
+  for (const g of get("ground").groups || []) for (const r of g.rows || []) if (opsGroundHas(r.personnel, n)) {
+    s0(r.time); const e = opsEndMin(r.time); en.push(e != null ? e : opsMin(r.time));
+  }
   const hhmm = m => String(Math.floor(m / 60) % 24).padStart(2, "0") + String(m % 60).padStart(2, "0");
-  return st.length ? { in: hhmm(Math.min(...st)), out: hhmm(Math.max(...en) + OPS_OUT_AFTER) } : { in: "", out: "" };
+  const ends = en.filter(x => x != null && !isNaN(x));
+  return st.length ? { in: hhmm(Math.min(...st)), out: ends.length ? hhmm(Math.max(...ends)) : "" } : { in: "", out: "" };
 }
 // A duty row's in / out: typed wins, else worked out (auto flags say which).
 function opsInOut(r, get) {
