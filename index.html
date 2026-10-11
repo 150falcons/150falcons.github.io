@@ -1473,7 +1473,7 @@ function renderAdmin(v) {
   // The CC isn't a flyer: shown under CEN, not among the QFIs (Gordon, 11 Oct). Same row (and rights) as a QFI login.
   const ccs = admins.filter(p => p.appointment === "CC"), fics = admins.filter(p => p.appointment === "FIC"), qfis = admins.filter(p => p.appointment !== "CC" && p.appointment !== "FIC");
   const qrow = p => `<li class="qrow">
-      <span class="qname"><strong>${esc(pLabel(p))}</strong>${p.callsign && p.display_name && p.display_name !== p.callsign ? ` <span class="hint">${esc(p.display_name)}</span>` : p.callsign ? ` <span class="hint">(name not set)</span>` : ""}<span class="qtags">${apptText(p) ? `<span class="tag open">${esc(apptText(p))}</span>` : ""}${p.qfi_cat ? `<span class="tag qcat">CAT ${esc(p.qfi_cat)}</span>` : ""}${(p.quals || []).map(q => `<span class="tag qcat">${esc(q)}</span>`).join("")}${p.user_admin ? `<span class="tag open">Account admin</span>` : ""}${p.ops_editor && !APPROVER(p) ? `<span class="tag nd">Ops board</span>` : ""}${p.prog_editor && !APPROVER(p) ? `<span class="tag nd">Flying prog</span>` : ""}</span></span>
+      <span class="qname"><strong>${esc(pLabel(p))}</strong>${p.callsign && p.display_name && p.display_name !== p.callsign ? ` <span class="hint">${esc(p.display_name)}</span>` : p.callsign ? ` <span class="hint">(name not set)</span>` : ""}<span class="qtags">${apptText(p) ? `<span class="tag open">${esc(apptText(p))}</span>` : ""}${p.qfi_cat ? `<span class="tag qcat">CAT ${esc(p.qfi_cat)}</span>` : ""}${(p.quals || []).map(q => `<span class="tag qcat">${esc(q)}</span>`).join("")}${p.user_admin ? `<span class="tag open">Account admin</span>` : ""}${p.ops_editor || APPROVER(p) ? `<span class="tag nd"${APPROVER(p) ? ' title="Automatic for CO / DYCO / OC A / OC B"' : ""}>Ops board</span>` : ""}${p.prog_editor || APPROVER(p) ? `<span class="tag nd"${APPROVER(p) ? ' title="Automatic for CO / DYCO / OC A / OC B"' : ""}>Flying prog</span>` : ""}</span></span>
       <span class="hint qlogin">Login: ${esc(showLogin(p.email))}${p.id === S.me.id ? " (you)" : ""}${p.no_geo ? " · no location check" : ""}</span>
       <span class="acts">${p.appointment === "QFI" ? `<button class="btn small" data-act="senior" data-id="${esc(p.id)}:-1" title="Move up (more senior)" aria-label="Move up">▲</button><button class="btn small" data-act="senior" data-id="${esc(p.id)}:1" title="Move down" aria-label="Move down">▼</button>` : ""}<button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button>${p.id === S.me.id ? "" : `<button class="btn small" data-act="resetpw" data-id="${esc(p.id)}" title="Reset password">Reset pw</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button>`}</span></li>`;
   const alist = qfis.map(qrow).join("");
@@ -1697,8 +1697,11 @@ function openEdit(key) {
   const inst = !!acct && acct.role === "admin";
   $("#eApptWrap").hidden = !inst;
   $("#eAppt").value = inst ? (acct.appointment || "") : "";
-  $("#eOpsWrap").hidden = !acct || (!inst && !isOpsAssistant(acct)); $("#eOps").checked = !!(acct && acct.ops_editor);
-  $("#eProgWrap").hidden = $("#eOpsWrap").hidden; $("#eProg").checked = !!(acct && acct.prog_editor);
+  // CO / DYCO / OC A / OC B edit the ops board and flying program by their appointment: shown ticked and locked.
+  const cmd = !!acct && APPROVER(acct);
+  $("#eOpsWrap").hidden = !acct || (!inst && !isOpsAssistant(acct)); $("#eOps").checked = !!(acct && (acct.ops_editor || cmd)); $("#eOps").disabled = cmd;
+  $("#eProgWrap").hidden = $("#eOpsWrap").hidden; $("#eProg").checked = !!(acct && (acct.prog_editor || cmd)); $("#eProg").disabled = cmd;
+  $("#eOpsWrap").title = $("#eProgWrap").title = cmd ? "Automatic for CO / DYCO / OC A / OC B" : "";
   $("#eEngWrap").hidden = !acct || !isOpsAssistant(acct); $("#eEng").checked = !!(acct && acct.eng_editor);
   $("#eUAdmWrap").hidden = !inst; $("#eUAdm").checked = !!(acct && acct.user_admin);
   $("#eNoGeoWrap").hidden = !acct; $("#eNoGeo").checked = !!(acct && acct.no_geo);
@@ -1761,7 +1764,7 @@ $("#btnEdit").onclick = async () => {
         const { error } = await S.sb.rpc("set_no_geo", { p_user: acct.id, p_on: $("#eNoGeo").checked });
         if (error) throw error;
       }
-      if (!$("#eOpsWrap").hidden && $("#eOps").checked !== !!acct.ops_editor) {
+      if (!$("#eOpsWrap").hidden && !$("#eOps").disabled && $("#eOps").checked !== !!acct.ops_editor) {
         const { error } = await S.sb.rpc("set_ops_editor", { p_user: acct.id, p_on: $("#eOps").checked });
         if (error) throw error;
       }
@@ -1771,7 +1774,7 @@ $("#btnEdit").onclick = async () => {
         if (error) throw error;
         if (acct.id === S.me.id) S.me.user_admin = $("#eUAdm").checked;
       }
-      if (!$("#eProgWrap").hidden && $("#eProg").checked !== !!acct.prog_editor) {
+      if (!$("#eProgWrap").hidden && !$("#eProg").disabled && $("#eProg").checked !== !!acct.prog_editor) {
         const { error } = await S.sb.rpc("set_prog_editor", { p_user: acct.id, p_on: $("#eProg").checked });
         if (error) throw error;
       }
