@@ -223,7 +223,21 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 .csec{display:flex;align-items:baseline;gap:8px;font:700 1rem var(--cond);color:var(--ink);margin:12px 0 6px;letter-spacing:.02em;text-transform:uppercase}
 .cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0 14px;align-items:start}.cblk{min-width:0}
 .strip.s-in{grid-template-columns:12px minmax(0,1fr) auto;min-height:46px}.strip.s-in .where{display:none}.strip.s-in .act:empty{display:none}.strip.s-in .who{border-right:0}
-@media (min-width:1100px){.strips.wide{display:grid;grid-template-columns:repeat(auto-fill,minmax(600px,1fr));gap:6px 10px}.strips.wide .strip{grid-template-columns:12px minmax(120px,max-content) 2fr auto}.strips.wide .crew{white-space:nowrap}}
+.trips{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:10px;align-items:stretch}
+.trip{display:flex;flex-direction:column;background:var(--paper);border:1px solid var(--line);border-left:6px solid var(--out);border-radius:3px;min-width:0}
+.trip.late{border-color:var(--late);border-left-color:var(--late)}.trip.pend{border-left-color:var(--muted)}.trip.leave{border-left-color:#8a63d2}.trip.leave.late{border-color:var(--late)}
+.trip .th{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:10px 12px 8px}
+.trip .tst{display:block;font:600 .72rem var(--body);text-transform:uppercase;letter-spacing:.07em;color:var(--out)}
+.trip.late .tst{color:var(--late)}.trip.pend .tst{color:var(--muted)}.trip.leave .tst{color:#8a63d2}
+.trip h3{margin:2px 0 0;font:700 1.3rem/1.15 var(--cond);overflow-wrap:anywhere}
+.trip .tdue{text-align:right;font:700 1.15rem/1.15 var(--cond);white-space:nowrap}.trip .tdue small{display:block;font:500 .7rem var(--body);color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.trip .tdue small+*,.trip .tdue small~small{margin-top:2px}.trip .tdue i{display:block;font:600 .8rem var(--body);font-style:normal;color:var(--late)}
+.trip.late .tdue{color:var(--late)}
+.trip .tcrew{padding:6px 12px;border-top:1px dashed var(--line)}
+.trip .tcrew div{display:flex;align-items:baseline;gap:8px;padding:2px 0}.trip .tcrew em{flex:0 0 46px;font:500 .78rem var(--body);font-style:normal;color:var(--muted)}
+.trip .tcrew b{font:700 1.1rem var(--cond);text-transform:uppercase;letter-spacing:.02em}.trip .tcrew span{margin-left:auto;font-size:.88rem;white-space:nowrap}
+.trip .tmeta{padding:6px 12px 10px;color:var(--muted);font-size:.86rem;flex:1}
+.trip .tact{display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;padding:8px 12px;border-top:1px dashed var(--line)}
 .csec span{font:400 .82rem var(--body);color:var(--muted);text-transform:none;letter-spacing:0}
 .rlist li.chead{display:block;border-bottom:1px solid var(--line);padding:12px 0 4px;font:700 1rem var(--cond);text-transform:uppercase;letter-spacing:.02em}
 .rlist li.chead:first-child{padding-top:0}
@@ -848,39 +862,35 @@ function renderBoard(v) {
   else if (!isAdmin() && !S.me.ops_editor && !S.me.prog_editor && !S.me.eng_editor && !S.me.staff_role) idCard = `<div class="card idcard"><h2>Account not linked</h2><p class="hint">Your login isn't linked to a name on the roster yet. Ask a QFI to fix it.</p></div>`;
 
   const pend = S.open.filter(isPend).sort((a, b) => ms(a.etd) - ms(b.etd));
+  // Trip cards (Gordon, 11 Oct "abit messy"): status + destination with the key time on the right, one line per person
+  // (role, name, phone), then one line of details, buttons in the footer.
+  const TICON = { car: "🚗", bus: "🚌", train: "🚆", public: "🚌🚆", other: "🚶" };
+  const crewRows = (m, tel) => `<div class="tcrew">${members(m).map(p => `<div>${ROLE[p.role] ? `<em>${esc(ROLE[p.role])}</em>` : ""}<b>${esc(p.name)}</b>${tel && phoneOf(p.id) ? `<span>${telLink(phoneOf(p.id))}</span>` : ""}</div>`).join("")}</div>`;
+  const tripCard = (cls, st, dest, due, crew, meta, btns) => `<article class="trip ${cls}">
+      <div class="th"><div><span class="tst">${st}</span><h3>${dest}</h3></div><div class="tdue">${due}</div></div>
+      ${crew}<div class="tmeta">${meta.filter(Boolean).join(" · ")}</div>${btns ? `<div class="tact">${btns}</div>` : ""}</article>`;
   const pendHtml = pend.map(m => {
-    const crew = members(m).map(p => `<div class="crew"><em>${esc(ROLE[p.role])}</em>${esc(p.name)}</div>`).join("");
     const btns = (canApprove() ? `<button class="btn small" data-act="reject" data-id="${esc(m.id)}">Reject</button><button class="btn small primary" data-act="approve" data-id="${esc(m.id)}">Approve</button>` : "")
       + (!canApprove() && canAct(m) ? `<button class="btn small" data-act="withdraw" data-id="${esc(m.id)}">Withdraw</button>` : "");
-    return `<article class="strip s-pend"><div class="band"></div>
-      <div class="who">${crew}</div>
-      <div class="where"><span class="state">Awaiting approval: <strong>${esc(m.destination)}</strong></span>
-        <span class="meta">ETD ${esc(fmtL(m.etd))}, ETA ${esc(fmtL(m.expected_back))}</span>
-        <span class="meta">${esc(m.vehicle_label)}. ${esc(m.reason)}. Requested by ${esc(who(m.out_by))}</span></div>
-      <div class="act">${btns}</div></article>`;
+    return tripCard("pend", "Awaiting approval", esc(m.destination), `<small>ETD</small>${esc(fmtL(m.etd))}<small>ETA</small>${esc(fmtL(m.expected_back))}`,
+      crewRows(m, false), [`${TICON[m.transport] || ""} ${esc(m.vehicle_label)}`, esc(m.reason), `Requested by ${esc(who(m.out_by))}`], btns);
   }).join("");
   const groups = S.open.filter(m => !isPend(m))
     .sort((a, b) => (isLate(b, now) - isLate(a, now)) || ms(a.expected_back) - ms(b.expected_back));
   const outHtml = groups.map(m => {
     const late = isLate(m, now);
-    const crew = members(m).map(p => `<div class="crew"><em>${esc(ROLE[p.role])}</em>${esc(p.name)}</div>`).join("");
-    const tels = members(m).filter(p => p.role !== "pax" && phoneOf(p.id)).map(p => `${esc(ROLE[p.role] || p.name)} ${telLink(phoneOf(p.id))}`).join(", ");
-    return `<article class="strip s-${late ? "late" : "out"}"><div class="band"></div>
-      <div class="who">${crew}</div>
-      <div class="where"><span class="state">${late ? "Overdue" : "Out"}: <strong>${esc(m.destination)}</strong></span>
-        <span class="meta ${late ? "due-late" : ""}">Back in base by ${esc(fmt(m.expected_back))}${late ? ` (${dur(now - ms(m.expected_back))} late)` : ""}</span>
-        ${tels ? `<span class="meta">Tel: ${tels}</span>` : ""}
-        <span class="meta">Out since ${esc(fmt(m.office_hours && m.etd ? m.etd : m.out_at))}. ${esc(m.vehicle_label)}. ${esc(m.reason)}${m.decided_as ? `. Approved by ${esc(m.decided_as)}` : ""}</span></div>
-      <div class="act">${canAct(m) ? `<button class="btn small" data-act="eta" data-id="${esc(m.id)}">Change time</button><button class="btn small primary" data-act="in" data-id="${esc(m.id)}">Back in base</button>` : ""}</div></article>`;
+    return tripCard(late ? "late" : "out", late ? "Overdue" : "Out", esc(m.destination),
+      `<small>Back by</small>${esc(fmtL(m.expected_back))}${late ? `<i>${esc(dur(now - ms(m.expected_back)))} late</i>` : ""}`,
+      crewRows(m, true), [`${TICON[m.transport] || ""} ${esc(m.vehicle_label)}`, `Out ${esc(fmtL(m.office_hours && m.etd ? m.etd : m.out_at))}`, esc(m.reason), m.decided_as ? `Approved by ${esc(m.decided_as)}` : ""],
+      canAct(m) ? `<button class="btn small" data-act="eta" data-id="${esc(m.id)}">Change time</button><button class="btn small primary" data-act="in" data-id="${esc(m.id)}">Back in base</button>` : "");
   }).join("");
   const inT = active().filter(t => !leaveOf(t.id) && (!ob[t.id] || isPend(ob[t.id])));
   const today = todayStr();
   const lvT = active().filter(t => leaveOf(t.id)).sort((a, b) => leaveOf(a.id).until.localeCompare(leaveOf(b.id).until));
   const leaveHtml = lvT.map(t => { const l = leaveOf(t.id), late = l.until < today;
-    return `<article class="strip s-leave"><div class="band"></div>
-      <div class="who"><h3>${esc(t.name)}</h3><span>${esc(t.course || "")}</span></div>
-      <div class="where"><span class="state">On leave</span><span class="meta ${late ? "due-late" : ""}">Back by ${esc(fmtDay(l.until))}${late ? " (overdue)" : ""}</span></div>
-      <div class="act">${isAdmin() || t.id === myTid() ? `<button class="btn small primary" data-act="endleave" data-id="${esc(t.id)}">Back from leave</button>` : ""}</div></article>`; }).join("");
+    return tripCard("leave" + (late ? " late" : ""), late ? "On leave · overdue" : "On leave", esc(t.name), `<small>Back by</small>${esc(fmtDay(l.until))}`,
+      "", [esc(t.course || ""), phoneOf(t.id) ? telLink(phoneOf(t.id)) : ""],
+      isAdmin() || t.id === myTid() ? `<button class="btn small primary" data-act="endleave" data-id="${esc(t.id)}">Back from leave</button>` : ""); }).join("");
   const strip = t => `<article class="strip s-in"><div class="band"></div>
       <div class="who"><h3>${esc(t.name)}</h3>${t.can_drive === false ? `<span>Non-driver</span>` : ""}</div>
       <div class="where"><span class="state">In base</span></div>
@@ -892,9 +902,9 @@ function renderBoard(v) {
   const canBook = isAdmin() || (mine && !ob[mine.id]);
 
   v.innerHTML = `${idCard}${canBook ? `<div class="toolbar"><button class="btn primary" data-act="out" style="flex:1;padding:12px;font-size:1rem">Book out</button></div>` : ""}
-    ${pend.length ? `<div class="sec">Awaiting approval (${pend.length})</div><div class="strips wide">${pendHtml}</div>` : ""}
-    ${groups.length ? `<div class="sec" style="display:flex;justify-content:space-between;align-items:center">Out of base (${groups.length} ${groups.length === 1 ? "trip" : "trips"})${outTrips().length > 1 && (isAdmin() || outTrips().some(canAct)) ? `<button class="btn small" data-act="rearrange">Rearrange for return</button>` : ""}</div><div class="strips wide">${outHtml}</div>` : ""}
-    ${lvT.length ? `<div class="sec">On leave (${lvT.length})</div><div class="strips wide">${leaveHtml}</div>` : ""}
+    ${pend.length ? `<div class="sec">Awaiting approval (${pend.length})</div><div class="trips">${pendHtml}</div>` : ""}
+    ${groups.length ? `<div class="sec" style="display:flex;justify-content:space-between;align-items:center">Out of base (${groups.length} ${groups.length === 1 ? "trip" : "trips"})${outTrips().length > 1 && (isAdmin() || outTrips().some(canAct)) ? `<button class="btn small" data-act="rearrange">Rearrange for return</button>` : ""}</div><div class="trips">${outHtml}</div>` : ""}
+    ${lvT.length ? `<div class="sec">On leave (${lvT.length})</div><div class="trips">${leaveHtml}</div>` : ""}
     <div class="sec">In base (${inT.length})</div>
     ${inHtml ? `<div class="cgrid">${inHtml}</div>` : `<div class="empty">Everyone is out.</div>`}`;
 }
