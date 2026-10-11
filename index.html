@@ -321,6 +321,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
   <h2 id="editTitle">Edit</h2>
   <label><span id="eNameLbl">Name</span><input id="eName" maxlength="60"></label>
   <label id="eCallWrap">Callsign (leave blank if none)<input id="eCall" maxlength="30" placeholder="e.g. Brut"></label>
+  <label id="eTypeWrap">Type<select id="eType"><option value="ST">ST Tow</option><option value="HD CEN">HD CEN (head of CEN)</option><option value="CEN">CEN</option><option value="AOSX">AOSX (ops assistant)</option><option value="ATCO">ATCO</option><option value="ENG">Engineer</option></select></label>
   <div id="eQualWrap" style="margin-bottom:10px"><span class="hint">Qualifications</span><div><label class="opschk" style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;color:var(--ink)"><input type="checkbox" id="eQTOW" style="width:auto;margin:0">TOW</label><label class="opschk" style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;color:var(--ink)"><input type="checkbox" id="eQFCF" style="width:auto;margin:0">FCF</label></div></div>
   <label id="eCatWrap">QFI CAT<select id="eCat"><option value="">-</option><option>A</option><option>B1</option><option>B2</option><option>C</option></select></label>
   <label id="eCourseWrap">Course<input id="eCourse" maxlength="40"></label>
@@ -1491,11 +1492,11 @@ function renderAdmin(v) {
         <p class="hint">Every trainee gets a login straight away. They sign in with their username and the temporary password, then must set their own password.</p></div>
       <div class="card"><h2>Perm staff (${admins.length + perm.length})</h2><ul class="rlist">
         <li class="chead">QFI<span>${qfis.length}</span></li>${alist}
-        ${["ST", "CEN", "AOSX", "ATCO"].map(t => { const g = perm.filter(p => (p.staff_role || "AOSX") === t), cc = t === "CEN" ? ccs : []; return g.length + cc.length ? `<li class="chead">${t === "ST" ? "ST Tow" : t}<span>${g.length + cc.length}</span></li>${cc.map(qrow).join("")}${g.map(staffRow).join("")}` : ""; }).join("")}</ul>
+        ${["ST", "CEN", "AOSX", "ATCO"].map(t => { const g = t === "CEN" ? [...perm.filter(p => p.staff_role === "HD CEN"), ...perm.filter(p => p.staff_role === "CEN")] : perm.filter(p => (p.staff_role || "AOSX") === t), cc = t === "CEN" ? ccs : []; return g.length + cc.length ? `<li class="chead">${t === "ST" ? "ST Tow" : t}<span>${g.length + cc.length}</span></li>${cc.map(qrow).join("")}${g.map(staffRow).join("")}` : ""; }).join("")}</ul>
         <p class="hint" style="margin-top:10px">QFI are instructors (the CO, DYCO and OCs approve travel; under Edit, tick "Can edit the ops board" and / or "Can edit the flying program" for anyone else who should). The AOSX gets both by default. ST Tow, CEN and ATCO can view everything unless ticked.</p>
         <p class="hint">Only account admins see this Admin tab and can add, remove or reset logins and change anyone's rights. To make another QFI an account admin, tap Edit and tick "Account admin". Everyone else gets an Account tab to change their own details and password.</p>
         <p class="hint" style="margin-top:10px">Add perm staff:</p>
-        <label>Type<select id="psType"><option value="QFI">QFI (instructor)</option><option value="ST">ST Tow</option><option value="CEN">CEN (contracts &amp; squadron logistics)</option><option value="AOSX">AOSX (ops assistant)</option><option value="ATCO">ATCO (air traffic controller)</option></select></label>
+        <label>Type<select id="psType"><option value="QFI">QFI (instructor)</option><option value="ST">ST Tow</option><option value="HD CEN">HD CEN (head of CEN)</option><option value="CEN">CEN (contracts &amp; squadron logistics)</option><option value="AOSX">AOSX (ops assistant)</option><option value="ATCO">ATCO (air traffic controller)</option></select></label>
         <label>Name (as on the flying lines)<input id="iName" maxlength="60" placeholder="e.g. LEE G"></label>
         <div id="psQfi"><label>Callsign (leave blank if none)<input id="iCall" maxlength="30" placeholder="e.g. Brut"></label>
         <label>QFI CAT<select id="iCat"><option value="">-</option><option>A</option><option>B1</option><option>B2</option><option>C</option></select></label></div>
@@ -1602,10 +1603,10 @@ async function addInstructor() {
 }
 // Ops assistant: a non-admin, non-trainee login with ops_editor on.
 const isOpsAssistant = p => !!p && p.role !== "admin" && !p.trainee_id;
-const STAFF_LABEL = { AOSX: "AOSX", ATCO: "ATCO", CEN: "CEN", ST: "ST Tow", ENG: "Engineer" };
+const STAFF_LABEL = { AOSX: "AOSX", ATCO: "ATCO", CEN: "CEN", "HD CEN": "HD CEN", ST: "ST Tow", ENG: "Engineer" };
 // A staff row (CEN / AOSX / ATCO / engineer) in the same two-line style as the QFI rows.
 const staffRow = p => `<li class="qrow">
-      <span class="qname"><strong>${esc(pLabel(p))}</strong><span class="qtags">${(p.quals || []).map(q => `<span class="tag qcat">${esc(q)}</span>`).join("")}${p.ops_editor ? `<span class="tag open">Ops board</span>` : ""}${p.prog_editor ? `<span class="tag open">Flying prog</span>` : ""}${p.eng_editor ? `<span class="tag open">Aircraft</span>` : ""}${p.ops_editor || p.prog_editor || p.eng_editor ? "" : `<span class="tag nd">View only</span>`}</span></span>
+      <span class="qname"><strong>${esc(pLabel(p))}</strong><span class="qtags">${p.staff_role === "HD CEN" ? `<span class="tag open">HD CEN</span>` : ""}${(p.quals || []).map(q => `<span class="tag qcat">${esc(q)}</span>`).join("")}${p.ops_editor ? `<span class="tag open">Ops board</span>` : ""}${p.prog_editor ? `<span class="tag open">Flying prog</span>` : ""}${p.eng_editor ? `<span class="tag open">Aircraft</span>` : ""}${p.ops_editor || p.prog_editor || p.eng_editor ? "" : `<span class="tag nd">View only</span>`}</span></span>
       <span class="hint qlogin">Login: ${esc(showLogin(p.email))}${p.must_change_password ? " (temp pw)" : ""}${p.no_geo ? " · no location check" : ""}</span>
       <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button><button class="btn small" data-act="resetpw" data-id="${esc(p.id)}" title="Reset password">Reset pw</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button></span></li>`;
 async function addStaff(type, nameEl, userEl) {
@@ -1683,6 +1684,7 @@ function openEdit(key) {
   $("#eCallWrap").hidden = !inst; $("#eCall").value = inst ? (acct.callsign || "") : "";
   $("#eCatWrap").hidden = !inst; $("#eCat").value = inst ? (acct.qfi_cat || "") : "";
   const st = !!acct && acct.staff_role === "ST";
+  $("#eTypeWrap").hidden = !acct || !isOpsAssistant(acct); $("#eType").value = acct && acct.staff_role ? acct.staff_role : "AOSX";
   $("#eQualWrap").hidden = !st; for (const q of ["TOW", "FCF"]) $("#eQ" + q).checked = st && (acct.quals || []).includes(q);
   $("#eNameLbl").textContent = inst ? "Name (as on the flying lines)" : "Name";
   $("#eHint").textContent = acct ? "Changing the username doesn't change the password. Tell them their new username." : "No login yet. Use Create login on the Admin tab to give them one.";
@@ -1716,6 +1718,10 @@ $("#btnEdit").onclick = async () => {
       }
       if (acct.role === "admin" && $("#eCall").value.trim() !== (acct.callsign || "")) {
         const { error } = await S.sb.rpc("set_callsign", { p_user: acct.id, p_callsign: $("#eCall").value.trim() });
+        if (error) throw error;
+      }
+      if (!$("#eTypeWrap").hidden && $("#eType").value !== (acct.staff_role || "AOSX")) {
+        const { error } = await S.sb.rpc("set_staff_role", { p_user: acct.id, p_role: $("#eType").value });
         if (error) throw error;
       }
       if (acct.staff_role === "ST") {
