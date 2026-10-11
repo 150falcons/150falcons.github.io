@@ -168,15 +168,18 @@ function obVisCeil(a) {
 }
 function obRsafAuto(vc) {
   if (!vc) return "";
-  const v = vc.vis >= 10 ? 1 : vc.vis >= 8 ? 2 : vc.vis >= 6 ? 3 : vc.vis >= 3 ? 4 : vc.vis >= 1 ? 5 : 6;
-  const c = vc.ceil >= 2500 ? 1 : vc.ceil >= 1500 ? 2 : vc.ceil >= 1000 ? 3 : vc.ceil >= 500 ? 4 : vc.ceil >= 300 ? 5 : 6;
-  return ["B", "Y1", "Y2", "A1", "A2", "R"][Math.max(v, c) - 1];
+  // Cut-offs from Settings: rsaf.vis (km) and rsaf.base (ft) for B / Y1 / Y2 / A1 / A2, else R.
+  const S6 = ["B", "Y1", "Y2", "A1", "A2", "R"], step = (x, l) => { const i = l.findIndex(c => x >= c); return i < 0 ? l.length : i; };
+  return S6[Math.min(5, Math.max(step(vc.vis, cfgList("rsaf.vis")), step(vc.ceil, cfgList("rsaf.base"))))];
 }
 function obFasfAuto(vc) {
   if (!vc) return "";
-  const v = vc.vis >= 8 ? 1 : vc.vis >= 5 ? 2 : vc.vis >= 3 ? 4 : vc.vis >= 1.6 ? 5 : vc.vis >= 0.8 ? 6 : 7;
-  const c = vc.ceil >= 2500 ? 1 : vc.ceil >= 1500 ? 2 : vc.ceil >= 1000 ? 3 : vc.ceil >= 700 ? 4 : vc.ceil >= 300 ? 5 : vc.ceil >= 200 ? 6 : 7;
-  return ["B", "W", "G VFR", "G IFR", "Y", "A", "R"][Math.max(v, c) - 1];
+  // Cut-offs from Settings: fasf.vis (km) for B / W / G IFR / Y / A, fasf.base (ft) for B / W / G VFR / G IFR / Y / A; else R.
+  const S7 = ["B", "W", "G VFR", "G IFR", "Y", "A", "R"], VI = [0, 1, 3, 4, 5]; // visibility has no G VFR step
+  const vl = cfgList("fasf.vis"), bl = cfgList("fasf.base");
+  const vi = vl.findIndex(c => vc.vis >= c), bi = bl.findIndex(c => vc.ceil >= c);
+  const v = vi < 0 ? 6 : VI[vi] ?? 6, c = bi < 0 ? 6 : Math.min(bi, 6);
+  return S7[Math.max(v, c)];
 }
 // The colour state shown for an airfield: the chosen one, or the worked-out one when set to AUTO.
 function obState(a, kind) {
@@ -205,27 +208,31 @@ function obSun(day) {
   return { rise: z(720 - 4 * (CZX.lng + ha) - eq), set: z(720 - 4 * (CZX.lng - ha) - eq) };
 }
 // "How is this worked out?" (Gordon, 10 Oct): hover a dotted label for the criteria, or tap it on a phone.
-const OB_HELP = {
+// Texts follow the numbers in Settings, so the explanation always matches what the board does.
+function obHelp() {
+  const n = cfgN, L = k => cfgList(k).join(" / ");
+  return {
   sun: "Worked out for Cazaux from today's date (NOAA sun formula, about ±1 min): the moment the top of the sun crosses the horizon. Type a value under Edit board to override it.",
   rh: "Relative humidity from the METAR temperature and dewpoint (Magnus formula).",
-  icing: "Auto: YES when the temperature is below 6°C AND the humidity is above 50%. Otherwise NO. Ops can set YES or NO by hand; Refresh METARs puts it back to auto.",
-  sea: "Typed by ops from the FASF forecast. Yellow at 15.5°C or colder, green above. It also drives the immersion suit.",
+  icing: `Auto: YES when the temperature is below ${n("icing.t")}°C AND the humidity is above ${n("icing.rh")}%. Otherwise NO. Ops can set YES or NO by hand; Refresh METARs puts it back to auto.`,
+  sea: `Typed by ops from the FASF forecast. Yellow at ${n("sea.y")}°C or colder, green above. It also drives the immersion suit.`,
   wind: "Governing wind = the higher of the mean wind and the gust. Headwind (or tailwind) and crosswind are the parts of the governing wind along and across the runway in use.",
   windHazard: "Picked by ops. A = yellow, B = amber, C and D = red.",
-  canopy: "Available when the governing wind is below 50 kt AND both the headwind / tailwind and the crosswind are below 35 kt. Otherwise Not available. Ops can tap it to mark Not available; Refresh METARs puts it back to auto.",
-  apu1: "APU (A11–15): Not available when the temperature is below 1°C OR the crosswind against heading 280° is more than 14.9 kt. Otherwise Available. Ops can tap it to override; Refresh METARs puts it back to auto.",
-  apu2: "APU (A16–23): Not available when the temperature is below 1°C OR the crosswind against heading 315° is more than 14.9 kt. Otherwise Available. Ops can tap it to override; Refresh METARs puts it back to auto.",
+  canopy: `Available when the governing wind is below ${n("canopy.wind")} kt AND both the headwind / tailwind and the crosswind are below ${n("canopy.comp")} kt. Otherwise Not available. Ops can tap it to mark Not available; Refresh METARs puts it back to auto.`,
+  apu1: `APU (A11–15): Not available when the temperature is below ${n("apu.temp")}°C OR the crosswind against heading ${n("apu.h1")}° is more than ${n("apu.xw")} kt. Otherwise Available. Ops can tap it to override; Refresh METARs puts it back to auto.`,
+  apu2: `APU (A16–23): Not available when the temperature is below ${n("apu.temp")}°C OR the crosswind against heading ${n("apu.h2")}° is more than ${n("apu.xw")} kt. Otherwise Available. Ops can tap it to override; Refresh METARs puts it back to auto.`,
   parachute: "Number typed by ops. 0 = green, anything above 0 = red.",
   samar: "Typed by ops. Colour follows the first letter: G = green, Y = amber, R = red.",
-  immersion: "From the sea surface and air temperature: sea 16°C or warmer → NO. Sea below 15.5°C AND air below 22°C → YES. Anything else → NO. Shows - until the sea surface is filled in.",
-  bingo: "Auto from the Cazaux RSAF: Y2 → UPG BINGO, A1 → IFR BINGO, otherwise BINGO. Ops can pick one; the next Refresh METARs puts it back to auto.",
-  fasf: "FASF on Auto (default for LFBZ, LFSL, LFBE): the worse of visibility and cloud base. Visibility: 8 km+ B, 5 km+ W, 3 km+ G IFR, 1.6 km+ Y, 0.8 km+ A, below R. Cloud base (lowest BKN / OVC / VV, TEMPO and BECMG ignored): 2500 ft+ B, 1500+ W, 1000+ G VFR, 700+ G IFR, 300+ Y, 200+ A, below R. CAVOK = B. Elsewhere ops set it.",
-  rsaf: "RSAF on Auto: the worse of visibility and cloud base. Visibility: 10 km+ B, 8 km+ Y1, 6 km+ Y2, 3 km+ A1, 1 km+ A2, below R. Cloud base (lowest BKN / OVC / VV, TEMPO and BECMG ignored): 2500 ft+ B, 1500+ Y1, 1000+ Y2, 500+ A1, 300+ A2, below R. CAVOK = B. Refresh METARs sets every RSAF back to Auto.",
+  immersion: `From the sea surface and air temperature: sea ${n("imm.no")}°C or warmer → NO. Sea below ${n("imm.sea")}°C AND air below ${n("imm.air")}°C → YES. Anything else → NO. Shows - until the sea surface is filled in.`,
+  bingo: `Auto from the Cazaux RSAF: ${cfg("bingo.upg")} → UPG BINGO, ${cfg("bingo.ifr")} → IFR BINGO, otherwise BINGO. Ops can pick one; the next Refresh METARs puts it back to auto.`,
+  fasf: `FASF on Auto (default for LFBZ, LFSL, LFBE): the worse of visibility and cloud base. Visibility (km) for B / W / G IFR / Y / A: ${L("fasf.vis")}, below that R. Cloud base (ft; lowest BKN / OVC / VV, TEMPO and BECMG ignored) for B / W / G VFR / G IFR / Y / A: ${L("fasf.base")}, below that R. CAVOK = B. Elsewhere ops set it.`,
+  rsaf: `RSAF on Auto: the worse of visibility and cloud base. Visibility (km) for B / Y1 / Y2 / A1 / A2: ${L("rsaf.vis")}, below that R. Cloud base (ft; lowest BKN / OVC / VV, TEMPO and BECMG ignored) for B / Y1 / Y2 / A1 / A2: ${L("rsaf.base")}, below that R. CAVOK = B. Refresh METARs sets every RSAF back to Auto.`,
   wxvis: "From the latest METAR accepted at the last Refresh, unless ops typed an override. LFBD on RWY 05 adds ZONE TAMPON ACTIVE to its restrictions.",
   aids: "Tap an aid to cycle green → yellow → red. The LFBC CAT 1 LINE on auto is green when the Cazaux FASF is B or W, otherwise yellow.",
   rangewx: "Range weather as declared for R115. BLUE = good. WHITE n = visibility 8 km+. GREEN n = visibility 5–8 km. The number is the cloud base: 0 = 1000 ft, 1 = 1500 ft, 2 = 2000 ft, 3 = 3000 ft, 4 = 4000 ft and so on. YELLOW = visibility 1.5–5 km or base 200–1000 ft. RED = visibility below 1.5 km or base below 200 ft.",
-};
-const obH = (k, label) => `<span class="obhelp" data-obhelp="${k}" title="${esc(OB_HELP[k])}" tabindex="0">${label}</span>`;
+  };
+}
+const obH = (k, label) => `<span class="obhelp" data-obhelp="${k}" title="${esc(obHelp()[k])}" tabindex="0">${label}</span>`;
 document.addEventListener("click", e => {
   const pop = document.getElementById("obHelpPop"), h = e.target.closest(".obhelp");
   if (!h) { if (pop) pop.remove(); return; }
@@ -233,7 +240,7 @@ document.addEventListener("click", e => {
   if (pop) { const same = pop.dataset.k === h.dataset.obhelp; pop.remove(); if (same) return; }
   const r = h.getBoundingClientRect(), d = document.createElement("div");
   d.id = "obHelpPop"; d.className = "obhelpop"; d.dataset.k = h.dataset.obhelp;
-  d.innerHTML = `<b>${esc(h.textContent.trim())}</b><br>${esc(OB_HELP[h.dataset.obhelp] || "")}`;
+  d.innerHTML = `<b>${esc(h.textContent.trim())}</b><br>${esc(obHelp()[h.dataset.obhelp] || "")}<br><span class="hint">Numbers set on Operations → Settings.</span>`;
   document.body.appendChild(d);
   const w = d.offsetWidth, x = Math.max(8, Math.min(r.left, innerWidth - w - 8));
   d.style.left = x + "px"; d.style.top = (r.bottom + 6 + d.offsetHeight > innerHeight ? Math.max(8, r.top - d.offsetHeight - 6) : r.bottom + 6) + "px";
@@ -247,16 +254,19 @@ function obCzx() {
   const t = m ? obN(m.temp) : null, rh = m ? obRH(obN(m.temp), obN(m.dewp)) : null;
   const sea = obN(b.czx && b.czx.seaTemp);
   const auto = st => st === "" || st == null;
-  const apu = h => { const k = obComp(w, h); return t == null && !k ? "" : (t != null && t < 1) || (k && k.cross > 14.9) ? "r" : "g"; };
-  const canopy = !w ? "" : (w.gov < 50 && (!c || (Math.abs(c.head) < 35 && c.cross < 35))) ? "g" : "r";
+  // Thresholds come from Settings (Operations → Settings).
+  const apu = h => { const k = obComp(w, h); return t == null && !k ? "" : (t != null && t < cfgN("apu.temp")) || (k && k.cross > cfgN("apu.xw")) ? "r" : "g"; };
+  const cw = cfgN("canopy.wind"), cc = cfgN("canopy.comp");
+  const canopy = !w ? "" : (w.gov < cw && (!c || (Math.abs(c.head) < cc && c.cross < cc))) ? "g" : "r";
+  const icingA = t == null || rh == null ? "" : t < cfgN("icing.t") && rh > cfgN("icing.rh") ? "YES" : "NO";
   return {
     m, w, rwy, c, t, rh, qnh: m ? obN(m.altim) : null, sun: obSun(todayStr()),
-    icingAuto: t == null || rh == null ? "" : t < 6 && rh > 50 ? "YES" : "NO",
-    icing: (b.czx && b.czx.icing) || (t == null || rh == null ? "" : t < 6 && rh > 50 ? "YES" : "NO"), // ops can override (Gordon, 10 Oct)
-    immersion: sea == null ? "" : sea >= 16 ? "NO" : (sea < 15.5 && t != null && t < 22) ? "YES" : "NO",
+    icingAuto: icingA,
+    icing: (b.czx && b.czx.icing) || icingA, // ops can override (Gordon, 10 Oct)
+    immersion: sea == null ? "" : sea >= cfgN("imm.no") ? "NO" : (sea < cfgN("imm.sea") && t != null && t < cfgN("imm.air")) ? "YES" : "NO",
     canopy: auto(b.equip.canopy) ? canopy : b.equip.canopy,
-    apu1: auto(b.equip.apu1) ? apu(280) : b.equip.apu1,
-    apu2: auto(b.equip.apu2) ? apu(315) : b.equip.apu2,
+    apu1: auto(b.equip.apu1) ? apu(cfgN("apu.h1")) : b.equip.apu1,
+    apu2: auto(b.equip.apu2) ? apu(cfgN("apu.h2")) : b.equip.apu2,
   };
 }
 
@@ -332,11 +342,12 @@ const obValS = (val, s, booked) => s || (!String(val || "").trim() ? "" : booked
 const obHazS = v => ({ A: "y", B: "a", C: "r", D: "r" }[String(v || "").trim().toUpperCase()] || "");
 const obSamarS = v => ({ R: "r", Y: "a", G: "g" }[String(v || "").trim().charAt(0).toUpperCase()] || "");
 const obParaS = v => String(v ?? "").trim() === "" ? "" : +v > 0 ? "r" : "g";
-const obSeaS = v => obN(v) == null ? "" : obN(v) <= 15.5 ? "y" : "g";
+const obSeaS = v => obN(v) == null ? "" : obN(v) <= cfgN("sea.y") ? "y" : "g";
 // Bingo: worked out from CZX RSAF (Y2 → UPG BINGO, A1 → IFR BINGO, otherwise BINGO) unless ops picked one;
 // their pick stays until they change it or the next METAR Refresh puts it back to auto.
 function obBingo(b, czxR) {
-  const auto = czxR === "Y2" ? "UPG BINGO" : czxR === "A1" ? "IFR BINGO" : "BINGO";
+  const up = String(cfg("bingo.upg")).toUpperCase().trim(), ifr = String(cfg("bingo.ifr")).toUpperCase().trim();
+  const auto = czxR && czxR === up ? "UPG BINGO" : czxR && czxR === ifr ? "IFR BINGO" : "BINGO";
   return { auto, v: !b.bingo || b.bingo === "AUTO" ? auto : b.bingo === "NONE" ? "" : b.bingo };
 }
 // "AIRFIELD STATUS AS OF hhmm Z": the later of the last board change and the last METAR refresh.

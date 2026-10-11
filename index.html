@@ -391,8 +391,9 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 
 <div class="toast" id="toast" hidden></div>
 
-<script src="ops.js?v=46"></script>
-<script src="opsboard.js?v=54"></script>
+<script src="settings.js?v=3"></script>
+<script src="ops.js?v=47"></script>
+<script src="opsboard.js?v=55"></script>
 <script>
 /* =====================================================================
    SETUP: paste your Supabase Project URL and anon (public) key here.
@@ -637,12 +638,13 @@ function render() {
   else if (S.tab === "tv") renderTv(v);
   else if (S.tab === "flytv") renderFlyTv(v);
   else if (S.tab === "hours") renderHours(v);
+  else if (S.tab === "settings") renderSettings(v);
   else if (isUserAdmin()) renderAdmin(v); else renderRoster(v);
 }
 
 // Top-level areas (top bar) and their pages (sub-tabs).
-const AREA = { home: "home", board: "move", log: "move", vehicles: "move", ops: "ops", opsboard: "ops", gonogo: "ops", aircraft: "ops", tv: "ops", flytv: "ops", hours: "ops", roster: "admin" };
-const SUBTABS = { move: [["board", "Board"], ["log", "Log"], ["vehicles", "Vehicles"]], ops: [["opsboard", "Ops board"], ["ops", "Flying program"], ["gonogo", "Go / No-Go"], ["aircraft", "Aircraft"], ["hours", "Hours"]] };
+const AREA = { home: "home", board: "move", log: "move", vehicles: "move", ops: "ops", opsboard: "ops", gonogo: "ops", aircraft: "ops", tv: "ops", flytv: "ops", hours: "ops", settings: "ops", roster: "admin" };
+const SUBTABS = { move: [["board", "Board"], ["log", "Log"], ["vehicles", "Vehicles"]], ops: [["opsboard", "Ops board"], ["ops", "Flying program"], ["gonogo", "Go / No-Go"], ["aircraft", "Aircraft"], ["hours", "Hours"], ["settings", "Settings"]] };
 function renderHome(v) {
   const now = Date.now(), ob = openByTrainee(); let i = 0, o = 0, l = 0, lv = 0;
   for (const t of active()) { const m = ob[t.id]; if (leaveOf(t.id)) lv++; else if (!m || isPend(m)) i++; else if (isLate(m, now)) l++; else o++; }
@@ -695,7 +697,7 @@ function homeDash(hs) {
     // Next up: your next brief / step / take-off / sim / ground event / SXO-OPS O wave today, with a countdown.
     if (hs.any) {
       const nx = opsMyEvents(get).find(e => e.t >= nz);
-      if (nx) { const d = nx.t - nz; rows.push(`<div class="hdrow hdnext"><span class="hdk">Next up</span><span><b>${String(Math.floor(nx.t / 60)).padStart(2, "0")}${String(nx.t % 60).padStart(2, "0")}Z</b> ${nx.label} <span class="obpill ${d <= 30 ? "obst-a" : "obst-g"}">in ${d >= 60 ? Math.floor(d / 60) + "h " : ""}${d % 60}m</span></span><span></span></div>`); }
+      if (nx) { const d = nx.t - nz; rows.push(`<div class="hdrow hdnext"><span class="hdk">Next up</span><span><b>${String(Math.floor(nx.t / 60)).padStart(2, "0")}${String(nx.t % 60).padStart(2, "0")}Z</b> ${nx.label} <span class="obpill ${d <= cfgN("home.amber") ? "obst-a" : "obst-g"}">in ${d >= 60 ? Math.floor(d / 60) + "h " : ""}${d % 60}m</span></span><span></span></div>`); }
       const dut = opsMyDuties(get);
       if (dut.length) rows.push(`<div class="hdrow"><span class="hdk">Duty</span><span>${dut.map(x => `<span class="obpill obst-a">${esc(x)}</span>`).join(" ")}</span><a href="#" data-tab="ops" class="hdgo">Programme ›</a></div>`);
     }

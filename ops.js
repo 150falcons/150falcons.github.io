@@ -197,7 +197,8 @@ function opsPrevOut(groupName, name) {
 // ground event / start of a wave they're SXO or OPS O for. Out = the latest of: flights and sims 2 h after landing /
 // sim end; SXO = the wave's last landing; OPS O = the wave's last landing + 30 min; ground events = their end time
 // (type the time as a range, e.g. 0900-1000Z; a single time counts as its start).
-const OPS_OUT = { fly: 120, sim: 120, sxo: 0, opsO: 30 };
+// Offsets come from Settings (duty.fly / duty.sim / duty.sxo / duty.opso).
+const OPS_OUT = { get fly() { return cfgN("duty.fly"); }, get sim() { return cfgN("duty.sim"); }, get sxo() { return cfgN("duty.sxo"); }, get opsO() { return cfgN("duty.opso"); } };
 function opsAutoInOut(name, get) {
   const n = opsNorm(name), st = [], en = [];
   if (!n) return { in: "", out: "" };
@@ -332,16 +333,16 @@ for (const ev of ["wheel", "touchstart", "mousedown"]) addEventListener(ev, e =>
 addEventListener("keydown", e => { if (S.tab === "flytv" && !(e.target.matches && e.target.matches("select"))) for (const p of Object.values(TVPANE.st)) { p.user = Date.now() + 20000; p.pos = null; } });
 // TV shows about 3 waves (Gordon, 10 Oct): empty waves are left out; from the first wave not yet finished, 3 waves
 // (or the last 3 once the day is nearly over). Line numbers carry on from the hidden earlier waves.
-const OPS_TV_WAVES = 3;
+const opsTvWaves = () => Math.max(1, Math.round(cfgN("tv.waves")));
 function opsFlyTvWaves(fl) {
   const all = opsNameWaves(JSON.parse(JSON.stringify(fl))).waves || [];
   const used = all.filter(w => (w.flights || []).some(f => (f.ac || []).some(opsLineUsed)));
   const wins = opsWindows({ waves: used }), d = new Date(), now = d.getUTCHours() * 60 + d.getUTCMinutes();
   let i = wins.findIndex(x => x.e == null || x.e >= now); if (i < 0) i = used.length;
-  i = Math.max(0, Math.min(i, used.length - OPS_TV_WAVES));
-  const shown = used.slice(i, i + OPS_TV_WAVES);
+  const NW = opsTvWaves(); i = Math.max(0, Math.min(i, used.length - NW));
+  const shown = used.slice(i, i + NW);
   let n0 = 0; for (const w of used.slice(0, i)) for (const f of w.flights || []) for (const a of f.ac || []) if (!opsIsAdd(f, a) && opsLineUsed(a)) n0++;
-  const before = used.slice(0, i).map(w => w.name), after = used.slice(i + OPS_TV_WAVES).map(w => w.name);
+  const before = used.slice(0, i).map(w => w.name), after = used.slice(i + NW).map(w => w.name);
   const note = [before.length ? `Done: ${before.join(", ")}` : "", after.length ? `Later: ${after.join(", ")}` : ""].filter(Boolean).join(" · ");
   return { fl: { ...fl, waves: shown }, n0, note, more: used.length > shown.length, all: { ...fl, waves: used } };
 }
@@ -759,7 +760,7 @@ const opsEd = {
           ${(f.ac || []).map((a, ai) => { const q = `${p}.ac.${ai}`; return `<tr><td>${oI(q + ".n", a.n, "40px")}</td><td>${oP(q + ".crew1", a.crew1, "120px")}</td><td>${oP(q + ".crew2", a.crew2, "120px")}</td><td>${oI(q + ".mission", a.mission, "110px")}</td><td>${oI(q + ".tail", a.tail, "60px")}</td><td>${oI(q + ".config", a.config, "60px")}</td><td>${oI(q + ".rmks", a.rmks, "200px")}</td><td>${oC(q + ".opsAdd", a.opsAdd, "Ops add")}</td><td>${oB("del", p + ".ac", ai, "✕", "", "Remove aircraft")}</td></tr>`; }).join("")}
         </tbody></table></div>${oB("add", p + ".ac", "", "+ Aircraft", "ac")}</div>`; }).join("")}
       <div class="tools">${oB("add", `waves.${wi}.flights`, "", "+ Flight", "flight")}</div></div>`).join("")
-      + `<div class="tools">${oB("add", "waves", "", "+ Wave", "wave")}${oB("add", "waves", "", "+ Night wave", "nwave")}</div>` + `<p class="hint"><b>Key in the ETD first:</b> ETA (ETD + 1 h), step (ETD − 1 h) and brief (step − 45 min) fill in by themselves (shown in grey). Type over any of them to match the ops or WX / NOTAM brief; clear a box to go back to the worked-out time. Times as 0725 (Zulu). Tick "Ops add" on the flight (whole flight) or on one aircraft line (e.g. #1 ops add): they show as * and don't count in planned sorties or hours.</p>`;
+      + `<div class="tools">${oB("add", "waves", "", "+ Wave", "wave")}${oB("add", "waves", "", "+ Night wave", "nwave")}</div>` + `<p class="hint"><b>Key in the ETD first:</b> ETA (ETD + ${cfgN("fly.eta")} min), step (ETD − ${cfgN("fly.step")} min) and brief (step − ${cfgN("fly.brief")} min) fill in by themselves (shown in grey). Type over any of them to match the ops or WX / NOTAM brief; clear a box to go back to the worked-out time. Times as 0725 (Zulu). Tick "Ops add" on the flight (whole flight) or on one aircraft line (e.g. #1 ops add): they show as * and don't count in planned sorties or hours.</p>`;
   },
   sim(sim) {
     return (sim.rows || []).map((s, si) => { const p = `rows.${si}`; return `<div class="blk flt"><div class="tablewrap">
@@ -805,9 +806,10 @@ const opsEd = {
 };
 // Flight times worked out from the ETD (Gordon, 10 Oct): ETA = ETD + 1 h, step = ETD − 1 h, brief = step − 45 min.
 // A typed value overrides (f.man[k] = true); clearing the box goes back to the worked-out time.
-const OPS_AUTO_T = ["eta", "step", "brief"], OPS_AUTO_OFF = { eta: 60, step: -60, brief: -105 };
+const OPS_AUTO_T = ["eta", "step", "brief"]; // offsets from the ETD come from Settings (fly.eta / fly.step / fly.brief)
+const opsAutoOff = () => ({ eta: cfgN("fly.eta"), step: -cfgN("fly.step"), brief: -(cfgN("fly.step") + cfgN("fly.brief")) });
 const opsZ4 = m => { m = ((m % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, "0") + String(m % 60).padStart(2, "0"); };
-const opsAutoT = (f, k) => { const e = opsMin(f.etd); return e == null ? "" : opsZ4(e + OPS_AUTO_OFF[k]); };
+const opsAutoT = (f, k) => { const e = opsMin(f.etd); return e == null ? "" : opsZ4(e + opsAutoOff()[k]); };
 // Older flights have no f.man: a filled time that differs from the worked-out one counts as typed.
 const opsIsMan = (f, k) => f.man ? !!f.man[k] : !!String(f[k] || "").trim() && f[k] !== opsAutoT(f, k);
 function opsAutoIn(p, f, k) {
