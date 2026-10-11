@@ -111,6 +111,7 @@ tr:last-child td{border-bottom:0}
 .tag.open{background:color-mix(in srgb,var(--out) 18%,transparent);color:var(--ink)}
 
 .roster{display:grid;grid-template-columns:1fr;gap:16px}
+.admgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}.admgrid>.stack{min-width:0}
 @media (min-width:760px){.roster{grid-template-columns:1.3fr 1fr}}
 .card{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:14px}
 .card h2{font:700 1.3rem var(--cond);margin:0 0 8px}
@@ -1480,22 +1481,22 @@ function renderAdmin(v) {
 
   const opsAsst = S.profiles.filter(isOpsAssistant);
   const engs = opsAsst.filter(p => p.staff_role === "ENG"), perm = opsAsst.filter(p => p.staff_role !== "ENG");
-  v.innerHTML = `<div class="roster">
-    <div class="card"><h2>Current trainees (${cur.length})</h2>${list ? `<ul class="rlist">${list}</ul>` : `<p class="hint">No trainees yet. Post in your course on the right.</p>`}</div>
-    <div class="stack">
-      ${myAccountCard()}
-      <div class="card"><h2>Post in trainees</h2>
+  v.innerHTML = `<div class="admgrid" id="admGrid">
+    <div class="card" data-adm="trainees"><h2>Current trainees (${cur.length})</h2>${list ? `<ul class="rlist">${list}</ul>` : `<p class="hint">No trainees yet. Post in your course under Post in trainees.</p>`}</div>
+      <div data-adm="me">${myAccountCard()}</div>
+      <div class="card" data-adm="postin"><h2>Post in trainees</h2>
         <p class="hint">One per line: name, course, handphone, username. Handphone and username are optional, e.g. <em>TAN WEI MING, Course 24, +33 612345678, tanwm</em>. Leave it out and one is made from the name. Add <em>non-driver</em> to the line for trainees who can't drive.</p>
         <textarea id="addList" placeholder="LIM J, Course 24, limj&#10;ONG K, Course 24, non-driver"></textarea>
         <label style="margin-top:8px">Temporary password for new logins<input id="tmpPw" value="${esc(S.defPw || "")}" placeholder="Standard password"></label>
         <div style="display:flex;justify-content:flex-end"><button class="btn primary" id="btnAdd">Post in</button></div>
         <p class="hint">Every trainee gets a login straight away. They sign in with their username and the temporary password, then must set their own password.</p></div>
-      <div class="card"><h2>Perm staff (${admins.length + perm.length})</h2><ul class="rlist">
+      <div class="card" data-adm="staff"><h2>Perm staff (${admins.length + perm.length})</h2><ul class="rlist">
         <li class="chead">QFI<span>${qfis.length}</span></li>${alist}${fics.length ? `<li class="chead">FIC (instructor course)<span>${fics.length}</span></li>${fics.map(qrow).join("")}` : ""}
         ${["ST", "CEN", "AOSX", "ATCO"].map(t => { const g = t === "CEN" ? [...perm.filter(p => p.staff_role === "HD CEN"), ...perm.filter(p => p.staff_role === "CEN")] : perm.filter(p => (p.staff_role || "AOSX") === t), cc = t === "CEN" ? ccs : []; return g.length + cc.length ? `<li class="chead">${t === "ST" ? "ST Tow" : t}<span>${g.length + cc.length}</span></li>${cc.map(qrow).join("")}${g.map(staffRow).join("")}` : ""; }).join("")}</ul>
         <p class="hint" style="margin-top:10px">Use ▲ ▼ to set the QFIs in order of seniority; every list of aircrew (Hours, Go / No-Go, Duties) follows this order. QFI are instructors (the CO, DYCO and OCs approve travel; under Edit, tick "Can edit the ops board" and / or "Can edit the flying program" for anyone else who should). The AOSX gets both by default. ST Tow, CEN and ATCO can view everything unless ticked.</p>
         <p class="hint">Only account admins see this Admin tab and can add, remove or reset logins and change anyone's rights. To make another QFI an account admin, tap Edit and tick "Account admin". Everyone else gets an Account tab to change their own details and password.</p>
-        <p class="hint" style="margin-top:10px">Add perm staff:</p>
+        </div>
+      <div class="card" data-adm="addstaff"><h2>Add perm staff</h2>
         <label>Type<select id="psType"><option value="QFI">QFI (instructor)</option><option value="FIC">FIC (flying instructor course)</option><option value="ST">ST Tow</option><option value="HD CEN">HD CEN (head of CEN)</option><option value="CEN">CEN (contracts &amp; squadron logistics)</option><option value="AOSX">AOSX (ops assistant)</option><option value="ATCO">ATCO (air traffic controller)</option></select></label>
         <label>Name (as on the flying lines)<input id="iName" maxlength="60" placeholder="e.g. LEE G"></label>
         <div id="psQfi"><label>Callsign (leave blank if none)<input id="iCall" maxlength="30" placeholder="e.g. Brut"></label>
@@ -1505,16 +1506,17 @@ function renderAdmin(v) {
         <div id="psSt" hidden><span class="hint">Qualifications</span><div><label class="opschk" style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;color:var(--ink)"><input type="checkbox" id="iQTOW" style="width:auto;margin:0">TOW</label><label class="opschk" style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;color:var(--ink)"><input type="checkbox" id="iQFCF" style="width:auto;margin:0">FCF</label></div></div>
         <label>Username<input id="iEmail" autocapitalize="none" placeholder="e.g. tanjh"></label>
         <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddAdmin">Add perm staff</button></div></div>
-      <div class="card"><h2>Engineers (${engs.length})</h2>
+      <div class="card" data-adm="eng"><h2>Engineers (${engs.length})</h2>
         ${engs.length ? `<ul class="rlist">${engs.map(staffRow).join("")}</ul>` : ""}
         <p class="hint" style="margin-top:6px">Engineers edit aircraft status only.</p>
         <label>Name<input id="oaName" maxlength="60" placeholder="e.g. ENG TAN"></label>
         <label>Username<input id="oaUser" autocapitalize="none" placeholder="e.g. engtan"></label>
         <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddOps">Add engineer</button></div></div>
-      ${telegramCard()}
-      <div class="card"><h2>Posted out (${gone.length})</h2>
+      <div data-adm="tg">${telegramCard()}</div>
+      <div class="card" data-adm="gone"><h2>Posted out (${gone.length})</h2>
         ${glist ? `<ul class="rlist">${glist}</ul><p class="hint">Their past movements stay in the log.</p>` : `<p class="hint">Trainees you post out appear here. Their login is disabled and their history is kept.</p>`}</div>
-    </div></div>`;
+    </div>`;
+  admLayout(true);
   $("#btnAdd").onclick = postIn;
   $("#btnAddAdmin").onclick = () => ["QFI", "FIC"].includes($("#psType").value) ? addInstructor($("#psType").value) : addStaff($("#psType").value, $("#iName"), $("#iEmail"));
   // Fill in the standard temporary password (fetched from the server so it isn't written in this public page).
@@ -1523,6 +1525,35 @@ function renderAdmin(v) {
   $("#psType").onchange = () => { $("#psQfi").hidden = !["QFI", "FIC"].includes($("#psType").value); $("#psSt").hidden = $("#psType").value !== "ST"; };
   wireMyAccount(); wireTelegram();
 }
+// Admin page cards in balanced columns (Gordon, 11 Oct "lob sided"): 1 column on phones, 2 from 760px, 3 from 1400px.
+// Each width has a few sensible arrangements (trainee cards together, staff cards together); the one with the shortest
+// tallest column is kept. Cards are moved, not re-drawn, so typing in a box isn't lost on resize.
+const ADM_PLANS = {
+  1: [[["trainees", "me", "postin", "staff", "addstaff", "eng", "tg", "gone"]]],
+  2: [[["trainees", "postin", "gone", "eng", "tg"], ["me", "staff", "addstaff"]],
+      [["trainees", "postin", "gone"], ["me", "staff", "addstaff", "eng", "tg"]],
+      [["trainees", "postin", "gone", "addstaff", "eng", "tg"], ["me", "staff"]],
+      [["trainees", "postin", "gone", "me"], ["staff", "addstaff", "eng", "tg"]],
+      [["trainees", "gone"], ["me", "postin", "staff", "addstaff", "eng", "tg"]]],
+  3: [[["trainees", "postin", "gone"], ["staff"], ["me", "addstaff", "eng", "tg"]],
+      [["trainees", "postin", "gone"], ["staff", "eng", "tg"], ["me", "addstaff"]],
+      [["trainees", "postin", "gone", "tg"], ["staff", "eng"], ["me", "addstaff"]],
+      [["trainees", "gone"], ["staff"], ["me", "postin", "addstaff", "eng", "tg"]],
+      [["trainees", "gone"], ["staff", "eng"], ["me", "postin", "addstaff", "tg"]],
+      [["trainees"], ["staff"], ["me", "postin", "addstaff", "eng", "tg", "gone"]]],
+};
+function admLayout(force) {
+  const g = document.getElementById("admGrid"); if (!g) return;
+  const n = innerWidth >= 1400 ? 3 : innerWidth >= 760 ? 2 : 1;
+  if (!force && g.dataset.n == n) return;
+  const cards = {}; g.querySelectorAll("[data-adm]").forEach(c => cards[c.dataset.adm] = c);
+  g.dataset.n = n; g.style.gridTemplateColumns = `repeat(${n}, minmax(0, 1fr))`;
+  const apply = plan => { g.replaceChildren(...plan.map(keys => { const c = document.createElement("div"); c.className = "stack"; keys.forEach(k => cards[k] && c.appendChild(cards[k])); return c; })); return Math.max(...[...g.children].map(c => c.offsetHeight)); };
+  let best = null, bh = Infinity;
+  for (const plan of ADM_PLANS[n]) { const h = apply(plan); if (h < bh - 1) { bh = h; best = plan; } }
+  apply(best);
+}
+window.addEventListener("resize", () => { clearTimeout(admLayout.t); admLayout.t = setTimeout(() => admLayout(), 150); });
 const telegramCard = () => `<div class="card"><h2>Telegram</h2>
         ${isOC() ? `<p class="hint">Get travel requests in your own Telegram and approve or reject them there. <span id="tgLinkState"></span></p>
         <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn primary" data-act="tglink">Link Telegram</button></div>` : ""}
