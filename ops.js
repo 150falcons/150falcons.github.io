@@ -397,16 +397,34 @@ function opsLogCard() {
           <td><input data-log="ldg" data-k="${key}" value="${esc(L.ldg || "")}" placeholder="${esc(f.eta || "LDG")}" inputmode="numeric" maxlength="5" aria-label="Landing"></td>
           <td class="lghrs" data-hrs="${key}">${m != null ? opsHrs(m) : ""}</td>
           <td><input data-instr="${key}" class="${typeof L.instr === "number" ? "lgset" : ""}" value="${typeof L.instr === "number" ? opsHrs(L.instr) : ""}" placeholder="${m != null ? opsHrs(auto[key] || 0) : ""}" inputmode="decimal" maxlength="4" ${m == null ? "disabled" : ""} aria-label="Instructional hours" title="Worked out from who flew with whom; type to change (0 = none), clear to go back to the worked-out figure"></td>
+          <td class="lgif">${[a.crew1, a.crew2].filter(n => opsNorm(n)).map(n => { const v = ((L.if || {})[opsNorm(n)] || []), dis = m == null ? "disabled" : "";
+            return `<span class="lgifp"><small>${esc(opsNorm(n))}</small><input data-if="${key}|${esc(opsNorm(n))}|0" value="${esc(v[0] ?? "")}" placeholder="IF h" inputmode="decimal" ${dis} aria-label="IF hours ${esc(n)}"><input data-if="${key}|${esc(opsNorm(n))}|1" value="${esc(v[1] ?? "")}" placeholder="P" inputmode="numeric" ${dis} aria-label="Precision approaches ${esc(n)}"><input data-if="${key}|${esc(opsNorm(n))}|2" value="${esc(v[2] ?? "")}" placeholder="NP" inputmode="numeric" ${dis} aria-label="Non-precision approaches ${esc(n)}"></span>`; }).join("")}</td>
           <td class="lgbtn">${opsIpsMission(a) ? `<span class="tag nd" title="Mission says IPS: no instructional hours">IPS</span>` : `<button class="btn small${L.st === "ips" ? " primary" : ""}" data-ops="logips" data-k="${key}" title="Instructor proficiency sortie: flown, but no instructional hours">IPS</button>`}<button class="btn small${L.st === "cx" ? " danger" : ""}" data-ops="logcx" data-k="${key}" title="Cancelled: no hours">CX</button>${L.st ? `<button class="btn small" data-ops="logclr" data-k="${key}" title="Clear">✕</button>` : ""}</td></tr>`;
       });
     });
-    if (wr) rows += `<tr class="lgwv"><td colspan="7">${esc(w.name)}</td></tr>` + wr;
+    if (wr) rows += `<tr class="lgwv"><td colspan="8">${esc(w.name)}</td></tr>` + wr;
   });
   return `<section class="card opscard" id="ops-log"><div class="opshead"><h2>Flown times</h2><span class="opsmeta">${logged} of ${lines} lines logged · ${opsHrs(mins) || "0.0"} h flown <button class="btn small primary" data-ops="log">Done logging</button></span></div>
-    <div class="tablewrap"><table class="opst opslog"><thead><tr><th>Flight</th><th>Aircrew</th><th>T/O (Z)</th><th>LDG (Z)</th><th>Hrs</th><th title="Instructional hours, for the Hours stats only">Instr h</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="hint" style="margin:6px 0 0">After landing, key in the actual take-off and landing times (Z, e.g. 0718). <b>✓ As planned</b> fills in the planned ETD / ETA for the whole flight; type over any that differ. <b>CX</b> = cancelled (no hours). <b>IPS</b> = flown as an instructor proficiency sortie: hours count, but no instructional hours (missions named IPS count as IPS by themselves). Both crew on a line get the hours; they add up on the <b>Hours</b> tab. <b>Instr h</b> = instructional hours for the Hours stats, worked out from who flew with whom (grey); type over it if it's wrong (0 = none), clear it to go back to the worked-out figure.</p>
+    <div class="tablewrap"><table class="opst opslog"><thead><tr><th>Flight</th><th>Aircrew</th><th>T/O (Z)</th><th>LDG (Z)</th><th>Hrs</th><th title="Instructional hours, for the Hours stats only">Instr h</th><th title="Instrument flying for the Currencies IF monitoring (per person: IF hours, precision and non-precision approaches)">IF h · P · NP</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="hint" style="margin:6px 0 0">After landing, key in the actual take-off and landing times (Z, e.g. 0718). <b>✓ As planned</b> fills in the planned ETD / ETA for the whole flight; type over any that differ. <b>CX</b> = cancelled (no hours). <b>IPS</b> = flown as an instructor proficiency sortie: hours count, but no instructional hours (missions named IPS count as IPS by themselves). Both crew on a line get the hours; they add up on the <b>Hours</b> tab. <b>Instr h</b> = instructional hours for the Hours stats, worked out from who flew with whom (grey); type over it if it's wrong (0 = none), clear it to go back to the worked-out figure. <b>IF h · P · NP</b> = instrument flying hours and precision / non-precision approaches for each person on the line (leave blank if none); the Currencies tab adds them up for the 3-month IF monitoring.</p>
     <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn primary" data-ops="log">Done logging</button></div></section>`;
 }
+// IF hours and approaches per person on a line (Gordon, 11 Oct: keyed once, here; the Currencies IF monitoring adds them up).
+// Saved as log.if = { NAME: [hours, P, NP] } through ops_log_if.
+document.addEventListener("change", async e => {
+  const el = e.target, d = el.dataset && el.dataset.if; if (!d) return;
+  const key = d.split("|")[0], line = opsLogLine(key), out = {};
+  for (const i of document.querySelectorAll(`[data-if^="${key}|"]`)) {
+    const [, n, k] = i.dataset.if.split("|"), v = i.value.trim().replace(",", ".");
+    if (v !== "" && !(Number(v) >= 0)) { toast("IF hours and approaches are numbers, e.g. 0.3 and 1."); return; }
+    if (v !== "" && Number(v) > 0) { (out[n] ||= [0, 0, 0])[k] = Number(v); }
+  }
+  const [w, f, a] = key.split(".").map(Number);
+  const { data, error } = await S.sb.rpc("ops_log_if", { p_day: OPS.day, p_w: w, p_f: f, p_a: a, p_crew1: line.crew1 || "", p_if: Object.keys(out).length ? out : null });
+  if (error) { toast(errMsg(error)); if (/changed|no longer/i.test(error.message)) opsLoad(OPS.day); return; }
+  if (line.log) { if (Object.keys(out).length) line.log.if = out; else delete line.log.if; }
+  OPS.rows.flying.version = data; OPS.hrs = null;
+});
 // Worked-out instructional minutes per line (key w.f.a) for the day being logged, before any ops override.
 function opsInstrAuto() { const o = {}; for (const e of hrsEntries([{ day: OPS.day, data: (OPS.rows.flying || {}).data || {} }])) o[e.k] = (o[e.k] || 0) + e.auto; return o; }
 // After a time changes, refresh every line's worked-out figure (a solo trainee's landing changes the lead's) and enable / disable the boxes.
@@ -427,13 +445,14 @@ async function opsLogSave(k, to, ldg, st, rerender) {
   const [w, f, a] = k.split(".").map(Number), line = opsLogLine(k);
   const { data, error } = await S.sb.rpc("ops_log_flight", { p_day: OPS.day, p_w: w, p_f: f, p_a: a, p_crew1: line.crew1 || "", p_to: to || null, p_ldg: ldg || null, p_status: st });
   if (error) { toast(errMsg(error)); if (/changed|no longer/i.test(error.message)) opsLoad(OPS.day); return false; }
-  if (!st && !to && !ldg) delete line.log; else line.log = { to: to || null, ldg: ldg || null, st, ...(line.log && typeof line.log.instr === "number" ? { instr: line.log.instr } : {}) };
+  if (!st && !to && !ldg) delete line.log; else line.log = { to: to || null, ldg: ldg || null, st, ...(line.log && typeof line.log.instr === "number" ? { instr: line.log.instr } : {}), ...(line.log && line.log.if ? { if: line.log.if } : {}) };
   OPS.rows.flying.version = data; OPS.hrs = null;
   if (rerender) { const y = scrollY; renderOps($("#view")); scrollTo(0, y); }
   else { // update the row in place so typing carries on
     const m = opsLogMins(line.log), cell = document.querySelector(`[data-hrs="${k}"]`); if (cell) cell.textContent = m != null ? opsHrs(m) : "";
     const tr = cell && cell.closest("tr"); if (tr) { tr.classList.toggle("lgok", st === "flown" || st === "ips"); tr.classList.toggle("lgcx", st === "cx"); }
     opsInstrRefresh();
+    document.querySelectorAll(`[data-if^="${k}|"]`).forEach(i => i.disabled = opsLogMins(line.log) == null);
   }
   return true;
 }
@@ -1291,7 +1310,7 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .opslog td small{display:block;color:var(--muted);font-size:.75rem}
 .opslog td.lgcs{white-space:nowrap}.opslog td.lgcs .btn{margin-top:4px}
 .opslog input{width:72px;margin:0;padding:4px 6px;font-variant-numeric:tabular-nums}
-.opslog input[data-instr]{width:58px}.opslog input.lgset{border-color:var(--out)}.opslog input[data-instr]::placeholder{font-style:italic}
+.opslog input[data-instr]{width:58px}.opslog td.lgif{white-space:nowrap}.lgifp{display:flex;align-items:center;gap:3px;margin:1px 0}.lgifp small{width:62px;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:.7rem}.opslog .lgifp input{width:44px;padding:3px 4px}.opslog input.lgset{border-color:var(--out)}.opslog input[data-instr]::placeholder{font-style:italic}
 .opslog td.lghrs{font-weight:700;font-variant-numeric:tabular-nums;min-width:40px}
 .opslog td.lgbtn{white-space:nowrap}.opslog td.lgbtn .btn{margin-left:4px}
 .opslog tr.lgf td{border-top:2px solid var(--line)}

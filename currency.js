@@ -14,6 +14,8 @@ const CUR_RULES = [
   "Trainee solo currency: last solo + 2 days (MOD 1–3), + 3 (MOD 4–6), + 4 (MOD 7+).",
   "Non-syllabus flying days (since last syllabus / DCO sortie): 8–13 optional flex, 14–30 flex, 31–59 2 × flex, 60+ flex package.",
   "Medical: blank = GO; anything typed (e.g. MC till 20 Oct) = NO GO.",
+  "Hours limits: hours left = limit − hours flown in the last 24 h, 48 h, 7 days, 30 days, 3 months and 12 months (limits in Settings; trainees and WSO trainees have their own).",
+  "IF monitoring: IF hours, precision (P) and non-precision (NP) approaches in the last 91 days, keyed per person in Log flown times. Days without IF approach count from the last sortie with a P or NP approach.",
   "Last flown, night and FCF dates fill in by themselves from Log flown times (front seat for trainees, back seat for WSO trainees). Type a date under Records only to correct one; clearing it goes back to automatic.",
 ];
 const CUR = { view: "board", edit: null };
@@ -35,15 +37,63 @@ function curFlown() {
     if (!OPS.hrsLoading) { OPS.hrsLoading = true; S.sb.from("ops_sections").select("day,data").eq("section", "flying").order("day").then(({ data, error }) => { OPS.hrsLoading = false; if (error) return toast(errMsg(error)); OPS.hrs = { days: data || [] }; if (S.tab === "cur") render(); }); }
     return null;
   }
-  const o = {};
+  const o = {}, h = curHist();
+  // Excel history (up to h.upTo) first: hours per day and IF per day; the board's logs take over after that date.
+  for (const [n, days] of Object.entries(h.hrs)) { const p = o[n] || (o[n] = { sorties: [], ifs: [] }); for (const [d, x] of days) p.sorties.push({ day: d, mins: Math.round(x * 60), hist: true }); }
+  for (const [n, days] of Object.entries(h.if)) { const p = o[n] || (o[n] = { sorties: [], ifs: [] }); for (const [d, v] of days) { p.ifs.push([d, ...v]); if (v[1] + v[2] > 0) p.ifapp = cuMax(p.ifapp, d); } }
+  for (const r of OPS.hrs.days) if (r.day > h.upTo) opsNameWaves(opsClone(r.data || {})).waves?.forEach(w => (w.flights || []).forEach(f => (f.ac || []).forEach(a => {
+    const L = a.log; if (!L || !L.if || opsLogMins(L) == null) return;
+    for (const [n, v] of Object.entries(L.if)) { const p = o[n] || (o[n] = { sorties: [], ifs: [] }); p.ifs.push([r.day, +v[0] || 0, +v[1] || 0, +v[2] || 0]); if ((+v[1] || 0) + (+v[2] || 0) > 0) p.ifapp = cuMax(p.ifapp, r.day); }
+  })));
   for (const e of hrsEntries(OPS.hrs.days)) {
-    const p = o[e.name] || (o[e.name] = {});
+    const p = o[e.name] || (o[e.name] = { sorties: [], ifs: [] });
+    if (e.day > h.upTo) p.sorties.push({ day: e.day, mins: e.mins, to: e.to, ldg: e.ldg });
     p.any = cuMax(p.any, e.day);
     if (e.seat === "Front") p.front = cuMax(p.front, e.day); else p.back = cuMax(p.back, e.day);
     if (e.night) p.night = cuMax(p.night, e.day);
     if (/FCF/i.test(e.mission || "")) p.fcf = cuMax(p.fcf, e.day);
   }
   return o;
+}
+// Excel history (ops_state 'curhist', imported 11 Oct): "offset:hours" / "offset:h:p:np" strings from base date.
+let CUR_H = null;
+function curHist() {
+  const r = typeof OB !== "undefined" && OB.state && OB.state.curhist; if (!r || !r.data) return { upTo: "0000", hrs: {}, if: {} };
+  if (CUR_H && CUR_H.v === r.version) return CUR_H.h;
+  const d = r.data, parse = str => String(str || "").split(" ").filter(Boolean).map(t => { const [o, ...v] = t.split(":"); return [cuAdd(d.base, +o), v.map(Number)]; });
+  const h = { upTo: d.upTo || "0000", hrs: {}, if: {} };
+  for (const [n, v] of Object.entries(d.hrs || {})) h.hrs[opsNorm(n)] = parse(v).map(([dd, x]) => [dd, x[0]]);
+  for (const [n, v] of Object.entries(d.if || {})) h.if[opsNorm(n)] = parse(v);
+  CUR_H = { v: r.version, h }; return h;
+}
+// Hours flown in a window ending now: 24 h / 48 h use the logged take-off and landing times (Z); longer windows count whole days
+// including today (7, 30, 90 and 365 days), like the Excel's HRS MONITORING.
+const CUR_WIN = [["24 h", "h", 24], ["48 h", "h", 48], ["7 days", "d", 7], ["30 days", "d", 30], ["3 months", "d", 90], ["12 months", "d", 365]];
+function curFlownIn(x, win) {
+  const [, kind, n] = win, today = todayStr(), list = (x.fl || {}).sorties || [];
+  if (kind === "h") {
+    const now = Date.now(), from = now - n * 36e5; let m = 0;
+    for (const s of list) {
+      const day = cuD(s.day), l = opsMin(s.ldg);
+      const end = day + (l != null ? l : 12 * 60) * 6e4 + (l != null && opsMin(s.to) != null && opsMin(s.to) > l ? 864e5 : 0), start = end - s.mins * 6e4;
+      m += Math.max(0, Math.min(end, now) - Math.max(start, from)) / 6e4;
+    }
+    return m / 60;
+  }
+  const since = cuAdd(today, -(n - 1));
+  return list.filter(s => s.day >= since && s.day <= today).reduce((a, s) => a + s.mins, 0) / 60;
+}
+const curLimits = grp => cfgList(grp === "TR" || grp === "WSO" ? "lim.tr" : "lim.qfi");
+function curLeftCell(left) {
+  const [y, o, r] = cfgList("lim.warn");
+  const c = left < 0 ? "bad" : left <= r ? "bad" : left <= o ? "orange" : left <= y ? "warn" : "ok";
+  return c;
+}
+// IF monitoring: IF hours, precision and non-precision approaches in the last 91 days (Excel: TODAY()-91).
+function curIf(x) {
+  const since = cuAdd(todayStr(), -91), t = [0, 0, 0];
+  for (const [d, h, p, np] of (x.fl || {}).ifs || []) if (d >= since) { t[0] += h; t[1] += p; t[2] += np; }
+  return t;
 }
 // Everyone to show, by group: from the logins and roster first, then records with no login (kept in their recorded group).
 function curPeople() {
@@ -80,10 +130,10 @@ function curFlex(days) {
 }
 // Dates the board works out from logged sorties (per group: field → which logged date). A typed date overrides it;
 // the Excel's dates sit in rec.seed as a starting point only (the later of seed and logged is used).
-const CUR_AUTO = { QFI: { last: "any", night: "night" }, ST: { last: "any", fcf: "fcf" }, FIC: { "fic.last": "front", "fic.lastBack": "back" }, PGF: { last: "any" }, TR: { last: "front" }, WSO: { last: "back" } };
+const CUR_AUTO = { QFI: { last: "any", night: "night" }, ST: { last: "any", fcf: "fcf" }, FIC: { "fic.last": "front", "fic.lastBack": "back" }, PGF: { last: "any", ifApp: "ifapp" }, TR: { last: "front", ifApp: "ifapp" }, WSO: { last: "back" } };
 function curV(x, k, grp) {
   const ov = k.split(".").reduce((o, p) => o && o[p], x.rec);
-  const auto = cuMax((x.rec.seed || {})[k], (x.fl || {})[(CUR_AUTO[grp || x.grp] || {})[k] || ({ last: "any", night: "night", fcf: "fcf", "fic.last": "front", "fic.lastBack": "back" })[k]]);
+  const auto = cuMax((x.rec.seed || {})[k], (x.fl || {})[(CUR_AUTO[grp || x.grp] || {})[k] || ({ last: "any", night: "night", fcf: "fcf", "fic.last": "front", "fic.lastBack": "back", ifApp: "ifapp" })[k]]);
   return ov ? { v: ov, set: true, auto } : { v: auto, set: false, auto };
 }
 const curVv = (x, k) => curV(x, k).v;
@@ -94,6 +144,8 @@ function curCols(grp) {
   const lastF = x => curVv(x, "last");
   const irt = { h: "IRT expires", f: x => curCell(x.rec.irt ? cuEom(x.rec.irt, 12) : "", "exp", am, x.rec.irt, "IRT done"), lab: "IRT" };
   const days = d => d ? cuDays(d, today) : null;
+  const ifc = { h: "IF 3 mths (h · P · NP)", f: x => { const [h, p, np] = curIf(x); return { t: `${h.toFixed(1)} · ${p} · ${np}`, c: "na" }; } };
+  const noIf = { h: "Days w/o IF app", f: x => { const d = days(curVv(x, "ifApp")); return d == null ? { t: "–", c: "na" } : { t: String(d), c: "na", left: null }; } };
   if (grp === "QFI") return [med, { h: "IRT rating", f: x => ({ t: x.rec.rating || "G", c: "na" }) }, { h: "Ops CAT", f: x => ({ t: x.rec.opsCat || "-", c: "na" }) }, { h: "QFI CAT", f: x => ({ t: (x.prof && x.prof.qfi_cat) || x.rec.qfiCat || "-", c: "na" }) },
     { h: "Last flown", f: x => curCell(lastF(x), "info") }, { h: "Day expires", f: x => curCell(lastF(x) ? cuAdd(lastF(x), 31) : "", "expx", amD, lastF(x), "Last flown"), lab: "DAY CURR" }, irt,
     { h: "Night expires", f: x => x.rec.noNight ? { t: "NA", c: "na" } : curCell(curVv(x, "night") ? cuAdd(curVv(x, "night"), 91) : "", "exp", am, curVv(x, "night"), "Last night sortie"), lab: "NIGHT" },
@@ -101,24 +153,24 @@ function curCols(grp) {
     { h: "EP sims", f: x => curCell(x.rec.ep ? cuAdd(x.rec.ep, 90) : "", "exp", am, x.rec.ep, "Last EP sim"), lab: "EP SIMS" },
     { h: "IPC done", f: x => curCell(x.rec.ipc, "info") },
     { h: "IPC expires", f: x => { const cat = (x.prof && x.prof.qfi_cat) || x.rec.qfiCat, d = x.rec.ipc; if (!d) return { t: "–", c: "na" };
-      return curCell(cat === "A" ? cuEom(d, 12) : cat === "B1" ? cuEom(d, 6) : cat === "B2" ? cuEom(d, 2) : cuEdate(d, 1), "exp", am, d, "IPC done"); }, lab: "IPC" }];
+      return curCell(cat === "A" ? cuEom(d, 12) : cat === "B1" ? cuEom(d, 6) : cat === "B2" ? cuEom(d, 2) : cuEdate(d, 1), "exp", am, d, "IPC done"); }, lab: "IPC" }, ifc];
   if (grp === "ST") return [med, { h: "Last flown", f: x => curCell(lastF(x), "info") }, { h: "Day expires", f: x => curCell(lastF(x) ? cuAdd(lastF(x), 31) : "", "expx", amD, lastF(x), "Last flown"), lab: "DAY CURR" }, irt,
     { h: "FCF sims prof chk", f: x => curCell(x.rec.fcfSim ? cuEdate(x.rec.fcfSim, 12) : "", "exp", am, x.rec.fcfSim, "Done"), lab: "FCF SIMS" },
     { h: "TOW prof chk", f: x => curCell(x.rec.tow ? cuEdate(x.rec.tow, 12) : "", "exp", am, x.rec.tow, "Done"), lab: "TOW CHK" },
     { h: "Last FCF flight", f: x => curCell(curVv(x, "fcf"), "info") },
-    { h: "FCF flight currency", f: x => curCell(lastF(x) ? cuAdd(lastF(x), 15) : "", "exp", Math.min(amD, 5), lastF(x), "Last flown"), lab: "FCF CURR" }];
+    { h: "FCF flight currency", f: x => curCell(lastF(x) ? cuAdd(lastF(x), 15) : "", "exp", Math.min(amD, 5), lastF(x), "Last flown"), lab: "FCF CURR" }, ifc];
   if (grp === "FIC") return [med, { h: "Last flown", f: x => curCell(cuMax(curVv(x, "fic.last"), curVv(x, "fic.lastBack")), "info") },
     { h: "Day expires", f: x => { const d = curVv(x, "fic.last"); return curCell(d ? cuAdd(d, 31) : "", "expx", amD, d, "Last flown (front)"); }, lab: "DAY CURR" },
-    { h: "Non-syllabus days", f: x => { const d = days((x.rec.fic || {}).lastSyl); return d == null ? { t: "–", c: "na" } : { t: String(d), c: d > 7 ? "warn" : "ok" }; } }, irt];
+    { h: "Non-syllabus days", f: x => { const d = days((x.rec.fic || {}).lastSyl); return d == null ? { t: "–", c: "na" } : { t: String(d), c: d > 7 ? "warn" : "ok" }; } }, irt, ifc];
   if (grp === "PGF") return [med, { h: "Last flown", f: x => curCell(lastF(x), "info") }, { h: "Day expires (7 days)", f: x => curCell(lastF(x) ? cuAdd(lastF(x), 7) : "", "expx", 2, lastF(x), "Last flown"), lab: "DAY CURR" },
     { h: "Non-syllabus days", f: x => { const d = days(x.rec.lastSyl); return d == null ? { t: "–", c: "na" } : { t: String(d), c: "na" }; } }, irt,
-    { h: "Days w/o IF app", f: x => { const d = days(x.rec.ifApp); return d == null ? { t: "–", c: "na" } : { t: String(d), c: "na" }; } }];
+    noIf, ifc];
   if (grp === "TR") return [med, { h: "IRT rating", f: x => ({ t: x.rec.rating || "W", c: "na" }) }, { h: "MOD", f: x => ({ t: x.rec.mod || "-", c: "na" }) },
     { h: "Solo expires", f: x => { const m = Number(x.rec.mod) || 0, s = x.rec.solo; return s && m ? curCell(cuAdd(s, m >= 7 ? 4 : m >= 4 ? 3 : 2), "exp", 1, s, "Last solo") : { t: "–", c: "na" }; } },
     { h: "Last flown (front)", f: x => curCell(lastF(x), "info") }, { h: "Last DCO sortie", f: x => curCell(x.rec.lastSyl, "info") },
     { h: "Non-syllabus days", f: x => { const d = days(x.rec.lastSyl); return d == null ? { t: "–", c: "na" } : { t: String(d), c: "na" }; } },
     { h: "Flex", f: x => curFlex(days(x.rec.lastSyl)), lab: "FLEX" }, irt,
-    { h: "Days w/o IF app", f: x => { const d = days(x.rec.ifApp); return d == null ? { t: "–", c: "na" } : { t: String(d), c: "na" }; } }];
+    noIf, ifc];
   if (grp === "WSO") return [med, { h: "MOD", f: x => ({ t: x.rec.mod || "-", c: "na" }) }, { h: "Last flown (back)", f: x => curCell(lastF(x), "info") },
     { h: "Last DCO sortie", f: x => curCell(x.rec.lastSyl, "info") },
     { h: "Non-syllabus days", f: x => { const d = days(x.rec.lastSyl); return d == null ? { t: "–", c: "na" } : { t: String(d), c: "na" }; } },
@@ -130,10 +182,11 @@ function renderCur(v) {
   const flown = curFlown();
   if (!flown) { v.innerHTML = `<div class="empty">Loading flown sorties…</div>`; return; }
   const can = curCanEdit(), meta = typeof obMeta === "function" ? obMeta("currency") : "";
-  const bar = `<div class="opsbar"><span class="seg"><button class="btn small${CUR.view === "board" ? " primary" : ""}" data-cur="view" data-k="board">Currency board</button><button class="btn small${CUR.view === "records" ? " primary" : ""}" data-cur="view" data-k="records">Records</button><button class="btn small${CUR.view === "archive" ? " primary" : ""}" data-cur="view" data-k="archive">Archived</button><button class="btn small${CUR.view === "rules" ? " primary" : ""}" data-cur="view" data-k="rules">How it's worked out</button></span><span class="grow"></span><span class="opsmeta">${esc(meta)}</span></div>`;
+  const bar = `<div class="opsbar"><span class="seg"><button class="btn small${CUR.view === "board" ? " primary" : ""}" data-cur="view" data-k="board">Currency board</button><button class="btn small${CUR.view === "hours" ? " primary" : ""}" data-cur="view" data-k="hours">Hours limits</button><button class="btn small${CUR.view === "records" ? " primary" : ""}" data-cur="view" data-k="records">Records</button><button class="btn small${CUR.view === "archive" ? " primary" : ""}" data-cur="view" data-k="archive">Archived</button><button class="btn small${CUR.view === "rules" ? " primary" : ""}" data-cur="view" data-k="rules">How it's worked out</button></span><span class="grow"></span><span class="opsmeta">${esc(meta)}</span></div>`;
   const people = curPeople().map(x => ({ ...x, fl: flown[x.name] || {} }));
   if (CUR.view === "rules") { v.innerHTML = bar + `<section class="card opscard"><div class="opshead"><h2>How it's worked out</h2></div><ul class="cfgrules">${CUR_RULES.map(r => `<li>${esc(r)}</li>`).join("")}<li>${esc(`Amber = expiring within ${cfgN("cur.amber")} days (day currency: ${cfgN("cur.amberDay")} days; change under Operations → Settings). Red = expired or NO GO.`)}</li></ul></section>`; return; }
   if (CUR.view === "records") { v.innerHTML = bar + curRecords(people, can); return; }
+  if (CUR.view === "hours") { v.innerHTML = bar + curHoursView(people); return; }
   if (CUR.view === "archive") { v.innerHTML = bar + curArchiveView(can); return; }
   // Board: one card per group, then the Expired / Expiring summary at the top.
   const expired = {}, expiring = {};
@@ -146,11 +199,26 @@ function renderCur(v) {
       return `<td class="cu ${r.c}"${r.left != null ? ` title="${esc([r.done ? `${r.doneLab || "Done"}: ${cuFmt(r.done)}` : "", r.kind === "info" ? `${-r.left} days ago` : r.left < 0 ? `expired ${-r.left} days ago` : `${r.left} days left`].filter(Boolean).join(" · "))}"` : ""}>${esc(r.t)}</td>`; }).join("")}</tr>`).join("");
     return `<section class="card opscard"><div class="opshead"><h2>${esc(title)}</h2><span class="opsmeta">${ps.length}</span></div><div class="tablewrap"><table class="opst cut"><thead><tr><th>Name</th>${cols.map(c => `<th>${esc(c.h)}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
   }).join("");
+  for (const x of people) { if (x.grp === "ATCO") continue; const lim = curLimits(x.grp);
+    CUR_WIN.forEach((w, i) => { const left = (lim[i] ?? 0) - curFlownIn(x, w), c = curLeftCell(left); if (c === "bad") (left < 0 ? (expired[`HRS ${w[0].toUpperCase()}`] ||= []) : (expiring[`HRS ${w[0].toUpperCase()}`] ||= [])).push(x.name); }); }
   const sum = (o, cls) => Object.keys(o).length ? Object.entries(o).map(([k, ns]) => `<div><b>${esc(k)}</b> – ${esc([...new Set(ns)].join(", "))}</div>`).join("") : `<div class="hint">Nil</div>`;
   const legend = `<div class="culeg"><span><i class="cusw ok"></i>Green = current</span><span><i class="cusw warn"></i>Amber = expiring within ${cfgN("cur.amber")} days (day currency ${cfgN("cur.amberDay")} days)</span><span><i class="cusw bad"></i>Red = expired / NO GO</span><span><i class="cusw na"></i>Grey = not applicable or no date yet</span></div>`;
   v.innerHTML = bar + legend + `<div class="cusum"><section class="card opscard"><div class="opshead"><h2>Items expired</h2></div><div class="cul bad">${sum(expired)}</div></section>
     <section class="card opscard"><div class="opshead"><h2>Items expiring</h2><span class="opsmeta">within ${cfgN("cur.amber")} days</span></div><div class="cul warn">${sum(expiring)}</div></section></div>${cards}
     <p class="hint">Last flown, night and FCF dates fill in from Log flown times; a date corrected by hand under Records takes over. Hover a date to see when it was done and the days left.</p>`;
+}
+// Hours limits (Excel HRS MONITORING): hours left in each window = limit − flown. Colours by hours left (lim.warn).
+function curHoursView(people) {
+  const [y, o, r] = cfgList("lim.warn");
+  const key = `<div class="culeg"><span><i class="cusw ok"></i>Green = more than ${y} h left</span><span><i class="cusw warn"></i>Amber ≤ ${y} h</span><span><i class="cusw orange"></i>Orange ≤ ${o} h</span><span><i class="cusw bad"></i>Red ≤ ${r} h or over the limit</span></div>`;
+  const cards = CUR_GROUPS.filter(([g]) => g !== "ATCO").map(([g, title]) => {
+    const ps = people.filter(x => x.grp === g); if (!ps.length) return "";
+    const lim = curLimits(g);
+    const rows = ps.map(x => `<tr><td class="cuname"><b>${esc(x.name)}</b></td>${CUR_WIN.map((w, i) => { const f = curFlownIn(x, w), left = (lim[i] ?? 0) - f;
+      return `<td class="cu ${curLeftCell(left)}" title="${esc(`Flown ${f.toFixed(1)} h of ${lim[i]} h in the last ${w[0]}`)}"><b>${left < 0 ? "over " + (-left).toFixed(1) : left.toFixed(1)}</b><small class="cusub">${f.toFixed(1)} / ${lim[i]}</small></td>`; }).join("")}</tr>`).join("");
+    return `<section class="card opscard"><div class="opshead"><h2>${esc(title)}</h2><span class="opsmeta">limits ${esc(lim.join(" / "))} h</span></div><div class="tablewrap"><table class="opst cut"><thead><tr><th>Name</th>${CUR_WIN.map(w => `<th>${esc(w[0])}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
+  }).join("");
+  return key + `<p class="hint" style="margin:0 0 8px">Hours left in each window (big) and hours flown / limit (small), from Log flown times (24 h / 48 h by the actual take-off and landing times, longer windows by day, including today). Before ${esc(cuFmt(curHist().upTo))} the Excel's DAILY FLOWN hours are used.</p>` + cards;
 }
 // Archive (Gordon, 11 Oct): when someone is posted out or their login removed, their currency record moves to data.archive
 // (with the date and why), so it can be looked up or restored later. Restore = back onto the board.
@@ -241,7 +309,7 @@ document.head.insertAdjacentHTML("beforeend", `<style>
 .cul div{padding:2px 0}.cul.bad b{color:var(--late)}.cul.warn b{color:var(--out)}
 table.cut{min-width:0;width:auto}.cut th{white-space:nowrap;font-size:.78rem}.cut td{white-space:nowrap;padding:5px 8px;text-align:center}.cut td.cuname{text-align:left}
 .cut td.cuname,.cut th:first-child{position:sticky;left:0;background:var(--paper);z-index:1}
-.cut td.cu.ok{color:var(--ok,#1F8A4C)}.cut td.cu.warn{background:color-mix(in srgb,var(--out) 22%,transparent);font-weight:600}.cut td.cu.bad{background:color-mix(in srgb,var(--late) 25%,transparent);color:var(--late);font-weight:700}.cut td.cu.na{color:var(--muted)}
+.cut td.cu.ok{color:var(--ok,#1F8A4C)}.cut td.cu.warn{background:color-mix(in srgb,var(--out) 22%,transparent);font-weight:600}.cut td.cu.bad{background:color-mix(in srgb,var(--late) 25%,transparent);color:var(--late);font-weight:700}.cut td.cu.na{color:var(--muted)}.cut td.cu.orange{background:color-mix(in srgb,#e8590c 30%,transparent);font-weight:700}.cusub{display:block;font-size:.7rem;color:var(--muted);font-weight:400}.cusw.orange{background:color-mix(in srgb,#e8590c 65%,transparent)}
 .cuedit input{padding:3px 6px;margin:0}.cuedit input[type=date]{width:140px}
 .seg .btn+.btn{margin-left:4px}
 .cut td.cuauto{color:var(--muted);font-style:italic}.cut td.cuset{color:var(--out);font-weight:600}.cuedit input.cusetin{border-color:var(--out)}.cuautol{display:block;color:var(--muted);font-size:.72rem;font-style:italic;text-align:left}

@@ -72,6 +72,9 @@ const CFG_GROUPS = [
   { name: "Currencies", rows: [
     ["cur.amber", "Currency items show amber when expiring within", "days", 30],
     ["cur.amberDay", "Day currency shows amber within", "days", 7],
+    ["lim.qfi", "Hours limits QFI / ST / FIC / PGF: 24 h, 48 h, 7 d, 30 d, 3 mth, 12 mth", "h", "6, 8, 15, 55, 140, 400", "list"],
+    ["lim.tr", "Hours limits trainees / WSO trainees: 24 h, 48 h, 7 d, 30 d, 3 mth, 12 mth", "h", "4, 7, 10, 40, 100, 250", "list"],
+    ["lim.warn", "Hours left warnings: amber, orange, red at or below", "h", "3.5, 2.2, 1.0", "list"],
   ], rules: [
     "The full list of currency rules is on Operations → Currencies → How it's worked out.",
   ] },
