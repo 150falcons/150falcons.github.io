@@ -56,6 +56,19 @@ const CFG_GROUPS = [
     "The LFBC CAT 1 line (auto) is green when the Cazaux FASF is B or W, otherwise yellow. LFBD on RWY 05 adds ZONE TAMPON ACTIVE.",
     "Other colours: parachute 0 green / more red; SAMAR by first letter (G / Y / R); wind hazard A yellow, B amber, C–D red; a filled restricted area red unless ops pick a colour; CALAMAR BOOKED yellow.",
   ] },
+  { name: "Datalink and flight-line vehicles", rows: [
+    ["dl.max", "Flag a datalink channel with more than", "aircraft at once", 4],
+    ["veh.van", "VAN seats (aircrew)", "seats", 8],
+    ["veh.zoe", "ZOE seats", "seats", 4],
+    ["veh.zoeMax", "ZOE seats when squeezed (warning above this)", "seats", 5],
+    ["veh.share", "Formations stepping within this of each other share a van run", "min", 5],
+    ["veh.turn", "Van round trip (next run can leave after)", "min", 15],
+    ["veh.zoeBack", "ZOE free again after the formation lands +", "min", 15],
+  ], rules: [
+    "Datalink channel (A, B, C or D) and vehicle are set per formation in the flying program editor. Several formations can share a channel; more aircraft than the limit above airborne together on one channel is flagged, never blocked.",
+    "Vehicle on Auto: formations stepping close together share a van run while seats last. Each run is numbered per wave (VAN 1, VAN 2 …). If the van is still out on its last run, the formation gets the ZOE, which the crew drive themselves and park at the flight line until they land.",
+    "If the ZOE is out too, the formation still gets the next van run, with a warning. Ops can pick VAN or ZOE by hand; warnings then show for full vans, a busy ZOE or too many people.",
+  ] },
   { name: "Screens and home", rows: [
     ["tv.waves", "Flying program TV shows this many waves at a time", "waves", 3],
     ["home.amber", "Home \"Next up\" turns amber within", "min", 30],

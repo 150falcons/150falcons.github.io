@@ -534,7 +534,7 @@ function obWaveAcHtml(get, wi) {
   const used = waves.map((w, i) => [w, i]).filter(([w]) => (w.flights || []).some(f => (f.ac || []).some(a => a.tail || a.crew1)));
   const pick = `<div class="obwvpick">${used.map(([w, i]) => `<button class="btn small${i === sel ? " primary" : ""}" data-ob="waveac" data-k="${i}">${esc(w.name)}${watch.some(x => x.i === i) ? " ⏱" : ""}</button>`).join("")}</div>`;
   if (sel == null || !waves[sel]) return pick + `<p class="hint">${used.length ? "No more waves today. Pick a wave above." : "No flying programme today."}</p>`;
-  const w = waves[sel], rows = [];
+  const w = waves[sel], rows = [], plan = opsPlan(fl);
   for (const f of w.flights || []) {
     const ls = (f.ac || []).filter(a => a.tail || a.crew1);
     ls.forEach((a, k) => {
@@ -542,9 +542,9 @@ function obWaveAcHtml(get, wi) {
       const st = t ? obPill(t.status === "S" ? "g" : t.status === "US" ? "r" : "a", t.status === "S" ? "S" : t.status === "US" ? "U/S" : "MX") + (t.npc ? obPill("a", "NPC") : "") + (t.nts ? obPill("a", "NTS") : "") + (t.ojt ? obPill("a", "OJT") : "") : `<span class="hint" title="This tail isn't on the Aircraft page">–</span>`;
       const notes = [...(t ? String(t.notes || "").split("\n").filter(Boolean).map(obNoteLine) : []),
         ...restr.filter(x => x.note && a.tail && String(x.ac || "").split(/[,/&]|\s+AND\s+/i).some(p => key(p) === key(a.tail))).map(x => `<span class="obrestr">${esc(x.note)}</span>`)];
-      rows.push(`<tr class="${k === 0 ? "obwvf" : ""}${t && t.status !== "S" ? " obwvbad" : ""}">${k === 0 ? `<td rowspan="${ls.length}" class="obwvcs"><b>${esc(f.callsign || "-")}</b><small>${esc(f.etd || "?")}–${esc(f.eta || "?")}Z${f.brief ? ` · brief ${esc(f.brief)}` : ""}</small></td>` : ""}
+      rows.push(`<tr class="${k === 0 ? "obwvf" : ""}${t && t.status !== "S" ? " obwvbad" : ""}">${k === 0 ? `<td rowspan="${ls.length}" class="obwvcs"><b>${esc(f.callsign || "-")}</b><small>${esc(f.etd || "?")}–${esc(f.eta || "?")}Z${f.brief ? ` · brief ${esc(f.brief)}` : ""}${f.step ? ` · step ${esc(f.step)}` : ""}</small>${opsPlanTags(plan.byF.get(f))}</td>` : ""}
         <td class="obwvn">${esc(a.n || "")}</td><td class="nw"><b>${opsX(a.crew1 || "")}</b>${a.crew2 ? ` / ${opsX(a.crew2)}` : ""}${opsIsAdd(f, a) ? ` <span class="hint">ops add</span>` : ""}</td><td class="nw">${esc(a.mission || "")}</td>
-        <td class="obwvtail"><b>${esc(a.tail ? opsTail(a.tail, day) : "-")}</b></td><td class="nw">${st}</td><td class="obnotes">${notes.join("<br>") || `<span class="hint">-</span>`}</td><td>${esc(a.rmk || "")}</td></tr>`);
+        <td class="obwvtail"><b>${esc(a.tail ? opsTail(a.tail, day) : "-")}</b></td><td class="nw">${st}</td><td class="obnotes">${notes.join("<br>") || `<span class="hint">-</span>`}</td><td>${opsNl(a.rmks || "")}</td></tr>`);
     });
   }
   const head = `<p class="hint" style="margin:0 0 6px">${esc(w.name)}${w.sxo ? ` · SXO <b>${opsX(w.sxo)}</b>` : ""}${w.opsO ? ` · OPS O <b>${opsX(w.opsO)}</b>` : ""}${w.remarks ? ` · ⚠ ${esc(w.remarks)}` : ""}</p>`;
@@ -1218,7 +1218,7 @@ select.obcs option{background:var(--paper);color:var(--ink)}
 #dlgChart{width:min(1100px,calc(100vw - 16px))}
 #dlgWaveAc{width:min(1400px,calc(100vw - 16px))}@media (min-width:1000px){#dlgWaveAc{width:calc(100vw - 24px);max-width:none;height:calc(100vh - 24px);max-height:none}#dlgWaveAc .obwvac{width:100%}#dlgWaveAc .obwvbody{margin:0 auto}}.obwvpick{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
 table.obwvac{min-width:0}.obwvac td{vertical-align:middle;padding:5px 8px}.obwvac td small{display:block;color:var(--muted);font-size:.75rem}
-.obwvac td.obwvcs{white-space:nowrap}.obwvac td.obwvtail{font-size:1.05rem;white-space:nowrap;border-left:1px dashed var(--line)}.obwvac td.nw{white-space:nowrap}.obwvac td.nw .obpill+.obpill{margin-left:3px}
+.obwvac td.obwvcs{white-space:nowrap}.obwvac td.obwvcs .opsdl,.obwvac td.obwvcs .opsveh{font-size:.85rem;color:var(--ink)}.obwvac td.obwvtail{font-size:1.05rem;white-space:nowrap;border-left:1px dashed var(--line)}.obwvac td.nw{white-space:nowrap}.obwvac td.nw .obpill+.obpill{margin-left:3px}
 .obwvac tr.obwvf td{border-top:2px solid var(--line)}.obwvac tr.obwvbad td.obwvtail{color:var(--late)}.obwvac .obrestr{color:var(--out)}
 /* TV: the chart window hugs the chart (Gordon, 10 Oct), on a dimmed TV */
 body.tvmode #dlgChart{width:fit-content;max-width:calc(100vw - 40px);height:auto;max-height:calc(100vh - 24px);padding:0;overflow:hidden}

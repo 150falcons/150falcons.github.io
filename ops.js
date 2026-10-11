@@ -287,7 +287,7 @@ function renderFlyTv(v) {
       <div class="flytvr">${pane("sim", "sim", OPS_TITLES.sim, opsView.sim(opsGet("sim")))}${pane("gnd", "gnd", OPS_TITLES.ground, opsFlyTvGround(opsGet("ground")))}</div></div>`
       : `<div class="empty"><strong>No programme for today yet</strong></div>`}</div>`;
   // Text size is set by the ~3 waves (tw.fl); the flying window then holds every wave and scrolls within itself (Gordon, 10 Oct).
-  OPS.tvLeft = { part: opsView.flying(tw.fl, tw.n0) || `<p class="hint" style="display:block;margin:0">No flights.</p>`, all: tw.more ? opsView.flying(tw.all) : "" };
+  OPS.tvLeft = { part: opsView.flying(tw.fl, tw.n0, tw.all) || `<p class="hint" style="display:block;margin:0">No flights.</p>`, all: tw.more ? opsView.flying(tw.all) : "" };
   opsFlyTvLeft(false);
   requestAnimationFrame(opsFlyTvFit); setTimeout(opsFlyTvFit, 1200);
 }
@@ -687,16 +687,70 @@ function opsMyItems(get, opts) {
   return items;
 }
 // The signed-in person's timed events on a day (Z minutes), for the home card's "Next up":
+/* ---------- Datalink channels and flight-line vehicles per formation (Gordon, 11 Oct) ---------- */
+// f.dl = "A" | "B" | "C" | "D" (blank = none). f.veh = "VAN" | "ZOE" typed by ops, blank = worked out by opsPlan.
+const OPS_DL = ["A", "B", "C", "D"], OPS_VEH = ["VAN", "ZOE"];
+const opsStepMin = f => { const s = opsMin(f.step); if (s != null) return s; const e = opsMin(f.etd); return e == null ? null : e - cfgN("fly.step"); };
+const opsFltPeople = f => [...new Set((f.ac || []).flatMap(a => [a.crew1, a.crew2]).map(opsNorm).filter(Boolean))].length;
+const opsFltAc = f => (f.ac || []).filter(opsLineUsed).length;
+// Works out, for every formation of the day, its vehicle and any warnings. Returns { "wi.fi": { veh, auto, people, warn: [], dl, dlWarn } }.
+//  · Formations stepping within veh.share min of the first one in a van run share it while seats last (veh.van); each run is
+//    numbered per wave (VAN 1, VAN 2 …). The van can start a new run veh.turn min after the last one left.
+//  · Van still out → the ZOE (veh.zoe seats, veh.zoeMax squeezed), driven by the crew and parked at the flight line until they
+//    land: busy until ETA + veh.zoeBack. If the ZOE is out too, the formation still gets the next van run, with a warning.
+//  · Datalink: aircraft on the same channel whose ETD–ETA overlap this formation's; more than dl.max → warning (not blocked).
+function opsPlan(fl) {
+  const out = {}, list = [], byF = new Map(); Object.defineProperty(out, "byF", { value: byF });
+  (fl.waves || []).forEach((w, wi) => (w.flights || []).forEach((f, fi) => {
+    const k = `${wi}.${fi}`, people = opsFltPeople(f);
+    out[k] = { veh: "", auto: true, people, warn: [], dl: OPS_DL.includes(f.dl) ? f.dl : "", dlWarn: "" }; byF.set(f, out[k]);
+    const t = opsStepMin(f); if (t != null && people) list.push({ k, wi, f, t, people });
+  }));
+  list.sort((a, b) => a.t - b.t);
+  const VAN = cfgN("veh.van"), ZOE = cfgN("veh.zoe"), ZMAX = cfgN("veh.zoeMax"), SHARE = cfgN("veh.share"), TURN = cfgN("veh.turn"), ZBACK = cfgN("veh.zoeBack");
+  const runs = {}; let run = null, vanFree = -1e9, zoeFree = -1e9, zoeWith = "";
+  const z4 = m => opsZ4(((m % 1440) + 1440) % 1440) + "Z";
+  const newRun = x => { const wr = runs[x.wi] = (runs[x.wi] || 0) + 1; if (x.t < vanFree) out[x.k].warn.push(`van still out on its last run (back about ${z4(vanFree)})`); run = { wi: x.wi, n: wr, t: x.t, seats: 0 }; vanFree = x.t + TURN; };
+  for (const x of list) {
+    const o = out[x.k], typed = OPS_VEH.includes(x.f.veh) ? x.f.veh : "";
+    o.auto = !typed;
+    const canJoin = run && run.wi === x.wi && x.t - run.t <= SHARE && run.seats + x.people <= VAN;
+    let use = typed;
+    if (!use) use = canJoin || x.t >= vanFree ? "VAN" : x.t >= zoeFree && x.people <= ZMAX ? "ZOE" : "VAN";
+    if (use === "VAN") {
+      if (!(run && run.wi === x.wi && x.t - run.t <= SHARE)) newRun(x);
+      else if (run.seats + x.people > VAN) { if (typed) o.warn.push(`van over ${VAN} seats`); else newRun(x); }
+      run.seats += x.people; o.veh = `VAN ${run.n}`;
+    } else {
+      if (x.t < zoeFree) o.warn.push(`ZOE still at the flight line with ${zoeWith} (free about ${z4(zoeFree)})`);
+      if (x.people > ZMAX) o.warn.push(`${x.people} people: ZOE seats ${ZMAX} at most`);
+      else if (x.people > ZOE) o.warn.push(`${x.people} people in the ZOE (squeezed)`);
+      const eta = opsMin(x.f.eta); zoeFree = (eta != null ? eta : x.t + 60 + cfgN("fly.step")) + ZBACK; zoeWith = x.f.callsign || "another formation";
+      o.veh = "ZOE";
+    }
+  }
+  // Datalink: count aircraft on the same channel airborne at the same time as each formation.
+  const fls = []; (fl.waves || []).forEach((w, wi) => (w.flights || []).forEach((f, fi) => { const s0 = opsMin(f.etd), e0 = opsMin(f.eta); if (OPS_DL.includes(f.dl) && s0 != null) fls.push({ k: `${wi}.${fi}`, dl: f.dl, s: s0, e: e0 != null ? e0 : s0 + 60, n: opsFltAc(f) }); }));
+  const MAXDL = cfgN("dl.max");
+  for (const a of fls) { const n = fls.filter(b => b.dl === a.dl && b.s < a.e && a.s < b.e).reduce((t, b) => t + b.n, 0); if (n > MAXDL) out[a.k].dlWarn = `${n} aircraft on DL ${a.dl} at the same time (more than ${MAXDL})`; }
+  return out;
+}
+// One formation's DL / vehicle as small lines for the views (flying program, TV, Aircraft this wave).
+function opsPlanTags(p) {
+  if (!p) return "";
+  return [p.dl ? `<span class="opsdl${p.dlWarn ? " bad" : ""}" title="${esc(p.dlWarn || "Datalink channel")}">DL ${esc(p.dl)}</span>` : "",
+    p.veh ? `<span class="opsveh${p.warn.length ? " bad" : ""}" title="${esc(p.warn.join("; ") || (p.auto ? "Worked out" : "Set by ops"))}">${esc(p.veh)}</span>` : ""].filter(Boolean).join("");
+}
 // brief / step / take-off for their flights, sim start, ground events, and the start of a wave they are SXO / OPS O for.
 function opsMyEvents(get) {
   const names = opsMyNames(); if (!names.length) return [];
-  const fl = opsNameWaves(get("flying")), out = [], add = (t, label) => { const m = opsMin(t); if (m != null) out.push({ t: m, label }); };
-  for (const w of fl.waves || []) {
-    for (const f of w.flights || []) for (const a of f.ac || []) {
+  const fl = opsNameWaves(get("flying")), out = [], add = (t, label) => { const m = opsMin(t); if (m != null) out.push({ t: m, label }); }, plan = opsPlan(fl);
+  for (const [wi, w] of (fl.waves || []).entries()) {
+    for (const [fi, f] of (w.flights || []).entries()) for (const a of f.ac || []) {
       if (!names.some(n => opsCrewHas(a, n))) continue;
       const cs = esc([f.callsign, a.n].filter(Boolean).join(" ")), wn = esc(w.name);
       if (f.brief && f.brief !== "NA") add(f.brief, `Brief · <b>${wn}</b> ${cs}`);
-      if (f.step && f.step !== "NA") add(f.step, `Step · <b>${wn}</b> ${cs}`);
+      if (f.step && f.step !== "NA") { const pv = plan[`${wi}.${fi}`] || {}; add(f.step, `Step · <b>${wn}</b> ${cs}${pv.veh ? ` · <b>${esc(pv.veh)}</b>` : ""}${pv.dl ? ` · DL ${esc(pv.dl)}` : ""}`); }
       add(f.etd, `Take-off · <b>${wn}</b> ${cs}${a.tail ? " · " + esc(opsTail(a.tail)) : ""}`);
     }
     const duty = [names.some(n => opsHas(w.sxo, n)) && "SXO", names.some(n => opsHas(w.opsO, n)) && "OPS O"].filter(Boolean);
@@ -739,12 +793,13 @@ const opsView = {
     const rows = OPS_HEADER_FIELDS.filter(([k]) => k !== "dailyReq" && h[k]).map(([k, label]) => `<dt>${esc(label)}</dt><dd>${opsNl(h[k])}</dd>`).join("");
     return stats + (rows ? `<dl class="opsdl">${rows}</dl>` : "");
   },
-  flying(fl, n0) {
+  flying(fl, n0, planFl) {
     let n = n0 || 0, out = "";
     const z4 = m => String(Math.floor(m / 60) % 24).padStart(2, "0") + String(m % 60).padStart(2, "0");
     // Planned ETD / ETA as their own columns (brief / step underneath); once any line is logged, ATD / ATA / Hrs columns too (Gordon, 10 Oct).
     const logged = (fl.waves || []).some(w => (w.flights || []).some(f => (f.ac || []).some(a => a.log && a.log.st)));
     const cols = `<colgroup>${(logged ? [5, 6, 6, 8, 3, 14, 9, 10, 5, 5, 5, 5, 4, 15] : [5, 7, 7, 8, 3, 15, 9, 11, 6, 5, 24]).map(p => `<col style="width:${p}%">`).join("")}</colgroup>`;
+    const plan = opsPlan(planFl || fl);
     for (const w of fl.waves || []) {
       const fs = w.flights || [], ws = opsStats({ waves: [w] });
       out += `<div class="opswave${w.night ? " night" : ""}"><b>${esc(w.name)}</b>${w.sxo ? `<span>SXO <strong>${opsX(w.sxo)}</strong></span>` : ""}${w.opsO ? `<span>OPS O <strong>${opsX(w.opsO)}</strong></span>` : ""}
@@ -762,7 +817,7 @@ const opsView = {
           const act = !logged ? "" : L.st === "cx" ? `<td colspan="3" class="act"><span class="opscx">CX</span></td>`
             : `<td class="act">${esc(L.st ? L.to || "" : "")}</td><td class="act">${esc(L.st ? L.ldg || "" : "")}</td><td class="act hrs">${m != null ? opsHrs(m) : ""}</td>`;
           out += `<tr class="${add ? "opsadd" : ""}"><td class="no">${no}</td>
-            ${i === 0 ? `<td rowspan="${span}" class="tm rs"><b>${esc(f.etd)}</b>${bs ? `<small class="bs">${esc(bs)}</small>` : ""}</td><td rowspan="${span}" class="tm rs"><b>${esc(f.eta)}</b></td><td rowspan="${span}" class="cs rs">${esc(f.callsign)}</td>` : ""}
+            ${i === 0 ? `<td rowspan="${span}" class="tm rs"><b>${esc(f.etd)}</b>${bs ? `<small class="bs">${esc(bs)}</small>` : ""}</td><td rowspan="${span}" class="tm rs"><b>${esc(f.eta)}</b></td><td rowspan="${span}" class="cs rs">${esc(f.callsign)}${opsPlanTags(plan.byF.get(f))}</td>` : ""}
             <td class="n">${esc(a.n)}</td><td class="fcrew">${opsX(a.crew1)}${a.crew2 ? `<span class="c2"> / ${opsX(a.crew2)}</span>` : ""}</td><td class="nw">${esc(a.mission)}</td>
             ${i === 0 ? `<td rowspan="${span}" class="area rs">${esc(f.area)}${f.areaTime ? `<small>${esc(f.areaTime)}</small>` : ""}</td>` : ""}<td class="nw">${esc(opsTail(a.tail, OPS.day))}</td><td class="nw">${esc(a.config)}</td>${act}<td class="rm">${opsIrtBad(a) ? `<span class="opsirt">⚠ ${OPS_IRT_MSG}</span>${a.rmks ? "<br>" : ""}` : ""}${opsNl(a.rmks)}</td></tr>`;
         });
@@ -824,6 +879,7 @@ const opsView = {
 const oI = (p, v, w, ph) => `<input data-p="${p}" value="${esc(v ?? "")}"${w ? ` style="width:${w}"` : ""}${ph ? ` placeholder="${esc(ph)}"` : ""}>`;
 const oP = (p, v, w) => `<input data-p="${p}" value="${esc(v ?? "")}" list="opsPeople"${w ? ` style="width:${w}"` : ""}>`;
 const oT = (p, v, rows) => `<textarea data-p="${p}" rows="${rows || 2}">${esc(v ?? "")}</textarea>`;
+const oSel = (p, v, opts) => `<select data-p="${p}" style="width:auto;min-width:64px">${opts.map(([k, l]) => `<option value="${esc(k)}"${(v || "") === k ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
 const oC = (p, v, label) => `<label class="opschk"><input type="checkbox" data-p="${p}" ${v ? "checked" : ""}>${label}</label>`;
 const oB = (op, p, i, label, tpl, title) => `<button type="button" class="btn small" data-op="${op}" data-p="${p}" data-i="${i ?? ""}" data-tpl="${tpl || ""}"${title ? ` title="${title}" aria-label="${title}"` : ""}>${label}</button>`;
 const oTools = (p, i) => `<span class="tools">${oB("up", p, i, "↑", "", "Move up")}${oB("down", p, i, "↓", "", "Move down")}${oB("del", p, i, "✕", "", "Remove")}</span>`;
@@ -843,14 +899,15 @@ const opsEd = {
       <p class="hint">Planned sorties, planned hours, first takeoff, last landing and HH:MM are worked out from the flying program.</p>`;
   },
   flying(fl) {
+    setTimeout(opsPlanRefresh);
     return (fl.waves || []).map((w, wi) => `<div class="blk">
       <div class="tools" style="margin-bottom:4px"><b class="opswavename">${esc(w.name)}</b>${oC(`waves.${wi}.night`, w.night, "Night wave")}<span class="grow"></span>${oTools("waves", wi)}</div>
       <div class="grid"><label>SXO${oP(`waves.${wi}.sxo`, w.sxo)}</label><label>OPS O${oI(`waves.${wi}.opsO`, w.opsO, "", "e.g. LIM Y / LEE L (TKOVER @ 1100Z)")}</label></div>
       <label>Wave remarks (airfield notes for this wave)${oT(`waves.${wi}.rmks`, w.rmks)}</label>
       ${(w.flights || []).map((f, fi) => { const p = `waves.${wi}.flights.${fi}`; return `<div class="blk flt">
-        <div class="tablewrap"><table><thead><tr><th>Brief</th><th>Step</th><th class="opsetdh">ETD (key in first)</th><th>ETA</th><th>Callsign</th><th>Area</th><th>Area time</th><th></th><th></th></tr></thead><tbody><tr>
+        <div class="tablewrap"><table><thead><tr><th>Brief</th><th>Step</th><th class="opsetdh">ETD (key in first)</th><th>ETA</th><th>Callsign</th><th>DL</th><th>Vehicle</th><th>Area</th><th>Area time</th><th></th><th></th></tr></thead><tbody><tr>
           <td>${opsAutoIn(p, f, "brief")}</td><td>${opsAutoIn(p, f, "step")}</td><td>${oI(p + ".etd", f.etd, "80px", "e.g. 0715").replace("<input", '<input class="opsetd"')}</td><td>${opsAutoIn(p, f, "eta")}</td>
-          <td>${oI(p + ".callsign", f.callsign, "120px")}</td><td>${oI(p + ".area", f.area, "120px")}</td><td>${oI(p + ".areaTime", f.areaTime, "110px")}</td>
+          <td>${oI(p + ".callsign", f.callsign, "120px")}</td><td>${oSel(p + ".dl", f.dl, [["", "-"], ...OPS_DL.map(x => [x, x])])}</td><td>${oSel(p + ".veh", f.veh, [["", "Auto"], ...OPS_VEH.map(x => [x, x])])} <span class="opsplan" data-plan="${wi}.${fi}"></span></td><td>${oI(p + ".area", f.area, "120px")}</td><td>${oI(p + ".areaTime", f.areaTime, "110px")}</td>
           <td>${oC(p + ".opsAdd", f.opsAdd, "Ops add")}</td><td>${oTools(`waves.${wi}.flights`, fi)}</td></tr></tbody></table>
         <table><thead><tr><th>#</th><th>Aircrew</th><th>Aircrew</th><th>Mission</th><th>A/C</th><th>Config</th><th>Rmks</th><th></th><th></th></tr></thead><tbody>
           ${(f.ac || []).map((a, ai) => { const q = `${p}.ac.${ai}`; return `<tr><td>${oI(q + ".n", a.n, "40px")}</td><td>${oP(q + ".crew1", a.crew1, "120px")}</td><td>${oP(q + ".crew2", a.crew2, "120px")}</td><td>${oI(q + ".mission", a.mission, "110px")}</td><td>${oI(q + ".tail", a.tail, "60px")}</td><td>${oI(q + ".config", a.config, "60px")}</td><td>${oI(q + ".rmks", a.rmks, "200px")}</td><td>${oC(q + ".opsAdd", a.opsAdd, "Ops add")}</td><td>${oB("del", p + ".ac", ai, "✕", "", "Remove aircraft")}</td></tr>${opsIrtBad(a) ? `<tr class="opswarn"><td colspan="9">⚠ ${OPS_IRT_MSG}${a.crew2 ? ` (${esc(a.crew2)} isn't ticked as IRE)` : " (no back seat)"}</td></tr>` : ""}`; }).join("")}
@@ -932,6 +989,13 @@ function opsSetPath(obj, path, val) {
   const parent = ks.reduce((o, k, i) => { if (o[k] == null) o[k] = /^\d+$/.test(ks[i + 1] ?? last) ? [] : {}; return o[k]; }, obj);
   parent[last] = val;
 }
+// Flying editor: show each formation's worked-out vehicle and any DL / vehicle warnings next to its boxes.
+function opsPlanRefresh() {
+  if (!OPS.edit || OPS.edit.section !== "flying") return;
+  const plan = opsPlan(OPS.edit.data);
+  document.querySelectorAll("#opsEdit [data-plan]").forEach(el => { const p = plan[el.dataset.plan]; if (!p) return;
+    el.innerHTML = `${p.veh ? `<b>${esc(p.veh)}</b>${p.auto ? "" : " (set)"}` : ""}${p.people ? ` <span class="hint">${p.people} crew</span>` : ""}${[...p.warn, p.dlWarn].filter(Boolean).map(w => `<span class="opsplanw">⚠ ${esc(w)}</span>`).join("")}`; });
+}
 function opsRerenderEdit() {
   if (!OPS.edit) return;
   const sec = OPS.edit.section, card = $("#ops-" + sec);
@@ -941,7 +1005,7 @@ function opsRerenderEdit() {
 document.addEventListener("input", e => {
   const el = e.target; if (!OPS.edit || !el.dataset || !el.dataset.p || !el.closest("#opsEdit")) return;
   opsSetPath(OPS.edit.data, el.dataset.p, el.type === "checkbox" ? el.checked : el.value);
-  if (OPS.edit.section === "flying") opsAutoTimes(el);
+  if (OPS.edit.section === "flying") { opsAutoTimes(el); opsPlanRefresh(); }
   if (OPS.edit.section === "duties" && el.dataset.p.endsWith(".name")) return; // auto hints refresh on next re-render
 });
 document.addEventListener("change", e => {
@@ -1053,6 +1117,7 @@ function opsPrint(eod) {
   if (OPS.rowsDay !== OPS.day) return toast("Still loading.");
   const h = opsGet("header"), fl = opsGet("flying"), sim = opsGet("sim"), st = opsStats(fl), e = v => esc(v ?? "");
   const nl = v => e(v).replace(/\n/g, "<br>");
+  const pplan = opsPlan(fl);
   const waves = fl.waves || [];
   let n = 0;
   const flying = waves.map(w => {
@@ -1061,7 +1126,7 @@ function opsPrint(eod) {
       const ac = (f.ac || []).length ? f.ac : [opsTpl.ac("")];
       ac.forEach((a, i) => {
         const no = opsIsAdd(f, a) ? "*" : opsLineUsed(a) ? String(++n).padStart(2, "0") : "";
-        rows += `<tr${i === 0 ? ' class="f"' : ""}><td>${no}</td>${i === 0 ? `<td rowspan="${ac.length}">${e(f.brief)} ${e(f.step)}</td><td rowspan="${ac.length}">${e(f.etd)}</td><td rowspan="${ac.length}">${e(f.eta)}</td>` : ""}<td>${e([i === 0 ? f.callsign : "", a.n].filter(Boolean).join(" "))}</td><td>${e(a.crew1)}</td><td>${e(a.crew2)}</td><td>${e(a.mission)}</td>${i === 0 ? `<td rowspan="${ac.length}">${e(f.area)}<br>${e(f.areaTime)}</td>` : ""}<td>${e(opsTail(a.tail, OPS.day))}</td><td>${e(a.config)}</td>${eod ? opsPrintAct(a.log) : ""}<td>${nl(a.rmks)}</td></tr>`;
+        rows += `<tr${i === 0 ? ' class="f"' : ""}><td>${no}</td>${i === 0 ? `<td rowspan="${ac.length}">${e(f.brief)} ${e(f.step)}</td><td rowspan="${ac.length}">${e(f.etd)}</td><td rowspan="${ac.length}">${e(f.eta)}</td>` : ""}<td>${e([i === 0 ? f.callsign : "", a.n].filter(Boolean).join(" "))}${i === 0 && pplan.byF.get(f) ? [pplan.byF.get(f).dl ? "<br>DL " + e(pplan.byF.get(f).dl) : "", pplan.byF.get(f).veh ? "<br>" + e(pplan.byF.get(f).veh) : ""].join("") : ""}</td><td>${e(a.crew1)}</td><td>${e(a.crew2)}</td><td>${e(a.mission)}</td>${i === 0 ? `<td rowspan="${ac.length}">${e(f.area)}<br>${e(f.areaTime)}</td>` : ""}<td>${e(opsTail(a.tail, OPS.day))}</td><td>${e(a.config)}</td>${eod ? opsPrintAct(a.log) : ""}<td>${nl(a.rmks)}</td></tr>`;
       });
     }
     return rows;
@@ -1219,6 +1284,9 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .opsed .tools{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .opsed .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 10px}
 .opsed label{margin-bottom:6px}
+.opsfly td.cs .opsdl,.opsfly td.cs .opsveh,.obwvac .opsdl,.obwvac .opsveh{display:block;font:600 .74rem var(--body);color:var(--muted);margin-top:2px;white-space:nowrap}
+.opsveh::before{content:"🚐 "}.opsdl.bad,.opsveh.bad{color:var(--late)}.opsdl.bad::after,.opsveh.bad::after{content:" ⚠"}
+.opsplan{font-size:.8rem}.opsplan .opsplanw{display:block;color:var(--late);font-size:.75rem;white-space:normal;max-width:220px}
 .opslog td{vertical-align:middle;padding:4px 6px}
 .opslog td small{display:block;color:var(--muted);font-size:.75rem}
 .opslog td.lgcs{white-space:nowrap}.opslog td.lgcs .btn{margin-top:4px}
