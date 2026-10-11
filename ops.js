@@ -577,12 +577,16 @@ function opsMyDuties(get) {
   }
   return out;
 }
-// Tails the signed-in person flies on a day.
-function opsMyTails(get) {
+// Tails the signed-in person flies on a day (with now = Z minutes: only flights not yet landed).
+function opsMyTails(get, now) {
   const names = opsMyNames(), fl = get("flying"), out = [];
-  for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || [])
-    if (a.tail && names.some(n => opsCrewHas(a, n))) out.push(String(a.tail).replace(/[#@\s]/g, ""));
-  return [...new Set(out)];
+  for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) {
+    const end = opsMin(f.eta);
+    if (now != null && end != null && end < now) continue;
+    if (a.tail && names.some(n => opsCrewHas(a, n))) out.push(String(a.tail).trim());
+  }
+  const k = t => t.replace(/[#@\s]/g, "");
+  return out.filter((t, i) => out.findIndex(x => k(x) === k(t)) === i); // as written (keeps # / @), one per tail
 }
 const opsView = {
   header(h) {

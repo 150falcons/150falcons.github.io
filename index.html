@@ -391,7 +391,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 
 <div class="toast" id="toast" hidden></div>
 
-<script src="ops.js?v=39"></script>
+<script src="ops.js?v=41"></script>
 <script src="opsboard.js?v=53"></script>
 <script>
 /* =====================================================================
@@ -716,15 +716,19 @@ function homeDash(hs) {
       break;
     }
     // Notes for the aircraft you fly today (Aircraft page notes and the programme's aircraft restrictions).
-    const tails = opsMyTails(get);
+    // One line per tail you still fly today: its Aircraft page notes, plus programme aircraft restrictions that name it
+    // (a restriction listing several tails, e.g. "331#, 323#, 327#", only shows under the tails you fly).
+    const tails = opsMyTails(get, nz);
     if (tails.length) {
       const key = t => String(t || "").replace(/[#@\s]/g, "").toUpperCase();
       const acd = OB.loaded && typeof obGet === "function" ? obGet("aircraft") : null;
       const notes = [];
       for (const tl of tails) {
         const t = acd && (acd.tails || []).find(x => key(x.tail) === key(tl));
-        if (t && (t.notes || "").trim()) notes.push(`<li><b>${esc(obTailMark(t))}</b> ${obFmt(t.notes).replace(/\n/g, " · ")}</li>`);
-        for (const x of (get("notes").aircraft || []).filter(x => key(x.ac).includes(key(tl)) && x.note)) notes.push(`<li><b>${esc(x.ac)}</b> ${esc(x.note)}</li>`);
+        const bits = [];
+        if (t && (t.notes || "").trim()) bits.push(obFmt(t.notes).replace(/\n/g, " · "));
+        for (const x of (get("notes").aircraft || []).filter(x => x.note && String(x.ac || "").split(/[,/&]|\s+AND\s+/i).some(p => key(p) === key(tl)))) bits.push(esc(x.note));
+        if (bits.length) notes.push(`<li><b>${esc(t ? obTailMark(t) : opsTail(tl))}</b> ${bits.join(" · ")}</li>`);
       }
       if (notes.length) rows.push(`<div class="hdrow"><span class="hdk">My aircraft</span><ul class="hdlist">${notes.join("")}</ul><a href="#" data-tab="aircraft" class="hdgo">Aircraft ›</a></div>`);
     }
