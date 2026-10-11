@@ -154,7 +154,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 .topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--paper);color:var(--ink);border-bottom:1px solid var(--line)}
 .topbar-in{max-width:none;margin:0 auto;padding:0 16px;display:flex;align-items:stretch;gap:24px;min-height:48px}
 .brand{font:700 1.15rem/1 var(--cond);white-space:nowrap;display:flex;align-items:center;background:none;border:0;padding:0;color:inherit;cursor:pointer}
-.subtabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:-4px 0 14px;overflow-x:auto}
+.subtabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:-4px 0 14px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}.subtabs::-webkit-scrollbar{display:none}
 .subtabs button{background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:8px 12px;font:600 1rem var(--cond);color:var(--muted);cursor:pointer;white-space:nowrap}
 .subtabs button[aria-selected="true"]{color:var(--ink);border-color:var(--ink)}
 @media (max-width:420px){.subtabs button{padding:8px 7px;font-size:.92rem}}
@@ -175,7 +175,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 .homecard h2{font:700 1.6rem/1.1 var(--cond);margin:0 0 6px;text-transform:uppercase}
 .homecard p{margin:0 0 4px;font-size:1rem}
 .homecard span{color:var(--muted);font-size:.88rem}
-.topbar nav.tabs{border:0;margin:0;gap:0;flex:1;overflow-x:auto}
+.topbar nav.tabs{border:0;margin:0;gap:0;flex:1;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}.topbar nav.tabs::-webkit-scrollbar{display:none}
 .topbar nav.tabs button{color:var(--muted);border-bottom:2px solid transparent;margin:0;padding:0 12px;font:600 1rem var(--cond);min-height:48px}
 .topbar nav.tabs button:hover{color:var(--ink)}
 .topbar nav.tabs button[aria-selected="true"]{color:var(--ink);border-color:var(--ink)}
