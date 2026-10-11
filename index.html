@@ -415,7 +415,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 <script src="settings.js?v=5"></script>
 <script src="ops.js?v=55"></script>
 <script src="opsboard.js?v=64"></script>
-<script src="currency.js?v=5"></script>
+<script src="currency.js?v=6"></script>
 <script>
 /* =====================================================================
    SETUP: paste your Supabase Project URL and anon (public) key here.
@@ -1695,7 +1695,7 @@ async function addStaff(type, nameEl, userEl) {
 async function removeInstructor(uid) {
   const p = profOf(uid); if (!p) return;
   if (!await ask(`Remove ${pLabel(p)}?`, "Their login is deleted. Their name stays on past log entries as \"Someone\".", "Remove")) return;
-  try { await adminApi({ action: "delete", user_id: uid }); toast("Login removed."); fetchAll(); }
+  try { await adminApi({ action: "delete", user_id: uid }); if (p.display_name && await curArchive(p.display_name, "Login removed")) toast("Login removed. Their currency record is archived (Operations → Currencies → Archived)."); else toast("Login removed."); fetchAll(); }
   catch (e) { toast(e.message); }
 }
 async function postOut(tid) {
@@ -1706,13 +1706,15 @@ async function postOut(tid) {
   if (error) return toast(errMsg(error));
   const a = acctOf(tid);
   if (a) { try { await adminApi({ action: "ban", user_id: a.id }); } catch (e) { toast(`Posted out, but the login couldn't be disabled: ${e.message}`); } }
-  toast(`${t.name} posted out.`); fetchAll();
+  const arch = await curArchive(t.name, "Posted out");
+  toast(`${t.name} posted out.${arch ? " Their currency record is archived (Operations → Currencies → Archived)." : ""}`); fetchAll();
 }
 async function restoreTrainee(tid) {
   const { error } = await S.sb.from("trainees").update({ active: true, posted_out_at: null }).eq("id", tid);
   if (error) return toast(errMsg(error));
   const a = acctOf(tid);
   if (a) { try { await adminApi({ action: "unban", user_id: a.id }); } catch (e) { toast(e.message); } }
+  const t = S.roster.find(x => x.id === tid); if (t && await curRestore(t.name)) toast(`${t.name} restored, with their currency record.`);
   fetchAll();
 }
 async function deleteTrainee(tid) {

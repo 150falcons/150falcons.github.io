@@ -58,10 +58,9 @@ function curPeople() {
     .forEach(t => add(/PGF/i.test(t.course || "") ? "PGF" : /WSO/i.test(t.course || "") ? "WSO" : "TR", t.name, { course: t.course }));
   profs.filter(p => p.staff_role === "ATCO").forEach(p => add("ATCO", p.display_name, { prof: p }));
   // QFIs still on the instructor course appear under FIC too (as in the Excel), and records with no login keep their group.
-  for (const [k, r] of Object.entries(doc)) {
-    if (r.grp && !names.has(opsNorm(k))) add(r.grp, k, { nologin: true });
-    if (r.fic) add("FIC", k, {});
-  }
+  // Only people with a login show (Gordon, 11 Oct); a record with no login waits in the archive. QFIs still on the instructor
+  // course with a fic record also show under FIC.
+  for (const [k, r] of Object.entries(doc)) if (r.fic && names.has(opsNorm(k))) add("FIC", k, {});
   return out;
 }
 // One cell: date with its state. kind "exp" = valid until this date (red after), "expx" = first day out (red from), "info" = plain.
@@ -131,10 +130,11 @@ function renderCur(v) {
   const flown = curFlown();
   if (!flown) { v.innerHTML = `<div class="empty">Loading flown sorties…</div>`; return; }
   const can = curCanEdit(), meta = typeof obMeta === "function" ? obMeta("currency") : "";
-  const bar = `<div class="opsbar"><span class="seg"><button class="btn small${CUR.view === "board" ? " primary" : ""}" data-cur="view" data-k="board">Currency board</button><button class="btn small${CUR.view === "records" ? " primary" : ""}" data-cur="view" data-k="records">Records</button><button class="btn small${CUR.view === "rules" ? " primary" : ""}" data-cur="view" data-k="rules">How it's worked out</button></span><span class="grow"></span><span class="opsmeta">${esc(meta)}</span></div>`;
+  const bar = `<div class="opsbar"><span class="seg"><button class="btn small${CUR.view === "board" ? " primary" : ""}" data-cur="view" data-k="board">Currency board</button><button class="btn small${CUR.view === "records" ? " primary" : ""}" data-cur="view" data-k="records">Records</button><button class="btn small${CUR.view === "archive" ? " primary" : ""}" data-cur="view" data-k="archive">Archived</button><button class="btn small${CUR.view === "rules" ? " primary" : ""}" data-cur="view" data-k="rules">How it's worked out</button></span><span class="grow"></span><span class="opsmeta">${esc(meta)}</span></div>`;
   const people = curPeople().map(x => ({ ...x, fl: flown[x.name] || {} }));
   if (CUR.view === "rules") { v.innerHTML = bar + `<section class="card opscard"><div class="opshead"><h2>How it's worked out</h2></div><ul class="cfgrules">${CUR_RULES.map(r => `<li>${esc(r)}</li>`).join("")}<li>${esc(`Amber = expiring within ${cfgN("cur.amber")} days (day currency: ${cfgN("cur.amberDay")} days; change under Operations → Settings). Red = expired or NO GO.`)}</li></ul></section>`; return; }
   if (CUR.view === "records") { v.innerHTML = bar + curRecords(people, can); return; }
+  if (CUR.view === "archive") { v.innerHTML = bar + curArchiveView(can); return; }
   // Board: one card per group, then the Expired / Expiring summary at the top.
   const expired = {}, expiring = {};
   const cards = CUR_GROUPS.map(([g, title]) => {
@@ -152,6 +152,34 @@ function renderCur(v) {
     <section class="card opscard"><div class="opshead"><h2>Items expiring</h2><span class="opsmeta">within ${cfgN("cur.amber")} days</span></div><div class="cul warn">${sum(expiring)}</div></section></div>${cards}
     <p class="hint">Last flown, night and FCF dates fill in from Log flown times; a date corrected by hand under Records takes over. Hover a date to see when it was done and the days left.</p>`;
 }
+// Archive (Gordon, 11 Oct): when someone is posted out or their login removed, their currency record moves to data.archive
+// (with the date and why), so it can be looked up or restored later. Restore = back onto the board.
+const CUR_LAB = { last: "Last flown", night: "Last night sortie", irt: "IRT achieved", ipc: "Last IPC", ep: "Last EP sim", tow: "TOW prof chk", fcf: "Last FCF flight", fcfSim: "FCF sims prof chk", solo: "Last solo", lastSyl: "Last syllabus", ifApp: "Last IF app", mod: "MOD", med: "Medical", qfiCat: "QFI CAT", opsCat: "Ops CAT", rating: "IRT rating" };
+function curArchiveView(can) {
+  const ar = curDoc().archive || {}, ks = Object.keys(ar).sort((a, b) => String(ar[b].archivedAt).localeCompare(String(ar[a].archivedAt)) || a.localeCompare(b));
+  const grpName = g => (CUR_GROUPS.find(x => x[0] === g) || [, g || "-"])[1];
+  const detail = r => Object.entries({ ...(r.seed || {}), ...r }).filter(([k, v]) => CUR_LAB[k] && v !== "" && v != null && typeof v !== "object").map(([k, v]) => `${CUR_LAB[k]}: ${/^\d{4}-\d\d-\d\d$/.test(v) ? cuFmt(v) : esc(String(v))}`).join(" · ");
+  return `<section class="card opscard"><div class="opshead"><h2>Archived currency records</h2><span class="opsmeta">${ks.length}</span></div>
+    <p class="hint" style="margin:0 0 8px">Records move here by themselves when someone is posted out or their login is removed, so they can be checked later.${can ? " Restore puts the record back on the board (the person needs a login to show)." : ""}</p>
+    ${ks.length ? `<div class="tablewrap"><table class="opst cut"><thead><tr><th>Name</th><th>Group</th><th>Archived</th><th>Why</th><th>Last record</th>${can ? "<th></th>" : ""}</tr></thead><tbody>${ks.map(k => `<tr><td class="cuname"><b>${esc(k)}</b></td><td>${esc(grpName(ar[k].grp))}</td><td>${esc(cuFmt(ar[k].archivedAt))}</td><td>${esc(ar[k].archiveWhy || "")}</td><td style="text-align:left;white-space:normal;min-width:260px">${detail(ar[k]) || "–"}</td>${can ? `<td><button class="btn small" data-cur="restore" data-k="${esc(k)}">Restore</button></td>` : ""}</tr>`).join("")}</tbody></table></div>` : `<p class="hint">Nothing archived yet.</p>`}</section>`;
+}
+// Move a record between people and archive, from the latest saved copy (retry once if someone saved in between).
+async function curMove(name, toArchive, why) {
+  for (let tries = 0; tries < 2; tries++) {
+    const { data: row } = await S.sb.from("ops_state").select("*").eq("key", "currency").maybeSingle();
+    if (!row) return false;
+    const d = JSON.parse(JSON.stringify(row.data || {})), from = toArchive ? (d.people ||= {}) : (d.archive ||= {}), to = toArchive ? (d.archive ||= {}) : (d.people ||= {});
+    const k = Object.keys(from).find(x => opsNorm(x) === opsNorm(name)); if (!k) return false;
+    const r = from[k]; delete from[k];
+    if (toArchive) to[k] = { ...r, archivedAt: todayStr(), archiveWhy: why || "" }; else { delete r.archivedAt; delete r.archiveWhy; to[k] = r; }
+    const { data: ver, error } = await S.sb.rpc("ops_state_save", { p_key: "currency", p_data: d, p_version: row.version });
+    if (!error) { if (OB.state) OB.state.currency = { ...row, data: d, version: ver, updated_at: new Date().toISOString(), updated_by: S.me.id }; return true; }
+    if (!/changed/i.test(error.message)) { toast("Currency record not moved: " + errMsg(error)); return false; }
+  }
+  return false;
+}
+const curArchive = (name, why) => curCanEdit() ? curMove(name, true, why) : Promise.resolve(false);
+const curRestore = name => curCanEdit() ? curMove(name, false) : Promise.resolve(false);
 // Records: the dates behind the board, per group (like the Excel's DATA ENTRY). Editors type, everyone else views.
 const CUR_FIELDS = {
   QFI: [["last", "Last flown", "d"], ["irt", "IRT achieved", "d"], ["night", "Last night sortie", "d"], ["noNight", "Not night qual", "c"], ["ipc", "Most recent IPC (FTI)", "d"], ["ep", "Last EP sim", "d"], ["rating", "IRT rating", "t"], ["opsCat", "Ops CAT", "t"], ["qfiCat", "QFI CAT (if no login)", "t"], ["med", "Medical (blank = GO)", "t"]],
@@ -195,6 +223,7 @@ document.addEventListener("click", async e => {
   const b = e.target.closest("[data-cur]"); if (!b) return;
   const a = b.dataset.cur;
   if (a === "view") { CUR.view = b.dataset.k; return render(); }
+  if (a === "restore") { b.disabled = true; if (await curRestore(b.dataset.k)) toast(`${b.dataset.k} restored to the board.`); return render(); }
   if (a === "edit") { CUR.edit = JSON.parse(JSON.stringify(curDoc().people || {})); return render(); }
   if (a === "cancel") { CUR.edit = null; return render(); }
   if (a === "save") {
