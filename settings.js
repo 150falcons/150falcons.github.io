@@ -69,6 +69,12 @@ const CFG_GROUPS = [
     "Vehicle on Auto: formations stepping close together share a van run while seats last. Each run is numbered per wave (VAN 1, VAN 2 …). If the van is still out on its last run, the formation gets the ZOE, which the crew drive themselves and park at the flight line until they land.",
     "If the ZOE is out too, the formation still gets the next van run, with a warning. Ops can pick VAN or ZOE by hand; warnings then show for full vans, a busy ZOE or too many people.",
   ] },
+  { name: "Flown times", rows: [
+    ["log.why", "Reasons ops can pick for CX, DPCO and DNCO (comma-separated)", "", "LOGS M1, LOGS M2, LOGS M3, WX, OPS, OTH", "text"],
+  ], rules: [
+    "Each logged line gets a result: DCO (default once times are keyed), DPCO or DNCO, or CX. CX, DPCO and DNCO take a reason from the list above.",
+    "The End of day PDF shows the actual times and the result in the remarks column (e.g. \"DCO / 1.1\", \"DNCO LOGS M1 / 0.5\", \"CX DUE WX\"); IRT lines read \"IRT DCO\".",
+  ] },
   { name: "Currencies", rows: [
     ["cur.amber", "Currency items show amber when expiring within", "days", 30],
     ["cur.amberDay", "Day currency shows amber within", "days", 7],
@@ -98,6 +104,7 @@ const cfgSaved = () => (typeof OB !== "undefined" && OB.state && OB.state.settin
 function cfg(k) { const v = cfgSaved()[k]; return v === undefined || v === null || v === "" ? CFG_DEF[k] : v; }
 const cfgN = k => { const n = parseFloat(cfg(k)); return isNaN(n) ? parseFloat(CFG_DEF[k]) : n; };
 const cfgList = k => String(cfg(k)).split(/[,\s]+/).map(Number).filter(n => !isNaN(n));
+const cfgWords = k => String(cfg(k)).split(",").map(x => x.trim().toUpperCase()).filter(Boolean);
 const cfgCanEdit = () => typeof isUserAdmin === "function" && isUserAdmin();
 let CFG_EDIT = null; // working copy while an account admin edits
 
@@ -108,7 +115,7 @@ function renderSettings(v) {
   const body = CFG_GROUPS.map(g => `<section class="card opscard cfgcard"><div class="opshead"><h2>${esc(g.name)}</h2></div>
     ${g.rows.length ? `<table class="opst cfgt"><tbody>${g.rows.map(([k, label, unit, def, type]) => {
       const changed = saved[k] !== undefined && saved[k] !== "" && String(saved[k]) !== String(def);
-      const box = ed ? `<input data-cfg="${k}" value="${esc(val(k))}" placeholder="${esc(def)}" ${type ? "" : `inputmode="decimal"`} style="width:${type === "list" ? "200px" : "90px"}">` : `<b>${esc(cfg(k))}</b>`;
+      const box = ed ? `<input data-cfg="${k}" value="${esc(val(k))}" placeholder="${esc(def)}" ${type ? "" : `inputmode="decimal"`} style="width:${type === "text" ? "320px" : type === "list" ? "200px" : "90px"}">` : `<b>${esc(cfg(k))}</b>`;
       return `<tr><td>${esc(label)}</td><td class="cfgv">${box} <span class="hint">${esc(unit)}</span></td><td class="hint">${changed ? `default ${esc(def)}` : ""}</td></tr>`;
     }).join("")}</tbody></table>` : ""}
     ${g.rules.length ? `<ul class="cfgrules">${g.rules.map(r => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}</section>`).join("");
