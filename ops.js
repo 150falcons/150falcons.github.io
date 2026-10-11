@@ -452,6 +452,9 @@ function hrsRange(p) {
 }
 // Who is who (Gordon, 11 Oct): from the logins first (QFI logins = instructors, ST logins = ST Tow, trainee logins /
 // roster = trainees), then the Go / No-Go crew list for anyone without a login. WSO trainees = roster course with "WSO".
+// IRT (instrument rating test): the back seat (second name) must be an IRE (Gordon, 11 Oct).
+const opsIrtBad = a => /\bIRT\b/i.test(String(a && a.mission || "")) && !(a.crew2 && hasQual(a.crew2, "IRE"));
+const OPS_IRT_MSG = "IRT: the back seat must be an IRE";
 const opsIpsMission = a => /\bIPS\b/i.test(String(a && a.mission || ""));
 function hrsRoles() {
   const crew = typeof OB !== "undefined" ? OB.crew || [] : [], r = {};
@@ -488,7 +491,11 @@ function hrsEntries(days) {
           const n = opsNorm(who); if (!n) return;
           let instr = 0, wso = 0, how = "";
           if (isIn(who)) {
-            if (mate && isTr(mate)) { if (!ips) { instr = m; how = "dual"; if (role(mate).wso) wso = m; } else how = "IPS"; }
+            if (mate && isTr(mate)) {
+              if (ips) how = "IPS";
+              else if (role(mate).wso && !hasQual(who, "WSO")) how = "WSO trainee, not a WSO instructor"; // only WSO instructors log WSO instruction
+              else { instr = m; how = "dual"; if (role(mate).wso) wso = m; }
+            }
             else if (solos.length) {
               const t0 = opsMin(a.log.to), end = Math.max(...solos);
               if (t0 != null && isFinite(end)) { instr = Math.max(0, (end - t0 + 1440) % 1440); how = "solo lead"; }
@@ -555,7 +562,7 @@ function renderHours(v) {
       <span class="hint">${per === "all" ? "" : `${fd(from)} – ${fd(to > todayStr() ? todayStr() : to)}`}</span><span class="grow"></span>
       <button class="btn small${sort === "group" ? " primary" : ""}" data-hrs="sort" data-v="group">Crew list order</button><button class="btn small${sort === "hours" ? " primary" : ""}" data-hrs="sort" data-v="hours">Most hours</button></div>
     ${sections || `<section class="card opscard"><p class="hint">No flown times logged in this period yet. Ops log them on the Flying program with <b>Log flown times</b> after the aircrew land.</p></section>`}
-    <p class="hint" style="margin:8px 0 0">From the take-off / landing times logged on each day's flying program. Both crew on a line get the hours; night waves count as night. <b>Instructional hours</b> (instructors): the whole sortie when a trainee is in the same aircraft (not when the line is IPS); when leading a solo trainee, from the instructor's take-off to the solo trainee's landing. Sorties with WSO trainees are also shown on their own (of which WSO). Tap a name for their sorties.</p>`;
+    <p class="hint" style="margin:8px 0 0">From the take-off / landing times logged on each day's flying program. Both crew on a line get the hours; night waves count as night. <b>Instructional hours</b> (instructors): the whole sortie when a trainee is in the same aircraft (not when the line is IPS); when leading a solo trainee, from the instructor's take-off to the solo trainee's landing. Sorties with WSO trainees count only for instructors ticked as WSO instructor (Admin → Edit) and are also shown on their own (of which WSO). Tap a name for their sorties.</p>`;
 }
 document.addEventListener("click", e => {
   const r = e.target.closest("[data-hrs-p]"); if (r && S.tab === "hours") { OPS.hrsOpen = OPS.hrsOpen || {}; OPS.hrsOpen[r.dataset.hrsP] = !OPS.hrsOpen[r.dataset.hrsP]; return render(); }
@@ -731,7 +738,7 @@ const opsView = {
           out += `<tr class="${add ? "opsadd" : ""}"><td class="no">${no}</td>
             ${i === 0 ? `<td rowspan="${span}" class="tm rs"><b>${esc(f.etd)}</b>${bs ? `<small class="bs">${esc(bs)}</small>` : ""}</td><td rowspan="${span}" class="tm rs"><b>${esc(f.eta)}</b></td><td rowspan="${span}" class="cs rs">${esc(f.callsign)}</td>` : ""}
             <td class="n">${esc(a.n)}</td><td class="fcrew">${opsX(a.crew1)}${a.crew2 ? `<span class="c2"> / ${opsX(a.crew2)}</span>` : ""}</td><td class="nw">${esc(a.mission)}</td>
-            ${i === 0 ? `<td rowspan="${span}" class="area rs">${esc(f.area)}${f.areaTime ? `<small>${esc(f.areaTime)}</small>` : ""}</td>` : ""}<td class="nw">${esc(opsTail(a.tail, OPS.day))}</td><td class="nw">${esc(a.config)}</td>${act}<td class="rm">${opsNl(a.rmks)}</td></tr>`;
+            ${i === 0 ? `<td rowspan="${span}" class="area rs">${esc(f.area)}${f.areaTime ? `<small>${esc(f.areaTime)}</small>` : ""}</td>` : ""}<td class="nw">${esc(opsTail(a.tail, OPS.day))}</td><td class="nw">${esc(a.config)}</td>${act}<td class="rm">${opsIrtBad(a) ? `<span class="opsirt">⚠ ${OPS_IRT_MSG}</span>${a.rmks ? "<br>" : ""}` : ""}${opsNl(a.rmks)}</td></tr>`;
         });
         out += `</tbody>`;
       }
@@ -820,7 +827,7 @@ const opsEd = {
           <td>${oI(p + ".callsign", f.callsign, "120px")}</td><td>${oI(p + ".area", f.area, "120px")}</td><td>${oI(p + ".areaTime", f.areaTime, "110px")}</td>
           <td>${oC(p + ".opsAdd", f.opsAdd, "Ops add")}</td><td>${oTools(`waves.${wi}.flights`, fi)}</td></tr></tbody></table>
         <table><thead><tr><th>#</th><th>Aircrew</th><th>Aircrew</th><th>Mission</th><th>A/C</th><th>Config</th><th>Rmks</th><th></th><th></th></tr></thead><tbody>
-          ${(f.ac || []).map((a, ai) => { const q = `${p}.ac.${ai}`; return `<tr><td>${oI(q + ".n", a.n, "40px")}</td><td>${oP(q + ".crew1", a.crew1, "120px")}</td><td>${oP(q + ".crew2", a.crew2, "120px")}</td><td>${oI(q + ".mission", a.mission, "110px")}</td><td>${oI(q + ".tail", a.tail, "60px")}</td><td>${oI(q + ".config", a.config, "60px")}</td><td>${oI(q + ".rmks", a.rmks, "200px")}</td><td>${oC(q + ".opsAdd", a.opsAdd, "Ops add")}</td><td>${oB("del", p + ".ac", ai, "✕", "", "Remove aircraft")}</td></tr>`; }).join("")}
+          ${(f.ac || []).map((a, ai) => { const q = `${p}.ac.${ai}`; return `<tr><td>${oI(q + ".n", a.n, "40px")}</td><td>${oP(q + ".crew1", a.crew1, "120px")}</td><td>${oP(q + ".crew2", a.crew2, "120px")}</td><td>${oI(q + ".mission", a.mission, "110px")}</td><td>${oI(q + ".tail", a.tail, "60px")}</td><td>${oI(q + ".config", a.config, "60px")}</td><td>${oI(q + ".rmks", a.rmks, "200px")}</td><td>${oC(q + ".opsAdd", a.opsAdd, "Ops add")}</td><td>${oB("del", p + ".ac", ai, "✕", "", "Remove aircraft")}</td></tr>${opsIrtBad(a) ? `<tr class="opswarn"><td colspan="9">⚠ ${OPS_IRT_MSG}${a.crew2 ? ` (${esc(a.crew2)} isn't ticked as IRE)` : " (no back seat)"}</td></tr>` : ""}`; }).join("")}
         </tbody></table></div>${oB("add", p + ".ac", "", "+ Aircraft", "ac")}</div>`; }).join("")}
       <div class="tools">${oB("add", `waves.${wi}.flights`, "", "+ Flight", "flight")}</div></div>`).join("")
       + `<div class="tools">${oB("add", "waves", "", "+ Wave", "wave")}${oB("add", "waves", "", "+ Night wave", "nwave")}</div>` + `<p class="hint"><b>Key in the ETD first:</b> ETA (ETD + ${cfgN("fly.eta")} min), step (ETD − ${cfgN("fly.step")} min) and brief (step − ${cfgN("fly.brief")} min) fill in by themselves (shown in grey). Type over any of them to match the ops or WX / NOTAM brief; clear a box to go back to the worked-out time. Times as 0725 (Zulu). Tick "Ops add" on the flight (whole flight) or on one aircraft line (e.g. #1 ops add): they show as * and don't count in planned sorties or hours.</p>`;
@@ -977,6 +984,10 @@ async function opsClearDay(btn) {
 }
 async function opsSave(btn) {
   const ed = OPS.edit; if (!ed) return;
+  if (ed.section === "flying") {
+    const bad = []; (opsNameWaves(ed.data).waves || []).forEach(w => (w.flights || []).forEach(f => (f.ac || []).forEach(a => { if (opsIrtBad(a)) bad.push(`${w.name} ${[f.callsign, a.n].filter(Boolean).join(" ")}: ${a.crew1 || "?"} / ${a.crew2 || "no back seat"}`); })));
+    if (bad.length && !await ask("IRT needs an IRE in the back seat", `${bad.join("; ")}. The back seat isn't ticked as IRE (Admin → Edit). Save anyway?`, "Save anyway")) return;
+  }
   btn.disabled = true;
   const { data, error } = await S.sb.rpc("ops_save", { p_day: OPS.day, p_section: ed.section, p_data: ed.data, p_version: ed.version });
   btn.disabled = false;
@@ -1087,6 +1098,7 @@ function opsFlownStats(fl) {
   const s = document.createElement("style");
   s.textContent = `
 .opsautot{color:var(--muted)}
+.opswarn td{color:var(--late);font-size:.85rem;padding-top:0}.opsirt{color:var(--late);font-weight:600;font-size:.85em}
 .opsbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
 .opsbar.grp{gap:8px 18px;align-items:flex-end;margin-bottom:12px}
 .opsgrp{display:flex;flex-direction:column;gap:3px}.opsgrpl{font:700 .68rem var(--cond);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.opsgrpb{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
