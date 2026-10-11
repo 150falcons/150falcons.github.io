@@ -374,7 +374,9 @@ function opsFlyTvGround(g) {
 
 /* ---------- Flown times (Gordon, 10 Oct): after landing, ops log actual take-off / landing per aircraft line ---------- */
 // Stored on the line as a.log = { to, ldg, st: "flown" | "cx" } through ops_log_flight (no version clash with the programme editor).
-const opsLogMins = L => { if (!L || L.st !== "flown") return null; const a = opsMin(L.to), b = opsMin(L.ldg); return a == null || b == null ? null : (b - a + 1440) % 1440; };
+// "ips" = flown, but an instructor proficiency sortie: no instructional hours (Gordon, 11 Oct).
+const opsFlown = L => !!L && (L.st === "flown" || L.st === "ips");
+const opsLogMins = L => { if (!opsFlown(L)) return null; const a = opsMin(L.to), b = opsMin(L.ldg); return a == null || b == null ? null : (b - a + 1440) % 1440; };
 const opsHrs = m => m == null ? "" : (m / 60).toFixed(1);
 const opsT4 = v => { const m = opsMin(String(v || "").replace(/[^0-9:]/g, "").replace(/^(\d{3})$/, "0$1")); return m == null ? "" : opsZ4(m); };
 const opsLogLine = k => { const [w, f, a] = k.split(".").map(Number); return (((((OPS.rows.flying || {}).data || {}).waves || [])[w] || {}).flights || [])[f]?.ac?.[a] || {}; };
@@ -386,20 +388,20 @@ function opsLogCard() {
       const ls = (f.ac || []).map((a, ai) => [a, ai]).filter(([a]) => opsLineUsed(a)); if (!ls.length) return;
       ls.forEach(([a, ai], k) => {
         const L = a.log || {}, key = `${wi}.${fi}.${ai}`, m = opsLogMins(L); lines++; if (L.st) logged++; if (m != null) mins += m;
-        wr += `<tr class="${L.st === "flown" ? "lgok" : L.st === "cx" ? "lgcx" : ""}${k === 0 ? " lgf" : ""}">
+        wr += `<tr class="${opsFlown(L) ? "lgok" : L.st === "cx" ? "lgcx" : ""}${k === 0 ? " lgf" : ""}">
           ${k === 0 ? `<td rowspan="${ls.length}" class="lgcs"><b>${esc(f.callsign || "-")}</b><small>${esc(f.etd || "?")}–${esc(f.eta || "?")}Z${opsIsAdd(f, {}) ? " · ops add" : ""}</small><button class="btn small" data-ops="logplan" data-k="${wi}.${fi}">✓ As planned</button></td>` : ""}
           <td class="lgcrew">${esc(a.n || "")} <b>${opsX(a.crew1)}</b>${a.crew2 ? ` / ${opsX(a.crew2)}` : ""}<small>${esc([a.mission, opsTail(a.tail, OPS.day)].filter(Boolean).join(" · "))}${opsIsAdd(f, a) ? " · ops add" : ""}</small></td>
           <td><input data-log="to" data-k="${key}" value="${esc(L.to || "")}" placeholder="${esc(f.etd || "T/O")}" inputmode="numeric" maxlength="5" aria-label="Take-off"></td>
           <td><input data-log="ldg" data-k="${key}" value="${esc(L.ldg || "")}" placeholder="${esc(f.eta || "LDG")}" inputmode="numeric" maxlength="5" aria-label="Landing"></td>
           <td class="lghrs" data-hrs="${key}">${m != null ? opsHrs(m) : ""}</td>
-          <td class="lgbtn"><button class="btn small${L.st === "cx" ? " danger" : ""}" data-ops="logcx" data-k="${key}" title="Cancelled: no hours">CX</button>${L.st ? `<button class="btn small" data-ops="logclr" data-k="${key}" title="Clear">✕</button>` : ""}</td></tr>`;
+          <td class="lgbtn">${opsIpsMission(a) ? `<span class="tag nd" title="Mission says IPS: no instructional hours">IPS</span>` : `<button class="btn small${L.st === "ips" ? " primary" : ""}" data-ops="logips" data-k="${key}" title="Instructor proficiency sortie: flown, but no instructional hours">IPS</button>`}<button class="btn small${L.st === "cx" ? " danger" : ""}" data-ops="logcx" data-k="${key}" title="Cancelled: no hours">CX</button>${L.st ? `<button class="btn small" data-ops="logclr" data-k="${key}" title="Clear">✕</button>` : ""}</td></tr>`;
       });
     });
     if (wr) rows += `<tr class="lgwv"><td colspan="6">${esc(w.name)}</td></tr>` + wr;
   });
   return `<section class="card opscard" id="ops-log"><div class="opshead"><h2>Flown times</h2><span class="opsmeta">${logged} of ${lines} lines logged · ${opsHrs(mins) || "0.0"} h flown <button class="btn small primary" data-ops="log">Done logging</button></span></div>
     <div class="tablewrap"><table class="opst opslog"><thead><tr><th>Flight</th><th>Aircrew</th><th>T/O (Z)</th><th>LDG (Z)</th><th>Hrs</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="hint" style="margin:6px 0 0">After landing, key in the actual take-off and landing times (Z, e.g. 0718). <b>✓ As planned</b> fills in the planned ETD / ETA for the whole flight; type over any that differ. <b>CX</b> = cancelled (no hours). Both crew on a line get the hours; they add up on the <b>Hours</b> tab.</p>
+    <p class="hint" style="margin:6px 0 0">After landing, key in the actual take-off and landing times (Z, e.g. 0718). <b>✓ As planned</b> fills in the planned ETD / ETA for the whole flight; type over any that differ. <b>CX</b> = cancelled (no hours). <b>IPS</b> = flown as an instructor proficiency sortie: hours count, but no instructional hours (missions named IPS count as IPS by themselves). Both crew on a line get the hours; they add up on the <b>Hours</b> tab.</p>
     <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn primary" data-ops="log">Done logging</button></div></section>`;
 }
 async function opsLogSave(k, to, ldg, st, rerender) {
@@ -411,7 +413,7 @@ async function opsLogSave(k, to, ldg, st, rerender) {
   if (rerender) { const y = scrollY; renderOps($("#view")); scrollTo(0, y); }
   else { // update the row in place so typing carries on
     const m = opsLogMins(line.log), cell = document.querySelector(`[data-hrs="${k}"]`); if (cell) cell.textContent = m != null ? opsHrs(m) : "";
-    const tr = cell && cell.closest("tr"); if (tr) { tr.classList.toggle("lgok", st === "flown"); tr.classList.toggle("lgcx", st === "cx"); }
+    const tr = cell && cell.closest("tr"); if (tr) { tr.classList.toggle("lgok", st === "flown" || st === "ips"); tr.classList.toggle("lgcx", st === "cx"); }
   }
   return true;
 }
@@ -429,7 +431,8 @@ document.addEventListener("change", e => {
   const to = opsT4(get("to").value), ldg = opsT4(get("ldg").value);
   if (el.value.trim() && !opsT4(el.value)) return toast("Times are 4 digits in Z, e.g. 0718.");
   get("to").value = to; get("ldg").value = ldg;
-  opsLogSave(el.dataset.k, to, ldg, to || ldg ? "flown" : "", false);
+  const cur = (opsLogLine(el.dataset.k).log || {}).st;
+  opsLogSave(el.dataset.k, to, ldg, to || ldg ? (cur === "ips" ? "ips" : "flown") : "", false);
 });
 document.addEventListener("focusout", () => setTimeout(() => {
   if (OPS.pendingLoad && !(document.activeElement && document.activeElement.dataset && document.activeElement.dataset.log)) { OPS.pendingLoad = false; opsLoad(OPS.day); }
@@ -445,54 +448,95 @@ function hrsRange(p) {
   if (p === "year") return [`${y}-01-01`, t];
   return ["0000-01-01", "9999-12-31"];
 }
-// Every flown line on every day → one entry per crew member.
+// Who is who, for instructional hours (Gordon, 11 Oct): instructors = Go / No-Go group QFI; trainees = groups PGF /
+// TRAINEES or a name on the roster; WSO trainees = roster course with "WSO".
+const opsIpsMission = a => /\bIPS\b/i.test(String(a && a.mission || ""));
+function hrsRoles() {
+  const crew = typeof OB !== "undefined" ? OB.crew || [] : [], r = {};
+  for (const c of crew) { const n = opsNorm(c.name); if (n) r[n] = { grp: c.grp }; }
+  for (const t of S.roster || []) { const n = opsNorm(t.name); if (!n) continue; r[n] = { ...(r[n] || {}), trainee: true, wso: /WSO/i.test(t.course || "") }; }
+  for (const k in r) { const g = String(r[k].grp || "").toUpperCase(); if (g === "PGF" || g === "TRAINEES") r[k].trainee = true; r[k].instr = g === "QFI"; }
+  return r;
+}
+// Every flown line on every day → one entry per crew member. Instructors also get instructional minutes:
+//  · a trainee in the same aircraft → the whole sortie (not if the line is IPS: logged as IPS or mission says IPS);
+//  · leading a solo trainee in the same flight → from the instructor's take-off to the solo trainee's landing.
+//  WSO-trainee instructional minutes are also counted on their own ("WSO instr"), and are part of the instructional total.
 function hrsEntries(days) {
-  const out = [];
+  const out = [], R = hrsRoles(), role = n => R[opsNorm(n)] || {};
+  const isTr = n => !!role(n).trainee, isIn = n => !!role(n).instr;
   for (const r of days) {
     const fl = opsNameWaves(opsClone(r.data || {}));
-    for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) {
-      const m = opsLogMins(a.log); if (m == null) continue;
-      [[a.crew1, a.crew2], [a.crew2, a.crew1]].forEach(([who, mate], seat) => {
-        const n = opsNorm(who); if (!n) return;
-        out.push({ name: n, day: r.day, wave: w.name, night: !!w.night, callsign: f.callsign, ac: a.n, tail: opsTail(a.tail, r.day), mission: a.mission, mate: mate || "", seat: seat ? "Back" : "Front", to: a.log.to, ldg: a.log.ldg, mins: m });
-      });
+    for (const w of fl.waves || []) for (const f of w.flights || []) {
+      const ac = f.ac || [];
+      // solo trainees in this flight (one person on the line, a trainee), with their landing time
+      const solos = ac.filter(a => opsLogMins(a.log) != null && opsNorm(a.crew1) && !opsNorm(a.crew2) && isTr(a.crew1)).map(a => opsMin(a.log.ldg));
+      for (const a of ac) {
+        const m = opsLogMins(a.log); if (m == null) continue;
+        const ips = a.log.st === "ips" || opsIpsMission(a);
+        [[a.crew1, a.crew2], [a.crew2, a.crew1]].forEach(([who, mate], seat) => {
+          const n = opsNorm(who); if (!n) return;
+          let instr = 0, wso = 0, how = "";
+          if (isIn(who)) {
+            if (mate && isTr(mate)) { if (!ips) { instr = m; how = "dual"; if (role(mate).wso) wso = m; } else how = "IPS"; }
+            else if (solos.length) {
+              const t0 = opsMin(a.log.to), end = Math.max(...solos);
+              if (t0 != null && isFinite(end)) { instr = Math.max(0, (end - t0 + 1440) % 1440); how = "solo lead"; }
+            }
+          }
+          out.push({ name: n, day: r.day, wave: w.name, night: !!w.night, callsign: f.callsign, ac: a.n, tail: opsTail(a.tail, r.day), mission: a.mission, mate: mate || "", seat: seat ? "Back" : "Front", to: a.log.to, ldg: a.log.ldg, mins: m, instr, wso, how, solo: !opsNorm(mate) });
+        });
+      }
     }
   }
   return out;
 }
+const HRS_CATS = [["instr", "Instructors (QFI)"], ["st", "ST Tow"], ["tr", "Trainees"], ["oth", "Others / not on crew list"]];
 function renderHours(v) {
   if (!OPS.hrs) {
     v.innerHTML = `<div class="empty">Loading hours…</div>`;
     if (!OPS.hrsLoading) { OPS.hrsLoading = true; S.sb.from("ops_sections").select("day,data").eq("section", "flying").order("day").then(({ data, error }) => { OPS.hrsLoading = false; if (error) return toast(errMsg(error)); OPS.hrs = { days: data || [] }; if (S.tab === "hours") render(); }); }
     return;
   }
-  const per = OPS.hrsPer || "month", [from, to] = hrsRange(per), sort = OPS.hrsSort || "group";
+  const per = OPS.hrsPer || "month", [from, to] = hrsRange(per), sort = OPS.hrsSort || "hours";
   const ents = hrsEntries(OPS.hrs.days).filter(e => e.day >= from && e.day <= to);
-  const crewOf = n => (typeof OB !== "undefined" ? OB.crew : []).find(c => opsNorm(c.name) === n);
+  const crew = typeof OB !== "undefined" ? OB.crew || [] : [], R = hrsRoles();
+  const crewOf = n => crew.find(c => opsNorm(c.name) === n);
+  const catOf = n => { const c = crewOf(n), g = String(c ? c.grp : "").toUpperCase(); return g === "QFI" ? "instr" : g === "ST" ? "st" : (g === "PGF" || g === "TRAINEES" || (R[n] && R[n].trainee)) ? "tr" : "oth"; };
   const people = {};
-  const blank = n => ({ name: n, sorties: 0, day: 0, night: 0, last: "", list: [] });
-  // Every active aircrew on the Go / No-Go crew list shows, even with no hours yet (Gordon, 10 Oct); plus anyone else who flew.
-  for (const c of (typeof OB !== "undefined" ? OB.crew : []).filter(c => c.active)) { const n = opsNorm(c.name); if (n && !people[n]) people[n] = blank(n); }
-  for (const e of ents) { const p = people[e.name] || (people[e.name] = blank(e.name)); p.sorties++; p[e.night ? "night" : "day"] += e.mins; if (e.day > p.last) p.last = e.day; p.list.push(e); }
-  const groups = typeof OB_GROUPS !== "undefined" ? OB_GROUPS : [];
-  const gi = n => { const c = crewOf(n), i = c ? groups.indexOf(c.grp) : -1; return i < 0 ? 99 : i; };
-  const list = Object.values(people).sort(sort === "hours" ? (a, b) => (b.day + b.night) - (a.day + a.night) || a.name.localeCompare(b.name) : (a, b) => gi(a.name) - gi(b.name) || (crewOf(a.name)?.sort ?? 999) - (crewOf(b.name)?.sort ?? 999) || a.name.localeCompare(b.name));
-  const mine = new Set(opsMyNames()), tot = list.reduce((s, p) => s + p.day + p.night, 0);
-  const grpOf = n => { const c = crewOf(n); return c ? (typeof obGrpLabel === "function" ? obGrpLabel(c.grp) : c.grp) : ""; };
-  const fd = d => new Date(d + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-  const rows = list.map(p => {
-    const open = OPS.hrsOpen && OPS.hrsOpen[p.name];
-    if (!p.sorties) return `<tr class="hrrow none${mine.has(p.name) ? " me" : ""}"><td><b>${esc(p.name)}</b></td><td class="hint">${esc(grpOf(p.name) || "Not on crew list")}</td><td class="n">0</td><td class="n">0.0</td><td class="n">0.0</td><td class="n"><b>0.0</b></td><td class="hint">–</td></tr>`;
-    return `<tr class="hrrow${mine.has(p.name) ? " me" : ""}" data-hrs-p="${esc(p.name)}"><td><b>${esc(p.name)}</b> <span class="hint">${open ? "▲" : "▼"}</span></td><td class="hint">${esc(grpOf(p.name) || "Not on crew list")}</td><td class="n">${p.sorties}</td><td class="n">${opsHrs(p.day)}</td><td class="n">${opsHrs(p.night)}</td><td class="n"><b>${opsHrs(p.day + p.night)}</b></td><td class="hint">${fd(p.last)}</td></tr>`
-      + (open ? `<tr class="hrdet"><td colspan="7"><table class="opst"><thead><tr><th>Date</th><th>Wave</th><th>Callsign</th><th>Seat</th><th>With</th><th>Mission</th><th>A/C</th><th>T/O–LDG (Z)</th><th>Hrs</th></tr></thead><tbody>${p.list.slice().sort((a, b) => b.day.localeCompare(a.day)).map(e => `<tr><td>${fd(e.day)}</td><td>${esc(e.wave)}</td><td>${esc([e.callsign, e.ac].filter(Boolean).join(" "))}</td><td>${e.seat}</td><td>${esc(e.mate)}</td><td>${esc(e.mission)}</td><td>${esc(e.tail)}</td><td>${esc(e.to)}–${esc(e.ldg)}</td><td class="n">${opsHrs(e.mins)}</td></tr>`).join("")}</tbody></table></td></tr>` : "");
+  const blank = n => ({ name: n, sorties: 0, day: 0, night: 0, instr: 0, wso: 0, solo: 0, last: "", list: [] });
+  for (const c of crew.filter(c => c.active)) { const n = opsNorm(c.name); if (n && !people[n]) people[n] = blank(n); }
+  for (const e of ents) { const p = people[e.name] || (people[e.name] = blank(e.name)); p.sorties++; p[e.night ? "night" : "day"] += e.mins; p.instr += e.instr; p.wso += e.wso; if (e.solo) p.solo += e.mins; if (e.day > p.last) p.last = e.day; p.list.push(e); }
+  const mine = new Set(opsMyNames()), fd = d => new Date(d + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const tot = p => p.day + p.night;
+  const order = (a, b) => sort === "hours" ? tot(b) - tot(a) || a.name.localeCompare(b.name) : (crewOf(a.name)?.sort ?? 999) - (crewOf(b.name)?.sort ?? 999) || a.name.localeCompare(b.name);
+  const H = m => opsHrs(m) || "0.0";
+  const sections = HRS_CATS.map(([cat, title]) => {
+    const list = Object.values(people).filter(p => catOf(p.name) === cat).sort(order); if (!list.length) return "";
+    const isI = cat === "instr", isT = cat === "tr";
+    const cols = ["Name", "Sorties", "Day", "Night", "Total h", ...(isI ? ["Instr h", "of which WSO"] : []), ...(isT ? ["Solo h"] : []), "Last flown"];
+    const n = cols.length;
+    const rows = list.map(p => {
+      const open = OPS.hrsOpen && OPS.hrsOpen[p.name], none = !p.sorties;
+      const cells = [p.sorties, H(p.day), H(p.night), `<b>${H(tot(p))}</b>`, ...(isI ? [`<b>${H(p.instr)}</b>`, H(p.wso)] : []), ...(isT ? [H(p.solo)] : [])];
+      return `<tr class="hrrow${none ? " none" : ""}${mine.has(p.name) ? " me" : ""}"${none ? "" : ` data-hrs-p="${esc(p.name)}"`}><td><b>${esc(p.name)}</b>${none ? "" : ` <span class="hint">${open ? "▲" : "▼"}</span>`}</td>${cells.map(c => `<td class="n">${c}</td>`).join("")}<td class="hint">${p.last ? fd(p.last) : "–"}</td></tr>`
+        + (open ? `<tr class="hrdet"><td colspan="${n}"><table class="opst"><thead><tr><th>Date</th><th>Wave</th><th>Callsign</th><th>Seat</th><th>With</th><th>Mission</th><th>A/C</th><th>T/O–LDG (Z)</th><th>Hrs</th>${isI ? "<th>Instr</th>" : ""}</tr></thead><tbody>${p.list.slice().sort((a, b) => b.day.localeCompare(a.day)).map(e => `<tr><td>${fd(e.day)}</td><td>${esc(e.wave)}</td><td>${esc([e.callsign, e.ac].filter(Boolean).join(" "))}</td><td>${e.seat}</td><td>${esc(e.mate || (e.solo ? "solo" : ""))}</td><td>${esc(e.mission)}</td><td>${esc(e.tail)}</td><td>${esc(e.to)}–${esc(e.ldg)}</td><td class="n">${opsHrs(e.mins)}</td>${isI ? `<td class="n">${e.instr ? opsHrs(e.instr) + ` <span class="hint">${esc(e.how)}${e.wso ? ", WSO" : ""}</span>` : `<span class="hint">${esc(e.how)}</span>`}</td>` : ""}</tr>`).join("")}</tbody></table></td></tr>` : "");
+    }).join("");
+    // Bar chart: one bar per person, length = total hours; for instructors the instructional part is the darker segment.
+    const flown = list.filter(p => tot(p) > 0).sort((a, b) => tot(b) - tot(a)), max = Math.max(1, ...flown.map(tot));
+    const chart = flown.length ? `<div class="hrchart" role="img" aria-label="${esc(title)}: hours flown per person">
+      ${isI ? `<div class="hrleg"><span><i class="hrsw in"></i>Instructional</span><span><i class="hrsw fl"></i>Other flying</span></div>` : ""}
+      ${flown.map(p => { const w = tot(p) / max * 100, wi = isI ? Math.min(p.instr, tot(p)) / max * 100 : 0;
+        return `<div class="hrbar${mine.has(p.name) ? " me" : ""}" title="${esc(p.name)}: ${H(tot(p))} h${isI ? ` · instructional ${H(p.instr)} h${p.wso ? ` (WSO ${H(p.wso)})` : ""}` : ""} · ${p.sorties} sorties"><span class="hrn">${esc(p.name)}</span><span class="hrtrack"><span class="hrfill" style="width:${w}%">${wi ? `<span class="hrin" style="width:${wi / w * 100}%"></span>` : ""}</span></span><span class="hrv">${H(tot(p))}${isI && p.instr ? ` <small>(${H(p.instr)})</small>` : ""}</span></div>`; }).join("")}</div>` : "";
+    const sum = list.reduce((a, p) => a + tot(p), 0), si = list.reduce((a, p) => a + p.instr, 0);
+    return `<section class="card opscard"><div class="opshead"><h2>${esc(title)}</h2><span class="opsmeta">${list.length} · ${H(sum)} h flown${isI ? ` · ${H(si)} h instructional` : ""}</span></div>
+      ${chart}<div class="tablewrap"><table class="opst hrst"><thead><tr>${cols.map((c, k) => `<th${k && k < n - 1 ? ' class="n"' : ""}>${c}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
   }).join("");
   v.innerHTML = `<div class="opsbar"><label class="hrsper">Period <select data-hrs="per">${HRS_PERIODS.map(([k, l]) => `<option value="${k}" ${k === per ? "selected" : ""}>${l}</option>`).join("")}</select></label>
       <span class="hint">${per === "all" ? "" : `${fd(from)} – ${fd(to > todayStr() ? todayStr() : to)}`}</span><span class="grow"></span>
-      <button class="btn small${sort === "group" ? " primary" : ""}" data-hrs="sort" data-v="group">By group</button><button class="btn small${sort === "hours" ? " primary" : ""}" data-hrs="sort" data-v="hours">Most hours</button></div>
-    <section class="card opscard"><div class="opshead"><h2>Hours flown</h2><span class="opsmeta">${list.length} aircrew · ${ents.length} crew-sorties · ${opsHrs(tot) || "0.0"} h in total</span></div>
-    ${list.length ? `<div class="tablewrap"><table class="opst hrst"><thead><tr><th>Name</th><th>Group</th><th class="n">Sorties</th><th class="n">Day</th><th class="n">Night</th><th class="n">Total h</th><th>Last flown</th></tr></thead><tbody>${rows}</tbody></table></div>`
-      : `<p class="hint">No flown times logged in this period yet. Ops log them on the Flying program with <b>Log flown times</b> after the aircrew land.</p>`}
-    <p class="hint" style="margin:8px 0 0">From the take-off / landing times logged on each day's flying program. Both crew on a line get the hours (front and back seat). Night waves count as night. Tap a name for their sorties.</p></section>`;
+      <button class="btn small${sort === "hours" ? " primary" : ""}" data-hrs="sort" data-v="hours">Most hours</button><button class="btn small${sort === "group" ? " primary" : ""}" data-hrs="sort" data-v="group">Crew list order</button></div>
+    ${sections || `<section class="card opscard"><p class="hint">No flown times logged in this period yet. Ops log them on the Flying program with <b>Log flown times</b> after the aircrew land.</p></section>`}
+    <p class="hint" style="margin:8px 0 0">From the take-off / landing times logged on each day's flying program. Both crew on a line get the hours; night waves count as night. <b>Instructional hours</b> (instructors): the whole sortie when a trainee is in the same aircraft (not when the line is IPS); when leading a solo trainee, from the instructor's take-off to the solo trainee's landing. Sorties with WSO trainees are also shown on their own (of which WSO). Tap a name for their sorties.</p>`;
 }
 document.addEventListener("click", e => {
   const r = e.target.closest("[data-hrs-p]"); if (r && S.tab === "hours") { OPS.hrsOpen = OPS.hrsOpen || {}; OPS.hrsOpen[r.dataset.hrsP] = !OPS.hrsOpen[r.dataset.hrsP]; return render(); }
@@ -894,6 +938,11 @@ document.addEventListener("click", async e => {
   else if (a === "log") { OPS.logOpen = !OPS.logOpen; renderOps($("#view")); if (OPS.logOpen) { const c = $("#ops-log"); if (c) c.scrollIntoView({ block: "start" }); } }
   else if (a === "logplan") opsLogPlanned(el);
   else if (a === "logcx") { const L = opsLogLine(el.dataset.k).log || {}; opsLogSave(el.dataset.k, null, null, L.st === "cx" ? "" : "cx", true); }
+  else if (a === "logips") {
+    const L = opsLogLine(el.dataset.k).log || {};
+    if (!opsFlown(L)) return toast("Key in the take-off and landing times first, then tap IPS.");
+    opsLogSave(el.dataset.k, L.to, L.ldg, L.st === "ips" ? "flown" : "ips", true);
+  }
   else if (a === "logclr") opsLogSave(el.dataset.k, null, null, "", true);
 });
 // Clear the whole programme for the shown day (two warnings first). Sections are emptied, not deleted.
@@ -1009,7 +1058,7 @@ function opsFlownStats(fl) {
   for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) {
     if (!opsLineUsed(a)) continue;
     const L = a.log || {}, m = opsLogMins(L);
-    if (L.st === "flown" && m != null) { sorties++; mins += m; } else if (L.st === "cx") cx++; else if (!opsIsAdd(f, a)) open++;
+    if (opsFlown(L) && m != null) { sorties++; mins += m; } else if (L.st === "cx") cx++; else if (!opsIsAdd(f, a)) open++;
   }
   return { sorties, mins, cx, open };
 }
@@ -1121,6 +1170,14 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .opslog td.lgbtn{white-space:nowrap}.opslog td.lgbtn .btn{margin-left:4px}
 .opslog tr.lgf td{border-top:2px solid var(--line)}
 .opslog tr.lgwv td{font:700 .95rem var(--cond);text-transform:uppercase;background:color-mix(in srgb,var(--in) 10%,transparent);padding:4px 8px}
+.hrchart{margin:0 0 12px;display:flex;flex-direction:column;gap:4px}
+.hrleg{display:flex;gap:14px;font-size:.8rem;color:var(--muted);margin-bottom:4px}.hrleg span{display:inline-flex;align-items:center;gap:5px}
+.hrsw{display:inline-block;width:10px;height:10px;border-radius:2px}.hrsw.in{background:var(--accent)}.hrsw.fl{background:color-mix(in srgb,var(--accent) 35%,transparent)}
+.hrbar{display:grid;grid-template-columns:110px 1fr 74px;gap:8px;align-items:center;font-size:.85rem}
+.hrbar .hrn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hrbar.me .hrn{font-weight:700}
+.hrtrack{height:14px;display:block}.hrfill{display:block;height:100%;background:color-mix(in srgb,var(--accent) 35%,transparent);border-radius:0 4px 4px 0;min-width:2px;overflow:hidden}
+.hrin{display:block;height:100%;background:var(--accent);border-right:2px solid var(--paper)}
+.hrv{font-variant-numeric:tabular-nums;text-align:right;color:var(--ink)}.hrv small{color:var(--muted)}
 .opslog tr.lgok td.lgcrew{box-shadow:inset 3px 0 0 var(--ok,#1F8A4C)}
 .opslog tr.lgcx td.lgcrew{box-shadow:inset 3px 0 0 var(--late);opacity:.7}
 @media (max-width:700px){ /* phone: flight on its own line, then crew | T/O | LDG | hrs | buttons */

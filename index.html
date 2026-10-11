@@ -392,7 +392,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 <div class="toast" id="toast" hidden></div>
 
 <script src="settings.js?v=3"></script>
-<script src="ops.js?v=47"></script>
+<script src="ops.js?v=48"></script>
 <script src="opsboard.js?v=55"></script>
 <script>
 /* =====================================================================
@@ -749,7 +749,8 @@ function homeDash(hs) {
     const flyer = es.length || (OB.loaded && obMyCrew().length);
     if (flyer) {
       const tot = es.reduce((a, e) => a + e.mins, 0), nt = es.filter(e => e.night).reduce((a, e) => a + e.mins, 0), last = es.map(e => e.day).sort().pop();
-      rows.push(`<div class="hdrow"><span class="hdk">My hours</span><span>${es.length ? `This month <b>${es.length}</b> sortie${es.length === 1 ? "" : "s"} · <b>${opsHrs(tot)}</b> h${nt ? ` (night ${opsHrs(nt)})` : ""} · last flown ${esc(new Date(last + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" }))}` : `<span class="hint">No flown hours logged this month yet.</span>`}</span><a href="#" data-tab="hours" class="hdgo">Hours ›</a></div>`);
+      const ins = es.reduce((a, e) => a + (e.instr || 0), 0);
+      rows.push(`<div class="hdrow"><span class="hdk">My hours</span><span>${es.length ? `This month <b>${es.length}</b> sortie${es.length === 1 ? "" : "s"} · <b>${opsHrs(tot)}</b> h${nt ? ` (night ${opsHrs(nt)})` : ""}${ins ? ` · instructional <b>${opsHrs(ins)}</b> h` : ""} · last flown ${esc(new Date(last + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" }))}` : `<span class="hint">No flown hours logged this month yet.</span>`}</span><a href="#" data-tab="hours" class="hdgo">Hours ›</a></div>`);
     }
   }
   // Read & sign
