@@ -505,7 +505,7 @@ function renderHours(v) {
     if (!OPS.hrsLoading) { OPS.hrsLoading = true; S.sb.from("ops_sections").select("day,data").eq("section", "flying").order("day").then(({ data, error }) => { OPS.hrsLoading = false; if (error) return toast(errMsg(error)); OPS.hrs = { days: data || [] }; if (S.tab === "hours") render(); }); }
     return;
   }
-  const per = OPS.hrsPer || "month", [from, to] = hrsRange(per), sort = OPS.hrsSort || "hours";
+  const per = OPS.hrsPer || "month", [from, to] = hrsRange(per), sort = OPS.hrsSort || "group";
   const ents = hrsEntries(OPS.hrs.days).filter(e => e.day >= from && e.day <= to);
   const crew = typeof OB !== "undefined" ? OB.crew || [] : [], R = hrsRoles();
   const crewOf = n => crew.find(c => opsNorm(c.name) === n);
@@ -518,7 +518,14 @@ function renderHours(v) {
   for (const e of ents) { const p = people[e.name] || (people[e.name] = blank(e.name)); p.sorties++; p[e.night ? "night" : "day"] += e.mins; p.instr += e.instr; p.wso += e.wso; if (e.solo) p.solo += e.mins; if (e.day > p.last) p.last = e.day; p.list.push(e); }
   const mine = new Set(opsMyNames()), fd = d => new Date(d + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   const tot = p => p.day + p.night;
-  const order = (a, b) => sort === "hours" ? tot(b) - tot(a) || a.name.localeCompare(b.name) : (crewOf(a.name)?.sort ?? 999) - (crewOf(b.name)?.sort ?? 999) || a.name.localeCompare(b.name);
+  // Crew list order (default, Gordon 11 Oct) = the Admin hierarchy: CO, DYCO, OC A, OC B, then QFIs by CAT A, B1, B2, C,
+  // no CAT; trainees PGF, FWC, WSO, then course number; then name. "Most hours" sorts by total.
+  const prof = n => (S.profiles || []).find(p => opsNorm(p.display_name) === n);
+  const tr = n => (S.roster || []).find(t => opsNorm(t.name) === n);
+  const rank = n => { const p = prof(n), t = tr(n), c = t ? t.course || "" : "";
+    return [p ? (APPT_ORDER[p.appointment] ?? 6) : 7, p ? (CAT_ORDER[p.qfi_cat] ?? 4) : 5, t ? (/PGF/i.test(c) ? 0 : /FWC/i.test(c) ? 1 : /WSO/i.test(c) ? 2 : 3) : 4, parseInt(c) || 999]; };
+  const byRank = (a, b) => { const x = rank(a.name), y = rank(b.name); for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] - y[i]; return (crewOf(a.name)?.sort ?? 999) - (crewOf(b.name)?.sort ?? 999) || a.name.localeCompare(b.name); };
+  const order = (a, b) => sort === "hours" ? tot(b) - tot(a) || byRank(a, b) : byRank(a, b);
   const H = m => opsHrs(m) || "0.0";
   const sections = HRS_CATS.map(([cat, title]) => {
     const list = Object.values(people).filter(p => catOf(p.name) === cat).sort(order); if (!list.length) return "";
@@ -543,7 +550,7 @@ function renderHours(v) {
   }).join("");
   v.innerHTML = `<div class="opsbar"><label class="hrsper">Period <select data-hrs="per">${HRS_PERIODS.map(([k, l]) => `<option value="${k}" ${k === per ? "selected" : ""}>${l}</option>`).join("")}</select></label>
       <span class="hint">${per === "all" ? "" : `${fd(from)} – ${fd(to > todayStr() ? todayStr() : to)}`}</span><span class="grow"></span>
-      <button class="btn small${sort === "hours" ? " primary" : ""}" data-hrs="sort" data-v="hours">Most hours</button><button class="btn small${sort === "group" ? " primary" : ""}" data-hrs="sort" data-v="group">Crew list order</button></div>
+      <button class="btn small${sort === "group" ? " primary" : ""}" data-hrs="sort" data-v="group">Crew list order</button><button class="btn small${sort === "hours" ? " primary" : ""}" data-hrs="sort" data-v="hours">Most hours</button></div>
     ${sections || `<section class="card opscard"><p class="hint">No flown times logged in this period yet. Ops log them on the Flying program with <b>Log flown times</b> after the aircrew land.</p></section>`}
     <p class="hint" style="margin:8px 0 0">From the take-off / landing times logged on each day's flying program. Both crew on a line get the hours; night waves count as night. <b>Instructional hours</b> (instructors): the whole sortie when a trainee is in the same aircraft (not when the line is IPS); when leading a solo trainee, from the instructor's take-off to the solo trainee's landing. Sorties with WSO trainees are also shown on their own (of which WSO). Tap a name for their sorties.</p>`;
 }
