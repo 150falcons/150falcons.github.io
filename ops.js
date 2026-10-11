@@ -383,7 +383,7 @@ const opsHrs = m => m == null ? "" : (m / 60).toFixed(1);
 const opsT4 = v => { const m = opsMin(String(v || "").replace(/[^0-9:]/g, "").replace(/^(\d{3})$/, "0$1")); return m == null ? "" : opsZ4(m); };
 const opsLogLine = k => { const [w, f, a] = k.split(".").map(Number); return (((((OPS.rows.flying || {}).data || {}).waves || [])[w] || {}).flights || [])[f]?.ac?.[a] || {}; };
 function opsLogCard() {
-  const fl = opsGet("flying"); let rows = "", logged = 0, lines = 0, mins = 0;
+  const fl = opsGet("flying"), auto = opsInstrAuto(); let rows = "", logged = 0, lines = 0, mins = 0;
   (fl.waves || []).forEach((w, wi) => {
     let wr = "";
     (w.flights || []).forEach((f, fi) => {
@@ -396,26 +396,44 @@ function opsLogCard() {
           <td><input data-log="to" data-k="${key}" value="${esc(L.to || "")}" placeholder="${esc(f.etd || "T/O")}" inputmode="numeric" maxlength="5" aria-label="Take-off"></td>
           <td><input data-log="ldg" data-k="${key}" value="${esc(L.ldg || "")}" placeholder="${esc(f.eta || "LDG")}" inputmode="numeric" maxlength="5" aria-label="Landing"></td>
           <td class="lghrs" data-hrs="${key}">${m != null ? opsHrs(m) : ""}</td>
+          <td><input data-instr="${key}" class="${typeof L.instr === "number" ? "lgset" : ""}" value="${typeof L.instr === "number" ? opsHrs(L.instr) : ""}" placeholder="${m != null ? opsHrs(auto[key] || 0) : ""}" inputmode="decimal" maxlength="4" ${m == null ? "disabled" : ""} aria-label="Instructional hours" title="Worked out from who flew with whom; type to change (0 = none), clear to go back to the worked-out figure"></td>
           <td class="lgbtn">${opsIpsMission(a) ? `<span class="tag nd" title="Mission says IPS: no instructional hours">IPS</span>` : `<button class="btn small${L.st === "ips" ? " primary" : ""}" data-ops="logips" data-k="${key}" title="Instructor proficiency sortie: flown, but no instructional hours">IPS</button>`}<button class="btn small${L.st === "cx" ? " danger" : ""}" data-ops="logcx" data-k="${key}" title="Cancelled: no hours">CX</button>${L.st ? `<button class="btn small" data-ops="logclr" data-k="${key}" title="Clear">✕</button>` : ""}</td></tr>`;
       });
     });
-    if (wr) rows += `<tr class="lgwv"><td colspan="6">${esc(w.name)}</td></tr>` + wr;
+    if (wr) rows += `<tr class="lgwv"><td colspan="7">${esc(w.name)}</td></tr>` + wr;
   });
   return `<section class="card opscard" id="ops-log"><div class="opshead"><h2>Flown times</h2><span class="opsmeta">${logged} of ${lines} lines logged · ${opsHrs(mins) || "0.0"} h flown <button class="btn small primary" data-ops="log">Done logging</button></span></div>
-    <div class="tablewrap"><table class="opst opslog"><thead><tr><th>Flight</th><th>Aircrew</th><th>T/O (Z)</th><th>LDG (Z)</th><th>Hrs</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="hint" style="margin:6px 0 0">After landing, key in the actual take-off and landing times (Z, e.g. 0718). <b>✓ As planned</b> fills in the planned ETD / ETA for the whole flight; type over any that differ. <b>CX</b> = cancelled (no hours). <b>IPS</b> = flown as an instructor proficiency sortie: hours count, but no instructional hours (missions named IPS count as IPS by themselves). Both crew on a line get the hours; they add up on the <b>Hours</b> tab.</p>
+    <div class="tablewrap"><table class="opst opslog"><thead><tr><th>Flight</th><th>Aircrew</th><th>T/O (Z)</th><th>LDG (Z)</th><th>Hrs</th><th title="Instructional hours, for the Hours stats only">Instr h</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="hint" style="margin:6px 0 0">After landing, key in the actual take-off and landing times (Z, e.g. 0718). <b>✓ As planned</b> fills in the planned ETD / ETA for the whole flight; type over any that differ. <b>CX</b> = cancelled (no hours). <b>IPS</b> = flown as an instructor proficiency sortie: hours count, but no instructional hours (missions named IPS count as IPS by themselves). Both crew on a line get the hours; they add up on the <b>Hours</b> tab. <b>Instr h</b> = instructional hours for the Hours stats, worked out from who flew with whom (grey); type over it if it's wrong (0 = none), clear it to go back to the worked-out figure.</p>
     <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn primary" data-ops="log">Done logging</button></div></section>`;
 }
+// Worked-out instructional minutes per line (key w.f.a) for the day being logged, before any ops override.
+function opsInstrAuto() { const o = {}; for (const e of hrsEntries([{ day: OPS.day, data: (OPS.rows.flying || {}).data || {} }])) o[e.k] = (o[e.k] || 0) + e.auto; return o; }
+// After a time changes, refresh every line's worked-out figure (a solo trainee's landing changes the lead's) and enable / disable the boxes.
+function opsInstrRefresh() { const a = opsInstrAuto();
+  document.querySelectorAll("[data-instr]").forEach(i => { const m = opsLogMins(opsLogLine(i.dataset.instr).log); i.disabled = m == null; i.placeholder = m == null ? "" : opsHrs(a[i.dataset.instr] || 0); }); }
+document.addEventListener("change", async e => {
+  const el = e.target, k = el.dataset && el.dataset.instr; if (!k) return;
+  const v = el.value.trim(), h = v === "" ? null : Number(v.replace(",", "."));
+  if (v !== "" && !(h >= 0 && h <= 24)) { toast("Instructional hours as a number, e.g. 0.8 (0 = none)."); return; }
+  const [w, f, a] = k.split(".").map(Number), line = opsLogLine(k), mins = h == null ? null : Math.round(h * 60);
+  const { data, error } = await S.sb.rpc("ops_log_instr", { p_day: OPS.day, p_w: w, p_f: f, p_a: a, p_crew1: line.crew1 || "", p_mins: mins });
+  if (error) { toast(errMsg(error)); if (/changed|no longer/i.test(error.message)) opsLoad(OPS.day); return; }
+  if (line.log) { if (mins == null) delete line.log.instr; else line.log.instr = mins; }
+  OPS.rows.flying.version = data; OPS.hrs = null;
+  el.value = mins == null ? "" : opsHrs(mins); el.classList.toggle("lgset", mins != null);
+});
 async function opsLogSave(k, to, ldg, st, rerender) {
   const [w, f, a] = k.split(".").map(Number), line = opsLogLine(k);
   const { data, error } = await S.sb.rpc("ops_log_flight", { p_day: OPS.day, p_w: w, p_f: f, p_a: a, p_crew1: line.crew1 || "", p_to: to || null, p_ldg: ldg || null, p_status: st });
   if (error) { toast(errMsg(error)); if (/changed|no longer/i.test(error.message)) opsLoad(OPS.day); return false; }
-  if (!st && !to && !ldg) delete line.log; else line.log = { to: to || null, ldg: ldg || null, st };
+  if (!st && !to && !ldg) delete line.log; else line.log = { to: to || null, ldg: ldg || null, st, ...(line.log && typeof line.log.instr === "number" ? { instr: line.log.instr } : {}) };
   OPS.rows.flying.version = data; OPS.hrs = null;
   if (rerender) { const y = scrollY; renderOps($("#view")); scrollTo(0, y); }
   else { // update the row in place so typing carries on
     const m = opsLogMins(line.log), cell = document.querySelector(`[data-hrs="${k}"]`); if (cell) cell.textContent = m != null ? opsHrs(m) : "";
     const tr = cell && cell.closest("tr"); if (tr) { tr.classList.toggle("lgok", st === "flown" || st === "ips"); tr.classList.toggle("lgcx", st === "cx"); }
+    opsInstrRefresh();
   }
   return true;
 }
@@ -480,13 +498,13 @@ function hrsEntries(days) {
   const isTr = n => !!role(n).trainee, isIn = n => !!role(n).instr;
   for (const r of days) {
     const fl = opsNameWaves(opsClone(r.data || {}));
-    for (const w of fl.waves || []) for (const f of w.flights || []) {
+    (fl.waves || []).forEach((w, wi) => (w.flights || []).forEach((f, fi) => {
       const ac = f.ac || [];
       // solo trainees in this flight (one person on the line, a trainee), with their landing time
       const solos = ac.filter(a => opsLogMins(a.log) != null && opsNorm(a.crew1) && !opsNorm(a.crew2) && isTr(a.crew1)).map(a => opsMin(a.log.ldg));
-      for (const a of ac) {
-        const m = opsLogMins(a.log); if (m == null) continue;
-        const ips = a.log.st === "ips" || opsIpsMission(a);
+      ac.forEach((a, ai) => {
+        const m = opsLogMins(a.log); if (m == null) return;
+        const ips = a.log.st === "ips" || opsIpsMission(a), le = [];
         [[a.crew1, a.crew2], [a.crew2, a.crew1]].forEach(([who, mate], seat) => {
           const n = opsNorm(who); if (!n) return;
           let instr = 0, wso = 0, how = "";
@@ -501,10 +519,18 @@ function hrsEntries(days) {
               if (t0 != null && isFinite(end)) { instr = Math.max(0, (end - t0 + 1440) % 1440); how = "solo lead"; }
             }
           }
-          out.push({ name: n, day: r.day, wave: w.name, night: !!w.night, callsign: f.callsign, ac: a.n, tail: opsTail(a.tail, r.day), mission: a.mission, mate: mate || "", seat: seat ? "Back" : "Front", to: a.log.to, ldg: a.log.ldg, mins: m, instr, wso, how, solo: !opsNorm(mate) });
+          le.push({ name: n, day: r.day, wave: w.name, night: !!w.night, callsign: f.callsign, ac: a.n, tail: opsTail(a.tail, r.day), mission: a.mission, mate: mate || "", seat: seat ? "Back" : "Front", to: a.log.to, ldg: a.log.ldg, mins: m, instr, wso, how, solo: !opsNorm(mate), k: `${wi}.${fi}.${ai}`, auto: instr });
         });
-      }
-    }
+        // Instructional time typed by ops in Flown times (Gordon, 11 Oct) replaces the worked-out figure for this line:
+        // it goes to the instructor on the line (front seat if neither / both are instructors), 0 = none.
+        const set = a.log.instr;
+        if (typeof set === "number" && le.length) {
+          const t = le.find(e => isIn(e.name)) || le[0], hadWso = le.some(e => e.wso);
+          le.forEach(e => { e.instr = e === t ? set : 0; e.wso = e === t && hadWso ? set : 0; e.how = e === t ? "set by ops" : e.how; });
+        }
+        out.push(...le);
+      });
+    }));
   }
   return out;
 }
@@ -1197,6 +1223,7 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .opslog td small{display:block;color:var(--muted);font-size:.75rem}
 .opslog td.lgcs{white-space:nowrap}.opslog td.lgcs .btn{margin-top:4px}
 .opslog input{width:72px;margin:0;padding:4px 6px;font-variant-numeric:tabular-nums}
+.opslog input[data-instr]{width:58px}.opslog input.lgset{border-color:var(--out)}.opslog input[data-instr]::placeholder{font-style:italic}
 .opslog td.lghrs{font-weight:700;font-variant-numeric:tabular-nums;min-width:40px}
 .opslog td.lgbtn{white-space:nowrap}.opslog td.lgbtn .btn{margin-left:4px}
 .opslog tr.lgf td{border-top:2px solid var(--line)}
