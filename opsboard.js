@@ -1226,7 +1226,7 @@ table.obwvac{min-width:0}.obwvac td{vertical-align:middle;padding:5px 8px}.obwva
 .obwvac td.obwvcs{white-space:nowrap}.obwvac td.obwvcs .opsdl,.obwvac td.obwvcs .opsveh{font-size:.85rem;color:var(--ink)}.obwvac td.obwvtail{font-size:1.05rem;white-space:nowrap;border-left:1px dashed var(--line)}.obwvac td.nw{white-space:nowrap}.obwvac td.nw .obpill+.obpill{margin-left:3px}
 .obwvac tr.obwvf td{border-top:2px solid var(--line)}.obwvac tr.obwvbad td.obwvtail{color:var(--late)}.obwvac .obrestr{color:var(--out)}
 /* TV: the chart window hugs the chart (Gordon, 10 Oct), on a dimmed TV */
-body.tvmode #dlgChart{width:fit-content;max-width:calc(100vw - 40px);height:auto;max-height:calc(100vh - 24px);padding:0;overflow:hidden}
+body.tvmode #dlgChart{width:fit-content;max-width:calc(100vw - 40px);height:fit-content;max-height:calc(100vh - 24px);padding:0;overflow:hidden}
 body.tvmode #dlgChart::backdrop{background:rgba(0,0,0,.72)}
 body.tvmode #dlgChart .dlg{padding:10px 12px 12px}
 body.tvmode #dlgChart .opshead{margin:0 0 6px;gap:12px}
