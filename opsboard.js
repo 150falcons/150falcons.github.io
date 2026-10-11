@@ -317,7 +317,7 @@ function renderOpsBoard(v) {
   if (!OB.loaded) return obNotLoaded(v);
   const editing = OB.edit && OB.edit.key === "board", can = obCanBoard();
   const nm = obNewMetar();
-  const top = `<div class="opsbar"><span class="grow"></span>${can ? `<button class="btn small ${nm ? "obpulse" : ""}" data-ob="metar">${nm ? "New METAR · Refresh" : "Refresh METARs"}</button>` : ""}<button class="btn small primary" data-tab="tv">TV mode</button></div>`;
+  const top = `<div class="opsbar"><span class="grow"></span>${can ? `<button class="btn small ${nm ? "obpulse" : ""}" data-ob="metar">${nm ? "New METAR · Refresh" : "Refresh METARs"}</button>` : ""}<button class="btn small" data-ob="waveac">Aircraft this wave</button><button class="btn small primary" data-tab="tv">TV mode</button></div>`;
   v.innerHTML = top + (editing ? obCard("ob-board", "Ops board", "", obEditor("board"), OB_ED_TOP) : obBoardView(false) + obChartsCard() + `<p class="opsmeta" style="justify-content:flex-end">${obMeta("board")} ${obEditBtn("board", can, "Edit ops board")}</p>`);
   if (!editing) obPageColumns(v);
 }
@@ -522,6 +522,42 @@ function obTvCharts() {
   const today = todayStr();
   return `<span class="tvcharts">Charts ${have.map(c => { const f = obFile(c.key), at = f && (f.updated_at || f.created_at), stale = c.daily && at && new Date(at).toLocaleDateString("en-CA", { timeZone: "Europe/Paris" }) !== today;
     return `<button class="btn small${stale ? " stale" : ""}" data-ob="chart" data-k="${c.key}" title="${stale ? "Not uploaded today" : ""}">${esc(c.label.replace(/ \(R115\)| areas \/ activities/g, ""))}</button>`; }).join("")}</span>`;
+}
+// Aircraft this wave (Gordon, 11 Oct): for the SXO brief, each aircraft line in the wave under way / next wave (same waves as
+// the Go / No-Go check, obWatchWaves) with its callsign, crew, status and notes (Aircraft page notes + the programme's
+// aircraft restrictions that name the tail). Other waves today can be picked at the top.
+function obWaveAcHtml(get, wi) {
+  const fl = opsNameWaves(JSON.parse(JSON.stringify(get("flying") || {}))), waves = fl.waves || [];
+  const watch = obWatchWaves(get), sel = wi != null ? wi : watch.length ? watch[0].i : null;
+  const key = t => String(t || "").replace(/[#@\s]/g, "").toUpperCase();
+  const acd = obGet("aircraft"), restr = (get("notes") || {}).aircraft || [], day = todayStr();
+  const used = waves.map((w, i) => [w, i]).filter(([w]) => (w.flights || []).some(f => (f.ac || []).some(a => a.tail || a.crew1)));
+  const pick = `<div class="obwvpick">${used.map(([w, i]) => `<button class="btn small${i === sel ? " primary" : ""}" data-ob="waveac" data-k="${i}">${esc(w.name)}${watch.some(x => x.i === i) ? " ⏱" : ""}</button>`).join("")}</div>`;
+  if (sel == null || !waves[sel]) return pick + `<p class="hint">${used.length ? "No more waves today. Pick a wave above." : "No flying programme today."}</p>`;
+  const w = waves[sel], rows = [];
+  for (const f of w.flights || []) {
+    const ls = (f.ac || []).filter(a => a.tail || a.crew1);
+    ls.forEach((a, k) => {
+      const t = (acd.tails || []).find(x => key(x.tail) === key(a.tail));
+      const st = t ? obPill(t.status === "S" ? "g" : t.status === "US" ? "r" : "a", t.status === "S" ? "S" : t.status === "US" ? "U/S" : "MX") + (t.npc ? obPill("a", "NPC") : "") + (t.nts ? obPill("a", "NTS") : "") + (t.ojt ? obPill("a", "OJT") : "") : `<span class="hint" title="This tail isn't on the Aircraft page">–</span>`;
+      const notes = [...(t ? String(t.notes || "").split("\n").filter(Boolean).map(obNoteLine) : []),
+        ...restr.filter(x => x.note && a.tail && String(x.ac || "").split(/[,/&]|\s+AND\s+/i).some(p => key(p) === key(a.tail))).map(x => `<span class="obrestr">${esc(x.note)}</span>`)];
+      rows.push(`<tr class="${k === 0 ? "obwvf" : ""}${t && t.status !== "S" ? " obwvbad" : ""}">${k === 0 ? `<td rowspan="${ls.length}" class="obwvcs"><b>${esc(f.callsign || "-")}</b><small>${esc(f.etd || "?")}–${esc(f.eta || "?")}Z${f.brief ? ` · brief ${esc(f.brief)}` : ""}</small></td>` : ""}
+        <td class="obwvn">${esc(a.n || "")}</td><td class="obwvtail"><b>${esc(a.tail ? opsTail(a.tail, day) : "-")}</b></td><td class="nw">${st}</td>
+        <td><b>${opsX(a.crew1 || "")}</b>${a.crew2 ? ` / ${opsX(a.crew2)}` : ""}${opsIsAdd(f, a) ? ` <span class="hint">ops add</span>` : ""}</td><td>${esc(a.mission || "")}</td><td class="obnotes">${notes.join("<br>") || `<span class="hint">-</span>`}</td></tr>`);
+    });
+  }
+  const head = `<p class="hint" style="margin:0 0 6px">${esc(w.name)}${w.sxo ? ` · SXO <b>${opsX(w.sxo)}</b>` : ""}${w.opsO ? ` · OPS O <b>${opsX(w.opsO)}</b>` : ""}${w.remarks ? ` · ⚠ ${esc(w.remarks)}` : ""}</p>`;
+  return pick + head + (rows.length ? `<div class="tablewrap"><table class="opst obwvac"><thead><tr><th>Callsign</th><th>#</th><th>A/C</th><th>Status</th><th>Aircrew</th><th>Mission</th><th>Aircraft notes / restrictions</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>` : `<p class="hint">No aircraft in this wave.</p>`);
+}
+function obShowWaveAc(wi) {
+  const get = obTodayGet();
+  if (!get) { toast("Loading today's programme… try again in a moment."); return; }
+  let d = document.getElementById("dlgWaveAc");
+  if (!d) { d = document.createElement("dialog"); d.id = "dlgWaveAc"; document.body.appendChild(d);
+    d.onclick = e => { if (e.target.closest("[data-x=close]") || e.target === d) d.close(); }; }
+  d.innerHTML = `<div class="dlg"><div class="opshead"><h2 tabindex="-1" autofocus>Aircraft this wave</h2><button class="btn small" data-x="close">Close</button></div>${obWaveAcHtml(get, wi)}</div>`;
+  if (!d.open) d.showModal();
 }
 const obUrlCache = {};
 async function obChartUrl(key) {
@@ -791,7 +827,7 @@ function renderTv(v) {
   if (OPS.rowsDay !== todayStr() && !OPS.loading) { OPS.day = todayStr(); opsLoad(OPS.day); }
   const n = new Date();
   v.innerHTML = `<div class="tvbar"><b>150 Falcon Det · Ops board</b><span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 19).replace(/:/g, ""))}Z</small></span>
-      <span class="grow"></span>${obTvCharts()}${st ? `<span>Today: ${st.sorties} sorties · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>` : ""}<button class="btn small" data-ob="exittv">Exit TV</button></div>
+      <span class="grow"></span><button class="btn small" data-ob="waveac">Aircraft this wave</button>${obTvCharts()}${st ? `<span>Today: ${st.sorties} sorties · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>` : ""}<button class="btn small" data-ob="exittv">Exit TV</button></div>
     ${obBoardView(true, ((obGet("aircraft").callsigns || []).length || obGet("aircraft").vehicleCap ? obAircraftCards()[1] : "") + // TV: no aircraft status table (Gordon, 10 Oct); callsigns only when there are some // TV: no aircraft status table (Gordon, 10 Oct), callsigns only
       obTvGoCard(crew, nogo))}`;
   v.innerHTML = `<div class="tvstage">${v.innerHTML}</div>`;
@@ -1079,6 +1115,7 @@ document.addEventListener("click", async e => {
   }
   else if (a === "exittv") { obLeaveTv(); S.tab = "opsboard"; render(); }
   else if (a === "chart") obShowChart(el.dataset.k);
+  else if (a === "waveac") obShowWaveAc(el.dataset.k != null ? Number(el.dataset.k) : null);
 });
 
 // Pick crew dialog: group buttons + one checkbox per person. onOk(ids, dialog) returns an error
@@ -1163,6 +1200,10 @@ select.obcs option{background:var(--paper);color:var(--ink)}
 .obchart>.btn:first-child{flex:1 1 100%;text-align:left}.obchart .btn.small{flex:0 0 auto;width:auto}
 .obup{cursor:pointer;margin-left:auto}
 #dlgChart{width:min(1100px,calc(100vw - 16px))}
+#dlgWaveAc{width:min(1400px,calc(100vw - 16px))}.obwvpick{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
+table.obwvac{min-width:0}.obwvac td{vertical-align:middle;padding:5px 8px}.obwvac td small{display:block;color:var(--muted);font-size:.75rem}
+.obwvac td.obwvcs{white-space:nowrap}.obwvac td.obwvtail{font-size:1.05rem;white-space:nowrap}.obwvac td.nw{white-space:nowrap}.obwvac td.nw .obpill+.obpill{margin-left:3px}
+.obwvac tr.obwvf td{border-top:2px solid var(--line)}.obwvac tr.obwvbad td.obwvtail{color:var(--late)}.obwvac .obrestr{color:var(--out)}
 /* TV: the chart window hugs the chart (Gordon, 10 Oct), on a dimmed TV */
 body.tvmode #dlgChart{width:fit-content;max-width:calc(100vw - 40px);height:auto;max-height:calc(100vh - 24px);padding:0;overflow:hidden}
 body.tvmode #dlgChart::backdrop{background:rgba(0,0,0,.72)}
