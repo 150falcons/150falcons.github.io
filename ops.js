@@ -510,7 +510,7 @@ function opsSection(sec, canEdit) {
   const body = editing ? opsEditor(sec) : opsView[sec](opsGet(sec));
   if (!editing && !body && !canEdit) return "";
   return `<section class="card opscard" id="ops-${sec}"><div class="opshead"><h2>${OPS_TITLES[sec]}</h2>
-    <span class="opsmeta">${meta}${canEdit && !editing && !OPS.edit ? ` <button class="btn small" data-ops="edit" data-sec="${sec}">Edit</button>` : ""}</span></div>
+    <span class="opsmeta">${meta}${canEdit && !editing && !OPS.edit ? ` <button class="btn small" data-ops="edit" data-sec="${sec}">Edit</button>` : ""}${editing ? ` <button class="btn small" data-ops="cancel">Cancel</button><button class="btn small primary" data-ops="save">Save</button>` : ""}</span></div>
     ${body || `<p class="hint" style="margin:0">Nothing entered.</p>`}</section>`;
 }
 // Everything on today's programme for the signed-in person.
@@ -871,7 +871,7 @@ async function opsSave(btn) {
   btn.disabled = false;
   if (error) {
     if (/someone else/i.test(error.message)) { await ask("Not saved", error.message, "OK"); OPS.edit = null; return opsLoad(OPS.day); }
-    const err = $("#opsErr"); if (err) err.textContent = errMsg(error); return;
+    const err = $("#opsErr"); if (err) err.textContent = errMsg(error); toast(errMsg(error)); return;
   }
   OPS.rows[ed.section] = { day: OPS.day, section: ed.section, data: ed.data, version: data, updated_at: new Date().toISOString(), updated_by: S.me.id };
   OPS.edit = null; toast(`${OPS_TITLES[ed.section]} saved.`); renderOps($("#view"));

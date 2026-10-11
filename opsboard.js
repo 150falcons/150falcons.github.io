@@ -283,6 +283,8 @@ const obDot = s => `<span class="obst obst-${s || "n"}">${esc(OB_STATUS[s] ?? s 
 const obPill = (s, label) => `<span class="obpill obst-${s || "n"}">${esc(label)}</span>`;
 const obMeta = k => { const r = OB.state[k]; return r && r.updated_at ? `Updated ${new Date(r.updated_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${r.updated_by ? " by " + esc(who(r.updated_by)) : ""}` : ""; };
 const obEditBtn = (k, can, label) => can && !OB.edit ? `<button class="btn small" data-ob="edit" data-k="${k}">${label || "Edit"}</button>` : "";
+// Save / Cancel at the top of the card being edited too, not only at the bottom (Gordon, 11 Oct).
+const OB_ED_TOP = ` <button class="btn small" data-ob="cancel">Cancel</button><button class="btn small primary" data-ob="save">Save</button>`;
 function obCard(id, title, meta, body, tools) {
   return `<section class="card opscard" id="${id}"><div class="opshead"><h2>${title}</h2><span class="opsmeta">${meta || ""}${tools || ""}</span></div>${body}</section>`;
 }
@@ -305,7 +307,7 @@ function renderOpsBoard(v) {
   const editing = OB.edit && OB.edit.key === "board", can = obCanBoard();
   const nm = obNewMetar();
   const top = `<div class="opsbar"><span class="grow"></span>${can ? `<button class="btn small ${nm ? "obpulse" : ""}" data-ob="metar">${nm ? "New METAR · Refresh" : "Refresh METARs"}</button>` : ""}<button class="btn small primary" data-tab="tv">TV mode</button></div>`;
-  v.innerHTML = top + (editing ? obCard("ob-board", "Ops board", "", obEditor("board")) : obBoardView(false) + obChartsCard() + `<p class="opsmeta" style="justify-content:flex-end">${obMeta("board")} ${obEditBtn("board", can, "Edit ops board")}</p>`);
+  v.innerHTML = top + (editing ? obCard("ob-board", "Ops board", "", obEditor("board"), OB_ED_TOP) : obBoardView(false) + obChartsCard() + `<p class="opsmeta" style="justify-content:flex-end">${obMeta("board")} ${obEditBtn("board", can, "Edit ops board")}</p>`);
   if (!editing) obPageColumns(v);
 }
 // Wide screens: airfields across the top, then one full-width panel with weather | wind | canopy & equipment
@@ -574,7 +576,7 @@ function renderGoNoGo(v) {
   if (can) { obSyncCrewNames(); html += obItemsCard() + obCrewCard(); }
   html += obCard("ob-legend", "Legend", "", `<div class="obleg">${(gm.legend || []).map(l => `<div><b>${esc(l.code)}</b><span>${esc(l.label)}</span></div>`).join("")}</div>`,
     can && !OB.edit ? `<button class="btn small" data-ob="edit" data-k="gonogo">Edit MIAC / legend</button>` : "");
-  if (OB.edit && OB.edit.key === "gonogo") html += obCard("ob-gonogo", "MIAC 4 / legend", "", obEditor("gonogo"));
+  if (OB.edit && OB.edit.key === "gonogo") html += obCard("ob-gonogo", "MIAC 4 / legend", "", obEditor("gonogo"), OB_ED_TOP);
   v.innerHTML = `<div class="obgng">${html}</div>`;
 }
 // Keep linked crew names in step with the account name (renamed under Admin).
@@ -712,7 +714,7 @@ function obCrewCard() {
 function renderAircraft(v) {
   if (!OB.loaded) return obNotLoaded(v);
   const editing = OB.edit && OB.edit.key === "aircraft";
-  v.innerHTML = editing ? obCard("ob-aircraft", "Aircraft status", "", obEditor("aircraft")) : obAircraftView(false) + `<p class="opsmeta" style="justify-content:flex-end">${obMeta("aircraft")} ${obEditBtn("aircraft", obCanEditAc(), "Edit aircraft")}</p>`;
+  v.innerHTML = editing ? obCard("ob-aircraft", "Aircraft status", "", obEditor("aircraft"), OB_ED_TOP) : obAircraftView(false) + `<p class="opsmeta" style="justify-content:flex-end">${obMeta("aircraft")} ${obEditBtn("aircraft", obCanEditAc(), "Edit aircraft")}</p>`;
 }
 // Colour tags typed (or added with the colour buttons) in notes: [r]red[/r], [y]amber[/y], [g]green[/g], [b]bold[/b].
 const obFmt = t => esc(t).replace(/\[(r|y|g|b)\]([\s\S]*?)\[\/\1\]/gi, (m, c, x) => `<span class="fx-${c.toLowerCase()}">${x}</span>`).replace(/\[\/?[rygb]\]/gi, "");
@@ -1002,7 +1004,7 @@ document.addEventListener("click", async e => {
     el.disabled = false;
     if (error) {
       if (/someone else/i.test(error.message)) { await ask("Not saved", error.message, "OK"); OB.edit = null; return obLoad(); }
-      const er = $("#obErr"); if (er) er.textContent = errMsg(error); return;
+      const er = $("#obErr"); if (er) er.textContent = errMsg(error); toast(errMsg(error)); return;
     }
     OB.state[ed.key] = { key: ed.key, data: ed.data, version: data, updated_at: new Date().toISOString(), updated_by: S.me.id };
     OB.edit = null; toast("Saved."); render();
