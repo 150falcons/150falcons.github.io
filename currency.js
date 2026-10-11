@@ -10,7 +10,7 @@ const CUR_RULES = [
   "IRT expires at the end of the month, one year after the IRT date.",
   "IPC (FTI): CAT A yearly, B1 6-monthly, B2 2-monthly (all to the end of the month); CAT C monthly, date to date.",
   "EP sims: last EP sim + 90 days. The last EP sim fills in from i-SATR (keyed EP dates and EP sims on the simulator programme); a date typed under Records overrides it.",
-  "i-SATR: per QFI per half-year (Jan–Jun, Jul–Dec), each List 1 / List 2 / simulator item done vs required. Required numbers are worked out from the QFI's quals (A/G qual and night qual, ticked on the i-SATR page or under Records): A/A only = List 1 GH/IF, BFM, CAP 2 each and List 2 = 20; A/G = List 1 GH/IF, BFM, CAP, SAT 1 each + surface attack 2 (or 1 + night flying 1 when night qualified) and List 2 = 28; night qualified adds 4 night items to List 2 (32). Any one number can be overridden on the person's page; clear it to go back to automatic. List % counts done items up to the number required. Flying days remaining = working days (Mon–Fri) from today to the end of cycle, less non-flying days. EP 1–8 fill in from the simulator programme (mission containing \"EP n\", aircrew seat) once the sim has ended. Excel note: CAT A / B1 / B2 need only 3 EP sims per quarter, CAT C all 4; set the requirements to match.",
+  "i-SATR: per QFI per half-year (Jan–Jun, Jul–Dec), each List 1 / List 2 / simulator item done vs required. Required numbers are worked out from the QFI's quals (A/G qual and night qual, ticked on the i-SATR page or under Records): A/A only = List 1 GH/IF, BFM, CAP 2 each and List 2 = 20; A/G = List 1 GH/IF, BFM, CAP, SAT 1 each + surface attack 2 (or 1 + night flying 1 when night qualified) and List 2 = 28; night qualified adds 1 night flying to List 1 and the 4 night items (2 normal CCT night, 2 TI 1 v 1 night) to List 2 (A/G + night = 32; A/A + night = 24). Any one number can be overridden on the person's page; clear it to go back to automatic. List % counts done items up to the number required. Flying days remaining = working days (Mon–Fri) from today to the end of cycle, less non-flying days. EP 1–8 fill in from the simulator programme (mission containing \"EP n\", aircrew seat) once the sim has ended. Excel note: CAT A / B1 / B2 need only 3 EP sims per quarter, CAT C all 4; set the requirements to match.",
   "ST Tow: FCF sims prof check and TOW qual prof check valid 12 months; FCF flight currency = last flown on type + 15 days.",
   "Trainee solo currency: last solo + 2 days (MOD 1–3), + 3 (MOD 4–6), + 4 (MOD 7+).",
   "Non-syllabus flying days (since last syllabus / DCO sortie): 8–13 optional flex, 14–30 flex, 31–59 2 × flex, 60+ flex package.",
@@ -295,10 +295,11 @@ const IS_ITEMS = IS_LISTS.flatMap(l => l[2].map(([k, lab]) => ({ k, lab, list: l
 // Requirements per half-year worked out from the QFI's quals (Gordon, 11 Oct: "it was supposed to be that way"):
 // A/A only: List 1 GH/IF 2, BFM 2, CAP 2; List 2 the 20 A/A items. A/G qual (rec.ag, Records): List 1 GH/IF, BFM, CAP, SAT 1 each
 // and surface attack 2 (1 + night flying 1 if night qual); List 2 + the 8 A/G items (28). Night qual (no "Not night qual" tick):
-// List 2 + the 4 night items (32). Sims EP 1–8 once each. A number typed on the person's page (rec.isatr.req) overrides one item.
+// List 1 + night flying 1, List 2 + the 4 night items (32; A/A + night = 24). Sims EP 1–8 once each. A number typed on the person's page (rec.isatr.req) overrides one item.
 const IS_A2A = { ncct: 4, notef: 2, seng: 2, llcct: 2, ah: 1, spat: 1, ua: 3, bfm2: 3, ti: 2 }, IS_AG = { vishi: 2, vislo: 2, strafe: 2, eoir: 1, llthr: 1 }, IS_NIGHT = { ncctn: 2, tin: 2 };
 function isReqAuto(rec) {
-  const ag = !!rec.ag, night = !rec.noNight, r = ag ? { gh: 1, bfm: 1, cap: 1, sa: night ? 1 : 2, sat: 1, ...(night ? { night: 1 } : {}) } : { gh: 2, bfm: 2, cap: 2 };
+  const ag = !!rec.ag, night = !rec.noNight, r = ag ? { gh: 1, bfm: 1, cap: 1, sa: night ? 1 : 2, sat: 1 } : { gh: 2, bfm: 2, cap: 2 };
+  if (night) r.night = 1; // night qualified: 1 × night flying on List 1 (A/A + night confirmed by Gordon's QFI, 11 Oct)
   Object.assign(r, IS_A2A, ag ? IS_AG : {}, night ? IS_NIGHT : {});
   for (let i = 1; i <= 8; i++) r["ep" + i] = 1;
   return r;
