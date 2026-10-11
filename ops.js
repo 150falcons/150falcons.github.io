@@ -228,6 +228,8 @@ function opsInOut(r, get) {
   const a = opsAutoInOut(r.name, get || opsGet);
   return { in: r.inTime || a.in, out: r.outTime || a.out, inAuto: !r.inTime && !!a.in, outAuto: !r.outTime && !!a.out, autoIn: a.in, autoOut: a.out };
 }
+// QFI duty rows follow the seniority order set on Admin (view and PDF; the editor keeps the stored order).
+const opsDutyRows = g => opsNorm(g.name) === "QFI" && typeof instrRank === "function" ? (g.rows || []).map((r, i) => [r, i]).sort((a, b) => instrRank(a[0].name) - instrRank(b[0].name) || a[1] - b[1]).map(x => x[0]) : (g.rows || []);
 const opsWaveShort = w => String(w.name || "").replace(/^WAVE\s*/i, "W").replace(/^NIGHT WAVE$/i, "N") || "-";
 
 /* ---------- data ---------- */
@@ -523,7 +525,7 @@ function renderHours(v) {
   const prof = n => (S.profiles || []).find(p => opsNorm(p.display_name) === n);
   const tr = n => (S.roster || []).find(t => opsNorm(t.name) === n);
   const rank = n => { const p = prof(n), t = tr(n), c = t ? t.course || "" : "";
-    return [p ? (APPT_ORDER[p.appointment] ?? 6) : 7, p ? (CAT_ORDER[p.qfi_cat] ?? 4) : 5, t ? (/PGF/i.test(c) ? 0 : /FWC/i.test(c) ? 1 : /WSO/i.test(c) ? 2 : 3) : 4, parseInt(c) || 999]; };
+    return [p && p.role === "admin" ? instrRank(n) : 9999, t ? (/PGF/i.test(c) ? 0 : /FWC/i.test(c) ? 1 : /WSO/i.test(c) ? 2 : 3) : 4, parseInt(c) || 999]; };
   const byRank = (a, b) => { const x = rank(a.name), y = rank(b.name); for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] - y[i]; return (crewOf(a.name)?.sort ?? 999) - (crewOf(b.name)?.sort ?? 999) || a.name.localeCompare(b.name); };
   const order = (a, b) => sort === "hours" ? tot(b) - tot(a) || byRank(a, b) : byRank(a, b);
   const H = m => opsHrs(m) || "0.0";
@@ -771,7 +773,7 @@ const opsView = {
     const tok = t => { const c = t === "#" ? "fly" : t === "(#)" ? "add" : t === "SIMS" ? "sim" : /^(SXO|OPS O)$/.test(t) ? "duty" : "txt"; return `<span class="dt dt-${c}">${esc(t)}</span>`; };
     const cell = (auto, manual) => [...new Set([...auto, ...(manual ? String(manual).split(/\s*\/\s*/) : [])].map(s => s.trim().toUpperCase()).filter(Boolean))].map(tok).join("");
     const short = w => esc(String(w.name || "").replace(/^NIGHT WAVE\s*/i, "N").replace(/^WAVE\s*/i, "W"));
-    return `<div class="opsduty">${gs.map(g => `<div class="opsdutyg${g.hours ? " hrs" : ""}"><h3 class="opssub">${esc(g.name)} <span class="hint">${g.rows.length}</span></h3><div class="tablewrap"><table class="opst opsdt"><thead><tr><th></th><th>Name</th>${waves.map(w => `<th title="${esc(w.name)}">${short(w)}</th>`).join("")}${g.hours ? `<th title="Previous day's out time">Prev</th><th>In</th><th>Rest</th><th>Out</th><th>Duty</th>` : ""}</tr></thead><tbody>${g.rows.map((r, i) => {
+    return `<div class="opsduty">${gs.map(g => `<div class="opsdutyg${g.hours ? " hrs" : ""}"><h3 class="opssub">${esc(g.name)} <span class="hint">${g.rows.length}</span></h3><div class="tablewrap"><table class="opst opsdt"><thead><tr><th></th><th>Name</th>${waves.map(w => `<th title="${esc(w.name)}">${short(w)}</th>`).join("")}${g.hours ? `<th title="Previous day's out time">Prev</th><th>In</th><th>Rest</th><th>Out</th><th>Duty</th>` : ""}</tr></thead><tbody>${opsDutyRows(g).map((r, i) => {
       const auto = opsAuto(r.name, fl, sim);
       let hrs = "";
       if (g.hours) {
@@ -1030,7 +1032,7 @@ function opsPrint(eod) {
   const sims = (sim.rows || []).filter(opsSimUsed).map(s => (s.ac || []).map((a, i) => `<tr${i === 0 ? ' class="f"' : ""}><td>${opsLineUsed(a) ? String(++sn).padStart(2, "0") : ""}</td><td>${i === 0 ? e(s.etd) : ""}</td><td>${i === 0 ? e(s.eta) : ""}</td><td>${e([i === 0 ? s.callsign : "", a.n].filter(Boolean).join(" "))}</td><td>${e(a.crew1)}</td><td>${e(a.crew2)}</td><td>${e(a.mission)}</td><td>${e(a.fms)}</td><td>${e(a.config)}</td><td>${nl(a.rmks)}</td></tr>`).join("")).join("");
   const ground = (opsGet("ground").groups || []).filter(g => (g.rows || []).length).map(g => `<tr class="wv"><td colspan="4">${e(g.name)}</td></tr>${g.rows.map(r => `<tr><td>${e(r.time)}</td><td>${e(r.event)}</td><td>${e(r.personnel)}</td><td>${e(r.venue)}</td></tr>`).join("")}`).join("");
   const af = opsGet("airfield"), nt = opsGet("notes");
-  const duties = (opsGet("duties").groups || []).filter(g => (g.rows || []).length).map(g => `<table><tr class="wv"><td colspan="${waves.length + 2 + (g.hours ? 5 : 0)}">${e(g.name)}</td></tr><tr><th></th><th>Name</th>${waves.map(w => `<th>${e(w.name)}</th>`).join("")}${g.hours ? "<th>Prev day out</th><th>In time</th><th>Rest</th><th>Out time</th><th>Duty</th>" : ""}</tr>${g.rows.map((r, i) => {
+  const duties = (opsGet("duties").groups || []).filter(g => (g.rows || []).length).map(g => `<table><tr class="wv"><td colspan="${waves.length + 2 + (g.hours ? 5 : 0)}">${e(g.name)}</td></tr><tr><th></th><th>Name</th>${waves.map(w => `<th>${e(w.name)}</th>`).join("")}${g.hours ? "<th>Prev day out</th><th>In time</th><th>Rest</th><th>Out time</th><th>Duty</th>" : ""}</tr>${opsDutyRows(g).map((r, i) => {
     const auto = opsAuto(r.name, fl, sim);
     let hrs = "";
     if (g.hours) { const io = opsInOut(r), prev = opsPrevOut(g.name, r.name), pi = opsMin(prev), ii = opsMin(io.in), oo = opsMin(io.out); hrs = `<td>${e(prev)}</td><td>${e(io.in)}</td><td>${pi != null && ii != null ? opsHM(ii + 1440 - pi) : ""}</td><td>${e(io.out)}</td><td>${ii != null && oo != null ? opsHM(opsSpan(ii, oo)) : ""}</td>`; }

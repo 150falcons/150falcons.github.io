@@ -663,13 +663,14 @@ const obGrpLabel = g => g === "ST" ? "ST TOW" : g;
 // [[group, crew…]] in the standard group order (QFI, ST, PGF, TRAINEES, …), then any other groups.
 function obCrewGroups(crew) {
   const groups = [...new Set([...OB_GROUPS, ...crew.map(c => c.grp)])].filter(g => crew.some(c => c.grp === g));
-  return groups.map(g => [g, crew.filter(c => c.grp === g)]);
+  // QFIs follow the seniority order set on Admin; other groups keep the crew list order.
+  return groups.map(g => [g, g === "QFI" ? crew.filter(c => c.grp === g).slice().sort((a, b) => instrRank(a.name) - instrRank(b.name) || (a.sort ?? 999) - (b.sort ?? 999)) : crew.filter(c => c.grp === g)]);
 }
 // Everyone who flies: QFIs (instructor logins except the Command Chief), ST Tow, then trainees (PGF first, FWC, WSO).
 function obFlyers() {
   const out = [], ao = { CO: 0, DYCO: 1, "OC A": 2, "OC B": 3, QFI: 4 };
   S.profiles.filter(p => p.role === "admin" && p.appointment !== "CC" && p.display_name)
-    .sort((a, b) => (ao[a.appointment] ?? 5) - (ao[b.appointment] ?? 5) || a.display_name.localeCompare(b.display_name))
+    .sort(instrSort)
     .forEach((p, i) => out.push({ name: p.display_name, grp: "QFI", profile: p.id, sort: 100 + i }));
   S.profiles.filter(p => p.staff_role === "ST" && p.display_name).forEach((p, i) => out.push({ name: p.display_name, grp: "ST", profile: p.id, sort: 300 + i }));
   const rank = c => /PGF/i.test(c) ? 0 : /FWC/i.test(c) ? 1 : /WSO/i.test(c) ? 2 : 3;
