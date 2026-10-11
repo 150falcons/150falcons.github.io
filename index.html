@@ -221,6 +221,9 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 .qrow .acts .btn.small{padding:3px 9px;font-size:.8rem}
 .stack>*+*{margin-top:16px}
 .csec{display:flex;align-items:baseline;gap:8px;font:700 1rem var(--cond);color:var(--ink);margin:12px 0 6px;letter-spacing:.02em;text-transform:uppercase}
+.cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0 14px;align-items:start}.cblk{min-width:0}
+.strip.s-in{grid-template-columns:12px minmax(0,1fr) auto;min-height:46px}.strip.s-in .where{display:none}.strip.s-in .act:empty{display:none}.strip.s-in .who{border-right:0}
+@media (min-width:1100px){.strips.wide{display:grid;grid-template-columns:repeat(auto-fill,minmax(600px,1fr));gap:6px 10px}.strips.wide .strip{grid-template-columns:12px minmax(120px,.8fr) 2fr auto}}
 .csec span{font:400 .82rem var(--body);color:var(--muted);text-transform:none;letter-spacing:0}
 .rlist li.chead{display:block;border-bottom:1px solid var(--line);padding:12px 0 4px;font:700 1rem var(--cond);text-transform:uppercase;letter-spacing:.02em}
 .rlist li.chead:first-child{padding-top:0}
@@ -883,16 +886,17 @@ function renderBoard(v) {
       <div class="where"><span class="state">In base</span></div>
       <div class="act">${ob[t.id] ? `<span class="hint">Request pending</span>` : ""}</div></article>`;
   const courseSize = c => active().filter(t => (t.course || "No course") === c).length;
-  const inHtml = byCourse(inT).map(([c, ts]) => `<div class="csec">${esc(c)} <span>${ts.length} of ${courseSize(c)} in base</span></div>
-      <div class="strips">${ts.map(strip).join("")}</div>`).join("");
+  // Courses sit side by side on wide screens (Gordon, 11 Oct "maximise the space"); one under the other on phones.
+  const inHtml = byCourse(inT).map(([c, ts]) => `<div class="cblk"><div class="csec">${esc(c)} <span>${ts.length} of ${courseSize(c)} in base</span></div>
+      <div class="strips">${ts.map(strip).join("")}</div></div>`).join("");
   const canBook = isAdmin() || (mine && !ob[mine.id]);
 
   v.innerHTML = `${idCard}${canBook ? `<div class="toolbar"><button class="btn primary" data-act="out" style="flex:1;padding:12px;font-size:1rem">Book out</button></div>` : ""}
-    ${pend.length ? `<div class="sec">Awaiting approval (${pend.length})</div><div class="strips">${pendHtml}</div>` : ""}
-    ${groups.length ? `<div class="sec" style="display:flex;justify-content:space-between;align-items:center">Out of base (${groups.length} ${groups.length === 1 ? "trip" : "trips"})${outTrips().length > 1 && (isAdmin() || outTrips().some(canAct)) ? `<button class="btn small" data-act="rearrange">Rearrange for return</button>` : ""}</div><div class="strips">${outHtml}</div>` : ""}
-    ${lvT.length ? `<div class="sec">On leave (${lvT.length})</div><div class="strips">${leaveHtml}</div>` : ""}
+    ${pend.length ? `<div class="sec">Awaiting approval (${pend.length})</div><div class="strips wide">${pendHtml}</div>` : ""}
+    ${groups.length ? `<div class="sec" style="display:flex;justify-content:space-between;align-items:center">Out of base (${groups.length} ${groups.length === 1 ? "trip" : "trips"})${outTrips().length > 1 && (isAdmin() || outTrips().some(canAct)) ? `<button class="btn small" data-act="rearrange">Rearrange for return</button>` : ""}</div><div class="strips wide">${outHtml}</div>` : ""}
+    ${lvT.length ? `<div class="sec">On leave (${lvT.length})</div><div class="strips wide">${leaveHtml}</div>` : ""}
     <div class="sec">In base (${inT.length})</div>
-    ${inHtml || `<div class="empty">Everyone is out.</div>`}`;
+    ${inHtml ? `<div class="cgrid">${inHtml}</div>` : `<div class="empty">Everyone is out.</div>`}`;
 }
 
 /* ---------- book out ---------- */

@@ -48,6 +48,7 @@ A book-in / book-out board for RSAF trainees at 150 Squadron (BA 120 Cazaux, Fra
     - **Driver:** must have `can_drive`.
     - **VCOM:** required, except trips to **Cazaux**, which can drive alone.
     - **Seats:** max people = the car's `seats` (2–9, default 5).
+  - **Board layout (11 Oct, Gordon "maximise the space"):** In base: each course is a block (`.cblk`) and the blocks sit side by side (`.cgrid`, auto-fill ≥240px wide, so one column on phones); in-base strips show only the name (+ Non-driver / Request pending). Awaiting approval / Out of base / On leave strips go two side by side from 1100px (`.strips.wide`, ≥600px each).
   - **Public transport / Other:** tick who's going; going alone is allowed but warned against.
   - **One Book out button:** full width at the top of the Board (the search box and the per-row Book out buttons were removed at Gordon's request, 7 Oct). For a trainee, the form starts with them locked into the trip.
   - **Trainees booking themselves:** a non-admin must be on the trip.
