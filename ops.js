@@ -277,17 +277,21 @@ function renderFlyTv(v) {
   const day = todayStr();
   if (OPS.day !== day && !OPS.edit) { OPS.day = day; OPS.rowsDay = null; }
   if (OPS.rowsDay !== OPS.day) { v.innerHTML = `<div class="empty">Loading today's programme…</div>`; if (!OPS.loading) opsLoad(OPS.day); return; }
-  const fl = opsGet("flying"), st = opsStats(fl), n = new Date(), tw = opsFlyTvWaves(fl);
+  const fl = opsGet("flying"), st = opsStats(fl), n = new Date(), tw = opsFlyTvWaves(fl), phone = OPS.tvPhone = opsTvPhone();
   const pane = (cls, key, title, body) => `<section class="card opscard flypane ${cls}">${title ? `<div class="opshead"><h2>${title}</h2></div>` : ""}<div class="tvpane" data-pane="${key}">${body || `<p class="hint" style="display:block;margin:0">Nothing entered.</p>`}</div></section>`;
-  v.innerHTML = `<div class="tvstage"><div class="tvbar"><b>150 Falcon Det · Flying program</b><span>${esc(opsLongDay(OPS.day))}</span>
+  v.innerHTML = `<div class="tvstage${phone ? " phone" : ""}"><div class="tvbar"><b>150 Falcon Det · Flying program</b><span>${esc(opsLongDay(OPS.day))}</span>
       <span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 19).replace(/:/g, ""))}Z</small></span>
       <span class="grow"></span><span>${st.sorties} sorties · ${st.hours} h · first T/O ${esc(opsHM(st.first) || "-")} · last landing ${esc(opsHM(st.last) || "-")}</span>
-      <label class="tvspd">Auto-scroll <select data-flyspd aria-label="Auto-scroll speed">${Object.keys(OPS_TV_SPEEDS).map(k => `<option value="${k}" ${k === opsTvSpeed() ? "selected" : ""}>${k[0].toUpperCase() + k.slice(1)}</option>`).join("")}</select></label>
+      ${phone ? "" : `<label class="tvspd">Auto-scroll <select data-flyspd aria-label="Auto-scroll speed">${Object.keys(OPS_TV_SPEEDS).map(k => `<option value="${k}" ${k === opsTvSpeed() ? "selected" : ""}>${k[0].toUpperCase() + k.slice(1)}</option>`).join("")}</select></label>`}
       <button class="btn small" data-tab="ops">Exit TV</button></div>
     ${OPS_ORDER.some(opsData) ? `<div class="flytv"><div class="flytvl">${pane("fly", "fly", "", "")}</div>
       <div class="flytvr">${pane("sim", "sim", OPS_TITLES.sim, opsView.sim(opsGet("sim")))}${pane("gnd", "gnd", OPS_TITLES.ground, opsFlyTvGround(opsGet("ground")))}</div></div>`
       : `<div class="empty"><strong>No programme for today yet</strong></div>`}</div>`;
   // Text size is set by the ~3 waves (tw.fl); the flying window then holds every wave and scrolls within itself (Gordon, 10 Oct).
+  if (phone) { // phone: every wave in the compact list, the page scrolls normally (no zoom, no fixed windows)
+    const c = document.querySelector('.tvpane[data-pane="fly"]'); if (c) c.innerHTML = opsView.flyPhone(tw.all) || `<p class="hint" style="display:block;margin:0">No flights.</p>`;
+    const stg = document.querySelector(".tvstage"); if (stg) stg.style.zoom = ""; return;
+  }
   OPS.tvLeft = { part: opsView.flying(tw.fl, tw.n0, tw.all) || `<p class="hint" style="display:block;margin:0">No flights.</p>`, all: tw.more ? opsView.flying(tw.all) : "" };
   opsFlyTvLeft(false);
   requestAnimationFrame(opsFlyTvFit); setTimeout(opsFlyTvFit, 1200);
@@ -350,7 +354,9 @@ function opsFlyTvWaves(fl) {
   return { fl: { ...fl, waves: shown }, n0, note, more: used.length > shown.length, all: { ...fl, waves: used } };
 }
 // Size the text so ~3 waves fill the flying window (capped so a quiet day isn't huge), then fix the windows to the screen.
+const opsTvPhone = () => Math.min(innerWidth, innerHeight) < 500;
 function opsFlyTvFit() {
+  if (S.tab === "flytv" && OPS.tvPhone) return;
   const g = document.querySelector(".flytv"); if (!g || S.tab !== "flytv") return obTvFit();
   const st = document.querySelector(".tvstage");
   st.classList.remove("noautofit"); g.classList.add("measure"); g.style.height = ""; opsFlyTvLeft(false);
@@ -364,7 +370,7 @@ function opsFlyTvFit() {
   document.querySelectorAll(".flytv .tvpane").forEach(el => { const p = TVPANE.st[el.dataset.pane]; if (p && p.pos != null) el.scrollTop = p.pos; });
   if (!TVPANE.raf) TVPANE.raf = requestAnimationFrame(opsPaneTick);
 }
-window.addEventListener("resize", () => { if (S.tab !== "flytv") return; clearTimeout(opsFlyTvFit.t); opsFlyTvFit.t = setTimeout(opsFlyTvFit, 300); });
+window.addEventListener("resize", () => { if (S.tab !== "flytv") return; if (opsTvPhone() !== !!OPS.tvPhone) return render(); clearTimeout(opsFlyTvFit.t); opsFlyTvFit.t = setTimeout(opsFlyTvFit, 300); });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (S.tab === "flytv") opsFlyTvFit(); });
 
 // Ground programme for the TV: one compact table, a thin row per group.
@@ -869,6 +875,38 @@ const opsView = {
     }
     return out;
   },
+  // Phone TV (Gordon, 11 Oct): narrow screens get a compact list instead of the 14-column table: per line
+  // No · Time (ETD–ETA, callsign + #, tags) · Crew (mission · area) · A/C (cfg) · Actual (ATD–ATA, hrs / result); remarks under it.
+  flyPhone(fl, n0, planFl) {
+    let n = n0 || 0, out = "";
+    const logged = (fl.waves || []).some(w => (w.flights || []).some(f => (f.ac || []).some(a => a.log && a.log.st)));
+    const plan = opsPlan(planFl || fl), z4 = m => String(Math.floor(m / 60) % 24).padStart(2, "0") + String(m % 60).padStart(2, "0");
+    for (const w of fl.waves || []) {
+      const fs = w.flights || [], ws = opsStats({ waves: [w] });
+      out += `<div class="opswave${w.night ? " night" : ""}"><b>${esc(w.name)}</b>${w.sxo ? `<span>SXO <strong>${opsX(w.sxo)}</strong></span>` : ""}${w.opsO ? `<span>OPS O <strong>${opsX(w.opsO)}</strong></span>` : ""}
+        <span class="opswavest">${ws.sorties} sortie${ws.sorties === 1 ? "" : "s"}${ws.first != null ? ` · ${z4(ws.first)}–${z4(ws.last)}Z` : ""}</span></div>`;
+      if (w.rmks) out += `<div class="opsrmk">⚠ ${opsNl(w.rmks)}</div>`;
+      if (!fs.length) continue;
+      out += `<table class="opst flyph${logged ? " logged" : ""}"><colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4">${logged ? `<col class="c5">` : ""}</colgroup><tbody>`;
+      for (const f of fs) {
+        const ac = (f.ac || []).length ? f.ac : [opsTpl.ac("")];
+        ac.forEach((a, i) => {
+          if (!opsLineUsed(a) && i) return;
+          const add = opsIsAdd(f, a), no = add ? "*" : opsLineUsed(a) ? String(++n).padStart(2, "0") : "";
+          const L = a.log || {}, m = opsLogMins(L), rt = opsResText(a, L);
+          const bs = i === 0 ? [f.brief && f.brief !== "NA" ? "B " + f.brief : "", f.step && f.step !== "NA" ? "S " + f.step : ""].filter(Boolean).join(" ") : "";
+          const act = !logged ? "" : `<td class="act">${L.st === "cx" ? `<span class="opscx">${esc(rt)}</span>` : L.st ? `<b>${esc(L.to || "")}–${esc(L.ldg || "")}</b><small>${m != null ? opsHrs(m) + " h" : ""}${L.res && L.res !== "DCO" ? " " + esc(rt) : ""}</small>` : ""}</td>`;
+          const rm = [opsIrtBad(a) ? `<span class="opsirt">⚠ ${OPS_IRT_MSG}</span>` : "", a.rmks ? opsNl(a.rmks) : ""].filter(Boolean).join(" ");
+          out += `<tr class="${i === 0 ? "f" : ""}${add ? " opsadd" : ""}"><td class="no">${no}</td>
+            <td class="tm">${i === 0 ? `<b>${esc(f.etd)}–${esc(f.eta)}</b>` : ""}<small>${esc([i === 0 ? f.callsign : "", a.n].filter(Boolean).join(" "))}${add ? " · OPS ADD" : ""}</small>${i === 0 && bs ? `<small>${esc(bs)}</small>` : ""}${i === 0 ? opsPlanTags(plan.byF.get(f)) : ""}</td>
+            <td class="cr"><b>${opsX(a.crew1)}</b>${a.crew2 ? ` / ${opsX(a.crew2)}` : ""}<small>${esc([a.mission, i === 0 ? f.area : ""].filter(Boolean).join(" · "))}</small></td>
+            <td class="ac">${esc(opsTail(a.tail, OPS.day))}<small>${esc(a.config)}</small></td>${act}</tr>${rm ? `<tr class="rmk${add ? " opsadd" : ""}"><td></td><td colspan="${logged ? 4 : 3}">${rm}</td></tr>` : ""}`;
+        });
+      }
+      out += `</tbody></table>`;
+    }
+    return out;
+  },
   sim(sim) {
     sim = { rows: (sim.rows || []).filter(opsSimUsed) };
     if (!sim.rows.length) return "";
@@ -1367,6 +1405,17 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .tvspd{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:.85rem;color:var(--muted)}
 .tvspd select{width:auto;margin:0;padding:3px 6px;font-size:.85rem}
 .flytv{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(0,1fr);gap:12px}
+.tvstage.phone .flytv{display:block;height:auto!important}.tvstage.phone .flytv .card.flypane{margin-bottom:10px;padding:8px}
+.tvstage.phone .flytv .tvpane{overflow:visible;display:block}.tvstage.phone .flytv .tvpane>.tablewrap{overflow-x:auto}
+.tvstage.phone .tvbar{flex-wrap:wrap;gap:4px 10px}
+table.flyph{width:100%;min-width:0!important;table-layout:fixed;margin-bottom:6px}
+.flyph col.c1{width:8%}.flyph col.c2{width:27%}.flyph col.c3{width:36%}.flyph col.c4{width:13%}.flyph.logged col.c3{width:28%}.flyph col.c5{width:20%}
+.flyph td.no{white-space:nowrap;font-size:.78rem}.flyph td.tm b,.flyph td.act b{white-space:nowrap;font-size:.82rem;letter-spacing:-.02em}.tvstage.phone .tvbar b{font-size:1rem}.tvstage.phone .tvclock{font-size:1.1rem}
+.flyph td{padding:4px 4px!important;vertical-align:top;overflow-wrap:anywhere;line-height:1.25!important}
+.flyph td small{display:block;font-size:.72rem;color:var(--muted);font-weight:400}
+.flyph tr.f td{border-top:1px solid var(--line)}.flyph tr.rmk td{border-top:0;padding-top:0!important;font-size:.75rem;color:var(--out);font-style:italic}
+.flyph td.act{background:color-mix(in srgb,var(--ok,#1F8A4C) 10%,transparent)}.flyph td.act b{color:var(--ok,#1F8A4C)}
+.flyph tr.opsadd td{font-style:italic;opacity:.85}.flyph .opsplan{display:block}
 /* Fixed windows (Gordon, 10 Oct): the page doesn't scroll; each window scrolls inside itself. */
 .flytvl,.flytvr{display:flex;flex-direction:column;min-height:0}
 .flytv .card.flypane{display:flex;flex-direction:column;min-height:0;margin:0;padding:10px 12px}
