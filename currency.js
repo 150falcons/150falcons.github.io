@@ -65,14 +65,14 @@ function curPeople() {
   return out;
 }
 // One cell: date with its state. kind "exp" = valid until this date (red after), "expx" = first day out (red from), "info" = plain.
-function curCell(date, kind, amber) {
+function curCell(date, kind, amber, done, doneLab) {
   if (date === "NA") return { t: "NA", c: "na" };
   if (!date) return { t: "–", c: "na" };
   const today = todayStr(), left = cuDays(today, date);
   let c = "ok";
   if (kind === "exp" ? left < 0 : kind === "expx" ? left <= 0 : false) c = "bad";
   else if (kind !== "info" && left <= amber) c = "warn";
-  return { t: cuFmt(date), c, left, date };
+  return { t: cuFmt(date), c, left, date, done, doneLab, kind };
 }
 const curGo = ok => ({ t: ok ? "GO" : "NO GO", c: ok ? "ok" : "bad" });
 function curFlex(days) {
@@ -84,29 +84,29 @@ function curCols(grp) {
   const am = cfgN("cur.amber"), amD = cfgN("cur.amberDay"), today = todayStr();
   const med = { h: "Medical", f: x => curGo(!String(x.rec.med || "").trim()), lab: "MED" };
   const lastF = x => cuMax(x.rec.last, (x.fl || {}).any);
-  const irt = { h: "IRT expires", f: x => curCell(x.rec.irt ? cuEom(x.rec.irt, 12) : "", "exp", am), lab: "IRT" };
+  const irt = { h: "IRT expires", f: x => curCell(x.rec.irt ? cuEom(x.rec.irt, 12) : "", "exp", am, x.rec.irt, "IRT done"), lab: "IRT" };
   const days = d => d ? cuDays(d, today) : null;
   if (grp === "QFI") return [med, { h: "IRT rating", f: x => ({ t: x.rec.rating || "G", c: "na" }) }, { h: "Ops CAT", f: x => ({ t: x.rec.opsCat || "-", c: "na" }) }, { h: "QFI CAT", f: x => ({ t: (x.prof && x.prof.qfi_cat) || x.rec.qfiCat || "-", c: "na" }) },
-    { h: "Last flown", f: x => curCell(lastF(x), "info") }, { h: "Day expires", f: x => curCell(lastF(x) ? cuAdd(lastF(x), 31) : "", "expx", amD), lab: "DAY CURR" }, irt,
-    { h: "Night expires", f: x => x.rec.noNight ? { t: "NA", c: "na" } : curCell(cuMax(x.rec.night, (x.fl || {}).night) ? cuAdd(cuMax(x.rec.night, (x.fl || {}).night), 91) : "", "exp", am), lab: "NIGHT" },
+    { h: "Last flown", f: x => curCell(lastF(x), "info") }, { h: "Day expires", f: x => curCell(lastF(x) ? cuAdd(lastF(x), 31) : "", "expx", amD, lastF(x), "Last flown"), lab: "DAY CURR" }, irt,
+    { h: "Night expires", f: x => x.rec.noNight ? { t: "NA", c: "na" } : curCell(cuMax(x.rec.night, (x.fl || {}).night) ? cuAdd(cuMax(x.rec.night, (x.fl || {}).night), 91) : "", "exp", am, cuMax(x.rec.night, (x.fl || {}).night), "Last night sortie"), lab: "NIGHT" },
     { h: "Day > Night", f: x => x.rec.noNight ? { t: "NA", c: "na" } : lastF(x) ? curGo(days(lastF(x)) <= 14) : { t: "–", c: "na" }, lab: "DAY>NIGHT" },
-    { h: "EP sims", f: x => curCell(x.rec.ep ? cuAdd(x.rec.ep, 90) : "", "exp", am), lab: "EP SIMS" },
+    { h: "EP sims", f: x => curCell(x.rec.ep ? cuAdd(x.rec.ep, 90) : "", "exp", am, x.rec.ep, "Last EP sim"), lab: "EP SIMS" },
     { h: "IPC done", f: x => curCell(x.rec.ipc, "info") },
     { h: "IPC expires", f: x => { const cat = (x.prof && x.prof.qfi_cat) || x.rec.qfiCat, d = x.rec.ipc; if (!d) return { t: "–", c: "na" };
-      return curCell(cat === "A" ? cuEom(d, 12) : cat === "B1" ? cuEom(d, 6) : cat === "B2" ? cuEom(d, 2) : cuEdate(d, 1), "exp", am); }, lab: "IPC" }];
-  if (grp === "ST") return [med, { h: "Last flown", f: x => curCell(lastF(x), "info") }, { h: "Day expires", f: x => curCell(lastF(x) ? cuAdd(lastF(x), 31) : "", "expx", amD), lab: "DAY CURR" }, irt,
-    { h: "FCF sims prof chk", f: x => curCell(x.rec.fcfSim ? cuEdate(x.rec.fcfSim, 12) : "", "exp", am), lab: "FCF SIMS" },
-    { h: "TOW prof chk", f: x => curCell(x.rec.tow ? cuEdate(x.rec.tow, 12) : "", "exp", am), lab: "TOW CHK" },
+      return curCell(cat === "A" ? cuEom(d, 12) : cat === "B1" ? cuEom(d, 6) : cat === "B2" ? cuEom(d, 2) : cuEdate(d, 1), "exp", am, d, "IPC done"); }, lab: "IPC" }];
+  if (grp === "ST") return [med, { h: "Last flown", f: x => curCell(lastF(x), "info") }, { h: "Day expires", f: x => curCell(lastF(x) ? cuAdd(lastF(x), 31) : "", "expx", amD, lastF(x), "Last flown"), lab: "DAY CURR" }, irt,
+    { h: "FCF sims prof chk", f: x => curCell(x.rec.fcfSim ? cuEdate(x.rec.fcfSim, 12) : "", "exp", am, x.rec.fcfSim, "Done"), lab: "FCF SIMS" },
+    { h: "TOW prof chk", f: x => curCell(x.rec.tow ? cuEdate(x.rec.tow, 12) : "", "exp", am, x.rec.tow, "Done"), lab: "TOW CHK" },
     { h: "Last FCF flight", f: x => curCell(cuMax(x.rec.fcf, (x.fl || {}).fcf), "info") },
-    { h: "FCF flight currency", f: x => curCell(lastF(x) ? cuAdd(lastF(x), 15) : "", "exp", Math.min(amD, 5)), lab: "FCF CURR" }];
+    { h: "FCF flight currency", f: x => curCell(lastF(x) ? cuAdd(lastF(x), 15) : "", "exp", Math.min(amD, 5), lastF(x), "Last flown"), lab: "FCF CURR" }];
   if (grp === "FIC") return [med, { h: "Last flown", f: x => curCell(cuMax((x.rec.fic || {}).last, (x.rec.fic || {}).lastBack, (x.fl || {}).any), "info") },
-    { h: "Day expires", f: x => { const d = cuMax((x.rec.fic || {}).last, (x.fl || {}).front); return curCell(d ? cuAdd(d, 31) : "", "expx", amD); }, lab: "DAY CURR" },
+    { h: "Day expires", f: x => { const d = cuMax((x.rec.fic || {}).last, (x.fl || {}).front); return curCell(d ? cuAdd(d, 31) : "", "expx", amD, d, "Last flown (front)"); }, lab: "DAY CURR" },
     { h: "Non-syllabus days", f: x => { const d = days((x.rec.fic || {}).lastSyl); return d == null ? { t: "–", c: "na" } : { t: String(d), c: d > 7 ? "warn" : "ok" }; } }, irt];
-  if (grp === "PGF") return [med, { h: "Last flown", f: x => curCell(lastF(x), "info") }, { h: "Day expires (7 days)", f: x => curCell(lastF(x) ? cuAdd(lastF(x), 7) : "", "expx", 2), lab: "DAY CURR" },
+  if (grp === "PGF") return [med, { h: "Last flown", f: x => curCell(lastF(x), "info") }, { h: "Day expires (7 days)", f: x => curCell(lastF(x) ? cuAdd(lastF(x), 7) : "", "expx", 2, lastF(x), "Last flown"), lab: "DAY CURR" },
     { h: "Non-syllabus days", f: x => { const d = days(x.rec.lastSyl); return d == null ? { t: "–", c: "na" } : { t: String(d), c: "na" }; } }, irt,
     { h: "Days w/o IF app", f: x => { const d = days(x.rec.ifApp); return d == null ? { t: "–", c: "na" } : { t: String(d), c: "na" }; } }];
   if (grp === "TR") return [med, { h: "IRT rating", f: x => ({ t: x.rec.rating || "W", c: "na" }) }, { h: "MOD", f: x => ({ t: x.rec.mod || "-", c: "na" }) },
-    { h: "Solo expires", f: x => { const m = Number(x.rec.mod) || 0, s = x.rec.solo; return s && m ? curCell(cuAdd(s, m >= 7 ? 4 : m >= 4 ? 3 : 2), "exp", 1) : { t: "–", c: "na" }; } },
+    { h: "Solo expires", f: x => { const m = Number(x.rec.mod) || 0, s = x.rec.solo; return s && m ? curCell(cuAdd(s, m >= 7 ? 4 : m >= 4 ? 3 : 2), "exp", 1, s, "Last solo") : { t: "–", c: "na" }; } },
     { h: "Last flown (front)", f: x => curCell(cuMax(x.rec.last, (x.fl || {}).front), "info") }, { h: "Last DCO sortie", f: x => curCell(x.rec.lastSyl, "info") },
     { h: "Non-syllabus days", f: x => { const d = days(x.rec.lastSyl); return d == null ? { t: "–", c: "na" } : { t: String(d), c: "na" }; } },
     { h: "Flex", f: x => curFlex(days(x.rec.lastSyl)), lab: "FLEX" }, irt,
@@ -134,13 +134,13 @@ function renderCur(v) {
     const rows = ps.map(x => `<tr><td class="cuname"><b>${esc(x.name)}</b>${x.nologin ? ` <span class="hint" title="No login on the board with this name">no login</span>` : ""}${x.prof && x.prof.callsign ? ` <span class="hint">${esc(x.prof.callsign)}</span>` : ""}</td>${cols.map(c => {
       const r = c.f(x);
       if (c.lab && r.c === "bad") (expired[c.lab] ||= []).push(x.name); else if (c.lab && r.c === "warn") (expiring[c.lab] ||= []).push(x.name);
-      return `<td class="cu ${r.c}"${r.left != null ? ` title="${r.left < 0 ? -r.left + " days ago" : r.left + " days left"}"` : ""}>${esc(r.t)}</td>`; }).join("")}</tr>`).join("");
+      return `<td class="cu ${r.c}"${r.left != null ? ` title="${esc([r.done ? `${r.doneLab || "Done"}: ${cuFmt(r.done)}` : "", r.kind === "info" ? `${-r.left} days ago` : r.left < 0 ? `expired ${-r.left} days ago` : `${r.left} days left`].filter(Boolean).join(" · "))}"` : ""}>${esc(r.t)}</td>`; }).join("")}</tr>`).join("");
     return `<section class="card opscard"><div class="opshead"><h2>${esc(title)}</h2><span class="opsmeta">${ps.length}</span></div><div class="tablewrap"><table class="opst cut"><thead><tr><th>Name</th>${cols.map(c => `<th>${esc(c.h)}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
   }).join("");
   const sum = (o, cls) => Object.keys(o).length ? Object.entries(o).map(([k, ns]) => `<div><b>${esc(k)}</b> – ${esc([...new Set(ns)].join(", "))}</div>`).join("") : `<div class="hint">Nil</div>`;
   v.innerHTML = bar + `<div class="cusum"><section class="card opscard"><div class="opshead"><h2>Items expired</h2></div><div class="cul bad">${sum(expired)}</div></section>
     <section class="card opscard"><div class="opshead"><h2>Items expiring</h2><span class="opsmeta">within ${cfgN("cur.amber")} days</span></div><div class="cul warn">${sum(expiring)}</div></section></div>${cards}
-    <p class="hint">Last flown, night and FCF dates use the latest of what's typed under Records and the sorties logged in Log flown times. Hover a date to see days left.</p>`;
+    <p class="hint">Last flown, night and FCF dates use the latest of what's typed under Records and the sorties logged in Log flown times. Hover a date to see when it was done and the days left.</p>`;
 }
 // Records: the dates behind the board, per group (like the Excel's DATA ENTRY). Editors type, everyone else views.
 const CUR_FIELDS = {
@@ -177,6 +177,8 @@ document.addEventListener("input", e => {
   if (val === "" || val === false) delete o[path[path.length - 1]]; else o[path[path.length - 1]] = val;
 });
 document.addEventListener("change", e => { if (e.target.dataset && e.target.dataset.cuf && e.target.type === "checkbox") e.target.dispatchEvent(new Event("input", { bubbles: true })); });
+// Phones have no hover: tapping a date shows the same "done … · days left" text.
+document.addEventListener("click", e => { const td = e.target.closest(".cut td[title]"); if (td && td.title && S.tab === "cur") toast(td.closest("tr").querySelector(".cuname b").textContent + ": " + td.title); });
 document.addEventListener("click", async e => {
   const b = e.target.closest("[data-cur]"); if (!b) return;
   const a = b.dataset.cur;
