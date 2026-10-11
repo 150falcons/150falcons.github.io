@@ -356,9 +356,10 @@ function opsLogCard() {
     });
     if (wr) rows += `<tr class="lgwv"><td colspan="6">${esc(w.name)}</td></tr>` + wr;
   });
-  return `<section class="card opscard" id="ops-log"><div class="opshead"><h2>Flown times</h2><span class="opsmeta">${logged} of ${lines} lines logged · ${opsHrs(mins) || "0.0"} h flown</span></div>
+  return `<section class="card opscard" id="ops-log"><div class="opshead"><h2>Flown times</h2><span class="opsmeta">${logged} of ${lines} lines logged · ${opsHrs(mins) || "0.0"} h flown <button class="btn small primary" data-ops="log">Done logging</button></span></div>
     <div class="tablewrap"><table class="opst opslog"><thead><tr><th>Flight</th><th>Aircrew</th><th>T/O (Z)</th><th>LDG (Z)</th><th>Hrs</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="hint" style="margin:6px 0 0">After landing, key in the actual take-off and landing times (Z, e.g. 0718). <b>✓ As planned</b> fills in the planned ETD / ETA for the whole flight; type over any that differ. <b>CX</b> = cancelled (no hours). Both crew on a line get the hours; they add up on the <b>Hours</b> tab.</p></section>`;
+    <p class="hint" style="margin:6px 0 0">After landing, key in the actual take-off and landing times (Z, e.g. 0718). <b>✓ As planned</b> fills in the planned ETD / ETA for the whole flight; type over any that differ. <b>CX</b> = cancelled (no hours). Both crew on a line get the hours; they add up on the <b>Hours</b> tab.</p>
+    <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn primary" data-ops="log">Done logging</button></div></section>`;
 }
 async function opsLogSave(k, to, ldg, st, rerender) {
   const [w, f, a] = k.split(".").map(Number), line = opsLogLine(k);
