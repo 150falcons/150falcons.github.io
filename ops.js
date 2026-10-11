@@ -461,7 +461,8 @@ function hrsRoles() {
   for (const p of S.profiles || []) {
     const n = opsNorm(p.display_name); if (!n) continue;
     const x = r[n] = r[n] || {};
-    if (p.role === "admin" && p.appointment !== "CC") { x.instr = true; x.grp = "QFI"; x.trainee = false; }
+    if (p.role === "admin" && p.appointment === "FIC") { x.fic = true; x.instr = false; x.trainee = true; x.grp = "FIC"; } // instructor course: a QFI flying with them logs instructional
+    else if (p.role === "admin" && p.appointment !== "CC") { x.instr = true; x.grp = "QFI"; x.trainee = false; }
     else if (p.staff_role === "ST") { x.grp = "ST"; x.instr = false; }
     else if (p.trainee_id) x.trainee = true;
   }
@@ -500,7 +501,7 @@ function hrsEntries(days) {
   }
   return out;
 }
-const HRS_CATS = [["instr", "Instructors (QFI)"], ["st", "ST Tow"], ["tr", "Trainees"], ["oth", "Others / not on crew list"]];
+const HRS_CATS = [["instr", "Instructors (QFI)"], ["fic", "FIC (instructor course)"], ["st", "ST Tow"], ["tr", "Trainees"], ["oth", "Others / not on crew list"]];
 function renderHours(v) {
   if (!OPS.hrs) {
     v.innerHTML = `<div class="empty">Loading hours…</div>`;
@@ -511,7 +512,7 @@ function renderHours(v) {
   const ents = hrsEntries(OPS.hrs.days).filter(e => e.day >= from && e.day <= to);
   const crew = typeof OB !== "undefined" ? OB.crew || [] : [], R = hrsRoles();
   const crewOf = n => crew.find(c => opsNorm(c.name) === n);
-  const catOf = n => { const x = R[n] || {}, g = String(x.grp || "").toUpperCase(); return x.instr ? "instr" : g === "ST" ? "st" : x.trainee ? "tr" : "oth"; };
+  const catOf = n => { const x = R[n] || {}, g = String(x.grp || "").toUpperCase(); return x.fic ? "fic" : x.instr ? "instr" : g === "ST" ? "st" : x.trainee ? "tr" : "oth"; };
   const people = {};
   const blank = n => ({ name: n, sorties: 0, day: 0, night: 0, instr: 0, wso: 0, solo: 0, last: "", list: [] });
   // Everyone with a flying login (QFI except CC, ST Tow, active trainees) shows even with no hours, plus active crew-list entries.

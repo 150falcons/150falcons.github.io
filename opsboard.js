@@ -8,7 +8,7 @@
    ===================================================================== */
 const OB = { files: {}, loaded: false, loading: false, state: {}, wx: {}, crew: [], items: [], acks: [], edit: null, showClosed: false, open: {} };
 const OB_STATUS = { g: "Available", a: "Limited", r: "U/S", "": "-" };
-const OB_GROUPS = ["QFI", "ST", "PGF", "TRAINEES", "ATCO", "STEDAS", "OTH"];
+const OB_GROUPS = ["QFI", "FIC", "ST", "PGF", "TRAINEES", "ATCO", "STEDAS", "OTH"];
 const OB_LEGEND = [
   ["BF", "Boldface"], ["OL", "Ops limit"], ["OB", "Ops brief"], ["ED", "EODD"], ["RS", "Read & sign"], ["SAM", "Safety alert message"],
   ["UP", "Up chit"], ["IFG", "In-flight guide"], ["TS", "Take & sign"], ["MIAC 4", "MIAC 4"], ["HTC", "GFET"], ["ST", "Standardisation"],
@@ -603,10 +603,12 @@ function obSyncCrewNames() {
   }
   for (const c of OB.crew) {
     const p = c.profile_id && S.profiles.find(x => x.id === c.profile_id), want = p && String(p.display_name || "").trim().toUpperCase();
-    if (!want || want === c.name || obSyncing.has(c.id)) continue;
+    // QFI ↔ FIC follows the login's appointment
+    const grp = p && p.role === "admin" && (c.grp === "QFI" || c.grp === "FIC") ? (p.appointment === "FIC" ? "FIC" : "QFI") : c.grp;
+    if (!want || (want === c.name && grp === c.grp) || obSyncing.has(c.id)) continue;
     obSyncing.add(c.id);
-    S.sb.rpc("crew_save", { p_id: c.id, p_name: want, p_grp: c.grp, p_profile: c.profile_id, p_active: c.active, p_sort: c.sort })
-      .then(({ error }) => { obSyncing.delete(c.id); if (!error) { c.name = want; obRerender(); } });
+    S.sb.rpc("crew_save", { p_id: c.id, p_name: want, p_grp: grp, p_profile: c.profile_id, p_active: c.active, p_sort: c.sort })
+      .then(({ error }) => { obSyncing.delete(c.id); if (!error) { c.name = want; c.grp = grp; obRerender(); } });
   }
 }
 // Today's programme sections (from the flying program if it's on today, else the home dashboard's copy; fetched once if neither).
@@ -671,7 +673,7 @@ function obFlyers() {
   const out = [], ao = { CO: 0, DYCO: 1, "OC A": 2, "OC B": 3, QFI: 4 };
   S.profiles.filter(p => p.role === "admin" && p.appointment !== "CC" && p.display_name)
     .sort(instrSort)
-    .forEach((p, i) => out.push({ name: p.display_name, grp: "QFI", profile: p.id, sort: 100 + i }));
+    .forEach((p, i) => out.push({ name: p.display_name, grp: p.appointment === "FIC" ? "FIC" : "QFI", profile: p.id, sort: 100 + i }));
   S.profiles.filter(p => p.staff_role === "ST" && p.display_name).forEach((p, i) => out.push({ name: p.display_name, grp: "ST", profile: p.id, sort: 300 + i }));
   const rank = c => /PGF/i.test(c) ? 0 : /FWC/i.test(c) ? 1 : /WSO/i.test(c) ? 2 : 3;
   active().slice().sort((a, b) => rank(a.course || "") - rank(b.course || "") || String(a.course || "").localeCompare(String(b.course || ""), undefined, { numeric: true }) || a.name.localeCompare(b.name))

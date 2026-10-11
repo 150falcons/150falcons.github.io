@@ -322,13 +322,13 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
   <label><span id="eNameLbl">Name</span><input id="eName" maxlength="60"></label>
   <label id="eCallWrap">Callsign (leave blank if none)<input id="eCall" maxlength="30" placeholder="e.g. Brut"></label>
   <label id="eTypeWrap">Type<select id="eType"><option value="ST">ST Tow</option><option value="HD CEN">HD CEN (head of CEN)</option><option value="CEN">CEN</option><option value="AOSX">AOSX (ops assistant)</option><option value="ATCO">ATCO</option><option value="ENG">Engineer</option></select></label>
-  <div id="eQualWrap" style="margin-bottom:10px"><span class="hint">Qualifications</span><div><label class="opschk" style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;color:var(--ink)"><input type="checkbox" id="eQTOW" style="width:auto;margin:0">TOW</label><label class="opschk" style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;color:var(--ink)"><input type="checkbox" id="eQFCF" style="width:auto;margin:0">FCF</label></div></div>
+  <div id="eQualWrap" style="margin-bottom:10px"><span class="hint">Qualifications</span><div><label class="opschk" style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;color:var(--ink)"><input type="checkbox" id="eQTOW" style="width:auto;margin:0">TOW</label><label class="opschk" style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;color:var(--ink)"><input type="checkbox" id="eQFCF" style="width:auto;margin:0">FCF</label><label class="opschk" id="eQIREl" style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;color:var(--ink)"><input type="checkbox" id="eQIRE" style="width:auto;margin:0">IRE</label></div></div>
   <label id="eCatWrap">QFI CAT<select id="eCat"><option value="">-</option><option>A</option><option>B1</option><option>B2</option><option>C</option></select></label>
   <label id="eCourseWrap">Course<input id="eCourse" maxlength="40"></label>
   <label id="ePhoneWrap">Handphone<input id="ePhone" type="tel" maxlength="30" placeholder="+33 / +65"></label>
   <label id="eDriveWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eDrive" type="checkbox" style="width:auto;margin:0">Can drive</label>
   <div id="eApptWrap">
-    <label>Appointment<select id="eAppt"><option value="">None</option><option>CO</option><option>DYCO</option><option>OC A</option><option>OC B</option><option>CC</option><option>QFI</option></select></label>
+    <label>Appointment<select id="eAppt"><option value="">None</option><option>CO</option><option>DYCO</option><option>OC A</option><option>OC B</option><option>CC</option><option>QFI</option><option value="FIC">FIC (instructor course)</option></select></label>
   </div>
   <label id="eOpsWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eOps" type="checkbox" style="width:auto;margin:0">Can edit the ops board (incl. Go / No-Go)</label>
   <label id="eProgWrap" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input id="eProg" type="checkbox" style="width:auto;margin:0">Can edit the flying program (incl. flown times)</label>
@@ -393,8 +393,8 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 <div class="toast" id="toast" hidden></div>
 
 <script src="settings.js?v=3"></script>
-<script src="ops.js?v=51"></script>
-<script src="opsboard.js?v=57"></script>
+<script src="ops.js?v=52"></script>
+<script src="opsboard.js?v=58"></script>
 <script>
 /* =====================================================================
    SETUP: paste your Supabase Project URL and anon (public) key here.
@@ -1471,9 +1471,9 @@ function renderAdmin(v) {
     // Management appointment first (CO, DYCO, OC A, OC B, CC, QFI), then QFI CAT (A, B1, B2, C), then callsign.
     .sort(instrSort);
   // The CC isn't a flyer: shown under CEN, not among the QFIs (Gordon, 11 Oct). Same row (and rights) as a QFI login.
-  const ccs = admins.filter(p => p.appointment === "CC"), qfis = admins.filter(p => p.appointment !== "CC");
+  const ccs = admins.filter(p => p.appointment === "CC"), fics = admins.filter(p => p.appointment === "FIC"), qfis = admins.filter(p => p.appointment !== "CC" && p.appointment !== "FIC");
   const qrow = p => `<li class="qrow">
-      <span class="qname"><strong>${esc(pLabel(p))}</strong>${p.callsign && p.display_name && p.display_name !== p.callsign ? ` <span class="hint">${esc(p.display_name)}</span>` : p.callsign ? ` <span class="hint">(name not set)</span>` : ""}<span class="qtags">${apptText(p) ? `<span class="tag open">${esc(apptText(p))}</span>` : ""}${p.qfi_cat ? `<span class="tag qcat">CAT ${esc(p.qfi_cat)}</span>` : ""}${p.user_admin ? `<span class="tag open">Account admin</span>` : ""}${p.ops_editor && !APPROVER(p) ? `<span class="tag nd">Ops board</span>` : ""}${p.prog_editor && !APPROVER(p) ? `<span class="tag nd">Flying prog</span>` : ""}</span></span>
+      <span class="qname"><strong>${esc(pLabel(p))}</strong>${p.callsign && p.display_name && p.display_name !== p.callsign ? ` <span class="hint">${esc(p.display_name)}</span>` : p.callsign ? ` <span class="hint">(name not set)</span>` : ""}<span class="qtags">${apptText(p) ? `<span class="tag open">${esc(apptText(p))}</span>` : ""}${p.qfi_cat ? `<span class="tag qcat">CAT ${esc(p.qfi_cat)}</span>` : ""}${(p.quals || []).map(q => `<span class="tag qcat">${esc(q)}</span>`).join("")}${p.user_admin ? `<span class="tag open">Account admin</span>` : ""}${p.ops_editor && !APPROVER(p) ? `<span class="tag nd">Ops board</span>` : ""}${p.prog_editor && !APPROVER(p) ? `<span class="tag nd">Flying prog</span>` : ""}</span></span>
       <span class="hint qlogin">Login: ${esc(showLogin(p.email))}${p.id === S.me.id ? " (you)" : ""}${p.no_geo ? " · no location check" : ""}</span>
       <span class="acts">${p.appointment === "QFI" ? `<button class="btn small" data-act="senior" data-id="${esc(p.id)}:-1" title="Move up (more senior)" aria-label="Move up">▲</button><button class="btn small" data-act="senior" data-id="${esc(p.id)}:1" title="Move down" aria-label="Move down">▼</button>` : ""}<button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button>${p.id === S.me.id ? "" : `<button class="btn small" data-act="resetpw" data-id="${esc(p.id)}" title="Reset password">Reset pw</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button>`}</span></li>`;
   const alist = qfis.map(qrow).join("");
@@ -1491,15 +1491,16 @@ function renderAdmin(v) {
         <div style="display:flex;justify-content:flex-end"><button class="btn primary" id="btnAdd">Post in</button></div>
         <p class="hint">Every trainee gets a login straight away. They sign in with their username and the temporary password, then must set their own password.</p></div>
       <div class="card"><h2>Perm staff (${admins.length + perm.length})</h2><ul class="rlist">
-        <li class="chead">QFI<span>${qfis.length}</span></li>${alist}
+        <li class="chead">QFI<span>${qfis.length}</span></li>${alist}${fics.length ? `<li class="chead">FIC (instructor course)<span>${fics.length}</span></li>${fics.map(qrow).join("")}` : ""}
         ${["ST", "CEN", "AOSX", "ATCO"].map(t => { const g = t === "CEN" ? [...perm.filter(p => p.staff_role === "HD CEN"), ...perm.filter(p => p.staff_role === "CEN")] : perm.filter(p => (p.staff_role || "AOSX") === t), cc = t === "CEN" ? ccs : []; return g.length + cc.length ? `<li class="chead">${t === "ST" ? "ST Tow" : t}<span>${g.length + cc.length}</span></li>${cc.map(qrow).join("")}${g.map(staffRow).join("")}` : ""; }).join("")}</ul>
         <p class="hint" style="margin-top:10px">Use ▲ ▼ to set the QFIs in order of seniority; every list of aircrew (Hours, Go / No-Go, Duties) follows this order. QFI are instructors (the CO, DYCO and OCs approve travel; under Edit, tick "Can edit the ops board" and / or "Can edit the flying program" for anyone else who should). The AOSX gets both by default. ST Tow, CEN and ATCO can view everything unless ticked.</p>
         <p class="hint">Only account admins see this Admin tab and can add, remove or reset logins and change anyone's rights. To make another QFI an account admin, tap Edit and tick "Account admin". Everyone else gets an Account tab to change their own details and password.</p>
         <p class="hint" style="margin-top:10px">Add perm staff:</p>
-        <label>Type<select id="psType"><option value="QFI">QFI (instructor)</option><option value="ST">ST Tow</option><option value="HD CEN">HD CEN (head of CEN)</option><option value="CEN">CEN (contracts &amp; squadron logistics)</option><option value="AOSX">AOSX (ops assistant)</option><option value="ATCO">ATCO (air traffic controller)</option></select></label>
+        <label>Type<select id="psType"><option value="QFI">QFI (instructor)</option><option value="FIC">FIC (flying instructor course)</option><option value="ST">ST Tow</option><option value="HD CEN">HD CEN (head of CEN)</option><option value="CEN">CEN (contracts &amp; squadron logistics)</option><option value="AOSX">AOSX (ops assistant)</option><option value="ATCO">ATCO (air traffic controller)</option></select></label>
         <label>Name (as on the flying lines)<input id="iName" maxlength="60" placeholder="e.g. LEE G"></label>
         <div id="psQfi"><label>Callsign (leave blank if none)<input id="iCall" maxlength="30" placeholder="e.g. Brut"></label>
-        <label>QFI CAT<select id="iCat"><option value="">-</option><option>A</option><option>B1</option><option>B2</option><option>C</option></select></label></div>
+        <label>QFI CAT<select id="iCat"><option value="">-</option><option>A</option><option>B1</option><option>B2</option><option>C</option></select></label>
+        <label class="opschk" style="display:inline-flex;align-items:center;gap:6px;color:var(--ink)"><input type="checkbox" id="iQIRE" style="width:auto;margin:0">IRE (instrument rating examiner)</label></div>
         <div id="psSt" hidden><span class="hint">Qualifications</span><div><label class="opschk" style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;color:var(--ink)"><input type="checkbox" id="iQTOW" style="width:auto;margin:0">TOW</label><label class="opschk" style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;color:var(--ink)"><input type="checkbox" id="iQFCF" style="width:auto;margin:0">FCF</label></div></div>
         <label>Username<input id="iEmail" autocapitalize="none" placeholder="e.g. tanjh"></label>
         <div style="display:flex;justify-content:flex-end"><button class="btn" id="btnAddAdmin">Add perm staff</button></div></div>
@@ -1514,11 +1515,11 @@ function renderAdmin(v) {
         ${glist ? `<ul class="rlist">${glist}</ul><p class="hint">Their past movements stay in the log.</p>` : `<p class="hint">Trainees you post out appear here. Their login is disabled and their history is kept.</p>`}</div>
     </div></div>`;
   $("#btnAdd").onclick = postIn;
-  $("#btnAddAdmin").onclick = () => $("#psType").value === "QFI" ? addInstructor() : addStaff($("#psType").value, $("#iName"), $("#iEmail"));
+  $("#btnAddAdmin").onclick = () => ["QFI", "FIC"].includes($("#psType").value) ? addInstructor($("#psType").value) : addStaff($("#psType").value, $("#iName"), $("#iEmail"));
   // Fill in the standard temporary password (fetched from the server so it isn't written in this public page).
   if (!S.defPw) adminApi({ action: "default_password" }).then(r => { S.defPw = r && r.password; const i = $("#tmpPw"); if (i && !i.value && S.defPw) i.value = S.defPw; }).catch(() => {});
   $("#btnAddOps").onclick = () => addStaff("ENG", $("#oaName"), $("#oaUser"));
-  $("#psType").onchange = () => { $("#psQfi").hidden = $("#psType").value !== "QFI"; $("#psSt").hidden = $("#psType").value !== "ST"; };
+  $("#psType").onchange = () => { $("#psQfi").hidden = !["QFI", "FIC"].includes($("#psType").value); $("#psSt").hidden = $("#psType").value !== "ST"; };
   wireMyAccount(); wireTelegram();
 }
 const telegramCard = () => `<div class="card"><h2>Telegram</h2>
@@ -1597,7 +1598,7 @@ async function moveSenior(key) {
   const { error } = await S.sb.rpc("set_seniority", { p_ids: list.map(p => p.id) });
   if (error) { toast(errMsg(error)); fetchAll(); }
 }
-async function addInstructor() {
+async function addInstructor(type) {
   const name = $("#iName").value.trim(), user = $("#iEmail").value.trim().toLowerCase();
   if (!name || !user) return toast("Enter the QFI's name and a username.");
   if (!validUser(user)) return toast("Usernames can only use letters, numbers, dots and dashes (3-30 characters).");
@@ -1608,7 +1609,9 @@ async function addInstructor() {
     if (call && r && r.user_id) { const { error } = await S.sb.rpc("set_callsign", { p_user: r.user_id, p_callsign: call }); if (error) toast(errMsg(error)); }
     const cat = $("#iCat").value;
     if (cat && r && r.user_id) { const { error } = await S.sb.rpc("set_qfi_cat", { p_user: r.user_id, p_cat: cat }); if (error) toast(errMsg(error)); }
-    fetchAll(); await ask("QFI added", `${call ? call + " (" + name + ")" : name}: username ${user}, temporary password ${r.password}. They must set their own password at first sign-in.`, "OK"); }
+    if (r && r.user_id) { const { error } = await S.sb.rpc("set_role", { p_user: r.user_id, p_appointment: type === "FIC" ? "FIC" : "QFI", p_acting: null }); if (error) toast(errMsg(error)); }
+    if ($("#iQIRE") && $("#iQIRE").checked && r && r.user_id) { const { error } = await S.sb.rpc("set_quals", { p_user: r.user_id, p_quals: ["IRE"] }); if (error) toast(errMsg(error)); }
+    fetchAll(); await ask(type === "FIC" ? "FIC added" : "QFI added", `${call ? call + " (" + name + ")" : name}: username ${user}, temporary password ${r.password}. They must set their own password at first sign-in.`, "OK"); }
   catch (e) { toast(e.message); }
 }
 // Ops assistant: a non-admin, non-trainee login with ops_editor on.
@@ -1666,7 +1669,7 @@ async function deleteTrainee(tid) {
   fetchAll();
 }
 /* ---------- edit name / login ---------- */
-const APPT_ORDER = { CO: 0, DYCO: 1, "OC A": 2, "OC B": 3, CC: 4, QFI: 5 };
+const APPT_ORDER = { CO: 0, DYCO: 1, "OC A": 2, "OC B": 3, CC: 4, QFI: 5, FIC: 6 };
 const CAT_ORDER = { A: 0, B1: 1, B2: 2, C: 3 };
 // Instructor order everywhere aircrew are listed (Gordon, 11 Oct): CO, DYCO, OC A, OC B, then QFIs in the seniority order
 // set on Admin (▲ ▼, profiles.seniority), then CAT and name. instrRank(name) = position for a name as on the programme.
@@ -1703,7 +1706,10 @@ function openEdit(key) {
   $("#eCatWrap").hidden = !inst; $("#eCat").value = inst ? (acct.qfi_cat || "") : "";
   const st = !!acct && acct.staff_role === "ST";
   $("#eTypeWrap").hidden = !acct || !isOpsAssistant(acct); $("#eType").value = acct && acct.staff_role ? acct.staff_role : "AOSX";
-  $("#eQualWrap").hidden = !st; for (const q of ["TOW", "FCF"]) $("#eQ" + q).checked = st && (acct.quals || []).includes(q);
+  // Qualifications: ST Tow → TOW / FCF; instructors → IRE (instrument rating examiner, Gordon 11 Oct).
+  $("#eQualWrap").hidden = !st && !inst;
+  for (const q of ["TOW", "FCF"]) { $("#eQ" + q).closest("label").hidden = !st; $("#eQ" + q).checked = st && (acct.quals || []).includes(q); }
+  $("#eQIREl").hidden = !inst; $("#eQIRE").checked = inst && (acct.quals || []).includes("IRE");
   $("#eNameLbl").textContent = inst ? "Name (as on the flying lines)" : "Name";
   $("#eHint").textContent = acct ? "Changing the username doesn't change the password. Tell them their new username." : "No login yet. Use Create login on the Admin tab to give them one.";
   $("#editErr").textContent = ""; $("#dlgEdit").showModal(); $("#eName").focus();
@@ -1742,8 +1748,8 @@ $("#btnEdit").onclick = async () => {
         const { error } = await S.sb.rpc("set_staff_role", { p_user: acct.id, p_role: $("#eType").value });
         if (error) throw error;
       }
-      if (acct.staff_role === "ST") {
-        const q = ["TOW", "FCF"].filter(x => $("#eQ" + x).checked);
+      if (acct.staff_role === "ST" || acct.role === "admin") {
+        const q = (acct.role === "admin" ? ["IRE"] : ["TOW", "FCF"]).filter(x => $("#eQ" + x).checked);
         if (q.join() !== (acct.quals || []).join()) { const { error } = await S.sb.rpc("set_quals", { p_user: acct.id, p_quals: q }); if (error) throw error; }
       }
       if (acct.role === "admin" && $("#eCat").value !== (acct.qfi_cat || "")) {
