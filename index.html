@@ -1469,10 +1469,13 @@ function renderAdmin(v) {
   const admins = S.profiles.filter(p => p.role === "admin")
     // Management appointment first (CO, DYCO, OC A, OC B, CC, QFI), then QFI CAT (A, B1, B2, C), then callsign.
     .sort((a, b) => (APPT_ORDER[a.appointment] ?? 9) - (APPT_ORDER[b.appointment] ?? 9) || (CAT_ORDER[a.qfi_cat] ?? 9) - (CAT_ORDER[b.qfi_cat] ?? 9) || pLabel(a).localeCompare(pLabel(b)));
-  const alist = admins.map(p => `<li class="qrow">
+  // The CC isn't a flyer: shown under CEN, not among the QFIs (Gordon, 11 Oct). Same row (and rights) as a QFI login.
+  const ccs = admins.filter(p => p.appointment === "CC"), qfis = admins.filter(p => p.appointment !== "CC");
+  const qrow = p => `<li class="qrow">
       <span class="qname"><strong>${esc(pLabel(p))}</strong>${p.callsign && p.display_name && p.display_name !== p.callsign ? ` <span class="hint">${esc(p.display_name)}</span>` : p.callsign ? ` <span class="hint">(name not set)</span>` : ""}<span class="qtags">${apptText(p) ? `<span class="tag open">${esc(apptText(p))}</span>` : ""}${p.qfi_cat ? `<span class="tag qcat">CAT ${esc(p.qfi_cat)}</span>` : ""}${p.user_admin ? `<span class="tag open">Account admin</span>` : ""}${p.ops_editor && !APPROVER(p) ? `<span class="tag nd">Ops board</span>` : ""}${p.prog_editor && !APPROVER(p) ? `<span class="tag nd">Flying prog</span>` : ""}</span></span>
       <span class="hint qlogin">Login: ${esc(showLogin(p.email))}${p.id === S.me.id ? " (you)" : ""}${p.no_geo ? " · no location check" : ""}</span>
-      <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button>${p.id === S.me.id ? "" : `<button class="btn small" data-act="resetpw" data-id="${esc(p.id)}" title="Reset password">Reset pw</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button>`}</span></li>`).join("");
+      <span class="acts"><button class="btn small" data-act="edit" data-id="a:${esc(p.id)}">Edit</button>${p.id === S.me.id ? "" : `<button class="btn small" data-act="resetpw" data-id="${esc(p.id)}" title="Reset password">Reset pw</button><button class="btn small" data-act="rmadmin" data-id="${esc(p.id)}">Remove</button>`}</span></li>`;
+  const alist = qfis.map(qrow).join("");
 
   const opsAsst = S.profiles.filter(isOpsAssistant);
   const engs = opsAsst.filter(p => p.staff_role === "ENG"), perm = opsAsst.filter(p => p.staff_role !== "ENG");
@@ -1487,8 +1490,8 @@ function renderAdmin(v) {
         <div style="display:flex;justify-content:flex-end"><button class="btn primary" id="btnAdd">Post in</button></div>
         <p class="hint">Every trainee gets a login straight away. They sign in with their username and the temporary password, then must set their own password.</p></div>
       <div class="card"><h2>Perm staff (${admins.length + perm.length})</h2><ul class="rlist">
-        <li class="chead">QFI<span>${admins.length}</span></li>${alist}
-        ${["ST", "CEN", "AOSX", "ATCO"].map(t => { const g = perm.filter(p => (p.staff_role || "AOSX") === t); return g.length ? `<li class="chead">${t === "ST" ? "ST Tow" : t}<span>${g.length}</span></li>${g.map(staffRow).join("")}` : ""; }).join("")}</ul>
+        <li class="chead">QFI<span>${qfis.length}</span></li>${alist}
+        ${["ST", "CEN", "AOSX", "ATCO"].map(t => { const g = perm.filter(p => (p.staff_role || "AOSX") === t), cc = t === "CEN" ? ccs : []; return g.length + cc.length ? `<li class="chead">${t === "ST" ? "ST Tow" : t}<span>${g.length + cc.length}</span></li>${cc.map(qrow).join("")}${g.map(staffRow).join("")}` : ""; }).join("")}</ul>
         <p class="hint" style="margin-top:10px">QFI are instructors (the CO, DYCO and OCs approve travel; under Edit, tick "Can edit the ops board" and / or "Can edit the flying program" for anyone else who should). The AOSX gets both by default. ST Tow, CEN and ATCO can view everything unless ticked.</p>
         <p class="hint">Only account admins see this Admin tab and can add, remove or reset logins and change anyone's rights. To make another QFI an account admin, tap Edit and tick "Account admin". Everyone else gets an Account tab to change their own details and password.</p>
         <p class="hint" style="margin-top:10px">Add perm staff:</p>
