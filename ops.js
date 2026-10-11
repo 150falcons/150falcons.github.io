@@ -1417,7 +1417,7 @@ table.flyph{width:100%;min-width:0!important;table-layout:fixed;margin-bottom:6p
 .flyph tr.f td{border-top:1px solid var(--line)}.flyph tr.rmk td{border-top:0;padding-top:0!important;font-size:.75rem;color:var(--out);font-style:italic}
 .flyph td.act{background:color-mix(in srgb,var(--ok,#1F8A4C) 10%,transparent)}.flyph td.act b{color:var(--ok,#1F8A4C)}
 .flyph tr.opsadd td{font-style:italic;opacity:.85}
-body.tvmode.tvscroll{overflow:auto}
+body.tvmode.tvscroll{overflow:visible!important;height:auto!important;touch-action:auto}html:has(body.tvscroll){overflow:visible!important;height:auto!important}
 .flyph td.tm .opsdl,.flyph td.tm .opsveh{display:inline-block;font:600 .72rem var(--body);color:var(--muted);margin:2px 8px 0 0;white-space:nowrap}.flyph .opsplan{display:block}
 /* Fixed windows (Gordon, 10 Oct): the page doesn't scroll; each window scrolls inside itself. */
 .flytvl,.flytvr{display:flex;flex-direction:column;min-height:0}
