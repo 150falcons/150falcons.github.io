@@ -102,6 +102,7 @@ async function obLoad() {
   [OB.crew, OB.items, OB.acks] = [res[2].data, res[3].data, res[4].data];
   OB.files = {}; for (const f of res[5].data || []) OB.files[f.name] = f;
   OB.loaded = true;
+  if (obCanBoard()) obSyncCrewNames(); // keep the crew list in step with the logins
   if (["opsboard", "gonogo", "aircraft", "tv", "flytv", "home", "ops"].includes(S.tab) && !OB.edit && !obTyping()) render();
 }
 const obTyping = () => { const a = document.activeElement; return !!(a && a.tagName === "INPUT" && a.dataset && a.dataset.obq); };
@@ -593,6 +594,13 @@ function renderGoNoGo(v) {
 // Keep linked crew names in step with the account name (renamed under Admin).
 const obSyncing = new Set();
 function obSyncCrewNames() {
+  // New flying logins (QFI, ST Tow, trainees) join the crew list by themselves (Gordon, 11 Oct: "always reference the accounts").
+  for (const f of obFlyers()) {
+    if (!f.profile || OB.crew.some(c => c.profile_id === f.profile || opsNorm(c.name) === opsNorm(f.name)) || obSyncing.has("add:" + f.profile)) continue;
+    obSyncing.add("add:" + f.profile);
+    S.sb.rpc("crew_save", { p_id: null, p_name: String(f.name).toUpperCase().trim(), p_grp: f.grp, p_profile: f.profile, p_active: true, p_sort: f.sort })
+      .then(({ error }) => { if (!error) obLoad(); });
+  }
   for (const c of OB.crew) {
     const p = c.profile_id && S.profiles.find(x => x.id === c.profile_id), want = p && String(p.display_name || "").trim().toUpperCase();
     if (!want || want === c.name || obSyncing.has(c.id)) continue;

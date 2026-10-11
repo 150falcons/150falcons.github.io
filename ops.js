@@ -448,14 +448,21 @@ function hrsRange(p) {
   if (p === "year") return [`${y}-01-01`, t];
   return ["0000-01-01", "9999-12-31"];
 }
-// Who is who, for instructional hours (Gordon, 11 Oct): instructors = Go / No-Go group QFI; trainees = groups PGF /
-// TRAINEES or a name on the roster; WSO trainees = roster course with "WSO".
+// Who is who (Gordon, 11 Oct): from the logins first (QFI logins = instructors, ST logins = ST Tow, trainee logins /
+// roster = trainees), then the Go / No-Go crew list for anyone without a login. WSO trainees = roster course with "WSO".
 const opsIpsMission = a => /\bIPS\b/i.test(String(a && a.mission || ""));
 function hrsRoles() {
   const crew = typeof OB !== "undefined" ? OB.crew || [] : [], r = {};
   for (const c of crew) { const n = opsNorm(c.name); if (n) r[n] = { grp: c.grp }; }
   for (const t of S.roster || []) { const n = opsNorm(t.name); if (!n) continue; r[n] = { ...(r[n] || {}), trainee: true, wso: /WSO/i.test(t.course || "") }; }
   for (const k in r) { const g = String(r[k].grp || "").toUpperCase(); if (g === "PGF" || g === "TRAINEES") r[k].trainee = true; r[k].instr = g === "QFI"; }
+  for (const p of S.profiles || []) {
+    const n = opsNorm(p.display_name); if (!n) continue;
+    const x = r[n] = r[n] || {};
+    if (p.role === "admin" && p.appointment !== "CC") { x.instr = true; x.grp = "QFI"; x.trainee = false; }
+    else if (p.staff_role === "ST") { x.grp = "ST"; x.instr = false; }
+    else if (p.trainee_id) x.trainee = true;
+  }
   return r;
 }
 // Every flown line on every day → one entry per crew member. Instructors also get instructional minutes:
@@ -502,9 +509,11 @@ function renderHours(v) {
   const ents = hrsEntries(OPS.hrs.days).filter(e => e.day >= from && e.day <= to);
   const crew = typeof OB !== "undefined" ? OB.crew || [] : [], R = hrsRoles();
   const crewOf = n => crew.find(c => opsNorm(c.name) === n);
-  const catOf = n => { const c = crewOf(n), g = String(c ? c.grp : "").toUpperCase(); return g === "QFI" ? "instr" : g === "ST" ? "st" : (g === "PGF" || g === "TRAINEES" || (R[n] && R[n].trainee)) ? "tr" : "oth"; };
+  const catOf = n => { const x = R[n] || {}, g = String(x.grp || "").toUpperCase(); return x.instr ? "instr" : g === "ST" ? "st" : x.trainee ? "tr" : "oth"; };
   const people = {};
   const blank = n => ({ name: n, sorties: 0, day: 0, night: 0, instr: 0, wso: 0, solo: 0, last: "", list: [] });
+  // Everyone with a flying login (QFI except CC, ST Tow, active trainees) shows even with no hours, plus active crew-list entries.
+  if (typeof obFlyers === "function") for (const f of obFlyers()) { const n = opsNorm(f.name); if (n && !people[n]) people[n] = blank(n); }
   for (const c of crew.filter(c => c.active)) { const n = opsNorm(c.name); if (n && !people[n]) people[n] = blank(n); }
   for (const e of ents) { const p = people[e.name] || (people[e.name] = blank(e.name)); p.sorties++; p[e.night ? "night" : "day"] += e.mins; p.instr += e.instr; p.wso += e.wso; if (e.solo) p.solo += e.mins; if (e.day > p.last) p.last = e.day; p.list.push(e); }
   const mine = new Set(opsMyNames()), fd = d => new Date(d + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
