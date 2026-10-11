@@ -138,7 +138,8 @@ function renderCur(v) {
     return `<section class="card opscard"><div class="opshead"><h2>${esc(title)}</h2><span class="opsmeta">${ps.length}</span></div><div class="tablewrap"><table class="opst cut"><thead><tr><th>Name</th>${cols.map(c => `<th>${esc(c.h)}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
   }).join("");
   const sum = (o, cls) => Object.keys(o).length ? Object.entries(o).map(([k, ns]) => `<div><b>${esc(k)}</b> – ${esc([...new Set(ns)].join(", "))}</div>`).join("") : `<div class="hint">Nil</div>`;
-  v.innerHTML = bar + `<div class="cusum"><section class="card opscard"><div class="opshead"><h2>Items expired</h2></div><div class="cul bad">${sum(expired)}</div></section>
+  const legend = `<div class="culeg"><span><i class="cusw ok"></i>Green = current</span><span><i class="cusw warn"></i>Amber = expiring within ${cfgN("cur.amber")} days (day currency ${cfgN("cur.amberDay")} days)</span><span><i class="cusw bad"></i>Red = expired / NO GO</span><span><i class="cusw na"></i>Grey = not applicable or no date yet</span></div>`;
+  v.innerHTML = bar + legend + `<div class="cusum"><section class="card opscard"><div class="opshead"><h2>Items expired</h2></div><div class="cul bad">${sum(expired)}</div></section>
     <section class="card opscard"><div class="opshead"><h2>Items expiring</h2><span class="opsmeta">within ${cfgN("cur.amber")} days</span></div><div class="cul warn">${sum(expiring)}</div></section></div>${cards}
     <p class="hint">Last flown, night and FCF dates use the latest of what's typed under Records and the sorties logged in Log flown times. Hover a date to see when it was done and the days left.</p>`;
 }
@@ -203,4 +204,6 @@ table.cut{min-width:0;width:auto}.cut th{white-space:nowrap;font-size:.78rem}.cu
 .cut td.cu.ok{color:var(--ok,#1F8A4C)}.cut td.cu.warn{background:color-mix(in srgb,var(--out) 22%,transparent);font-weight:600}.cut td.cu.bad{background:color-mix(in srgb,var(--late) 25%,transparent);color:var(--late);font-weight:700}.cut td.cu.na{color:var(--muted)}
 .cuedit input{padding:3px 6px;margin:0}.cuedit input[type=date]{width:140px}
 .seg .btn+.btn{margin-left:4px}
+.culeg{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 10px;font-size:.85rem;color:var(--muted)}.culeg span{display:inline-flex;align-items:center;gap:6px}
+.cusw{display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--line)}.cusw.ok{background:var(--ok,#1F8A4C)}.cusw.warn{background:color-mix(in srgb,var(--out) 60%,transparent)}.cusw.bad{background:color-mix(in srgb,var(--late) 70%,transparent)}.cusw.na{background:var(--muted);opacity:.5}
 </style>`);
