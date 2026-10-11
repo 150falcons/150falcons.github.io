@@ -544,7 +544,7 @@ function obWaveAcHtml(get, wi) {
         ...restr.filter(x => x.note && a.tail && String(x.ac || "").split(/[,/&]|\s+AND\s+/i).some(p => key(p) === key(a.tail))).map(x => `<span class="obrestr">${esc(x.note)}</span>`)];
       rows.push(`<tr class="${k === 0 ? "obwvf" : ""}${t && t.status !== "S" ? " obwvbad" : ""}">${k === 0 ? `<td rowspan="${ls.length}" class="obwvcs"><b>${esc(f.callsign || "-")}</b><small>${esc(f.etd || "?")}–${esc(f.eta || "?")}Z${f.brief ? ` · brief ${esc(f.brief)}` : ""}</small></td>` : ""}
         <td class="obwvn">${esc(a.n || "")}</td><td class="obwvtail"><b>${esc(a.tail ? opsTail(a.tail, day) : "-")}</b></td><td class="nw">${st}</td>
-        <td><b>${opsX(a.crew1 || "")}</b>${a.crew2 ? ` / ${opsX(a.crew2)}` : ""}${opsIsAdd(f, a) ? ` <span class="hint">ops add</span>` : ""}</td><td>${esc(a.mission || "")}</td><td class="obnotes">${notes.join("<br>") || `<span class="hint">-</span>`}</td></tr>`);
+        <td class="nw"><b>${opsX(a.crew1 || "")}</b>${a.crew2 ? ` / ${opsX(a.crew2)}` : ""}${opsIsAdd(f, a) ? ` <span class="hint">ops add</span>` : ""}</td><td class="nw">${esc(a.mission || "")}</td><td class="obnotes">${notes.join("<br>") || `<span class="hint">-</span>`}</td></tr>`);
     });
   }
   const head = `<p class="hint" style="margin:0 0 6px">${esc(w.name)}${w.sxo ? ` · SXO <b>${opsX(w.sxo)}</b>` : ""}${w.opsO ? ` · OPS O <b>${opsX(w.opsO)}</b>` : ""}${w.remarks ? ` · ⚠ ${esc(w.remarks)}` : ""}</p>`;
@@ -556,9 +556,25 @@ function obShowWaveAc(wi) {
   let d = document.getElementById("dlgWaveAc");
   if (!d) { d = document.createElement("dialog"); d.id = "dlgWaveAc"; document.body.appendChild(d);
     d.onclick = e => { if (e.target.closest("[data-x=close]") || e.target === d) d.close(); }; }
-  d.innerHTML = `<div class="dlg"><div class="opshead"><h2 tabindex="-1" autofocus>Aircraft this wave</h2><button class="btn small" data-x="close">Close</button></div>${obWaveAcHtml(get, wi)}</div>`;
+  d.innerHTML = `<div class="dlg"><div class="opshead"><h2 tabindex="-1" autofocus>Aircraft this wave</h2><button class="btn small" data-x="close">Close</button></div><div class="obwvbody">${obWaveAcHtml(get, wi)}</div></div>`;
   if (!d.open) d.showModal();
+  obWaveAcFit(d);
 }
+// Big screens (Gordon, 11 Oct "a lot of people will be reading it"): the dialog fills the screen and the list is zoomed
+// to the largest size that still fits without scrolling (up to 2.2×). Phones keep normal size and scroll.
+function obWaveAcFit(d) {
+  const box = d.querySelector(".obwvbody"); if (!box) return;
+  box.style.zoom = 1; box.style.width = "";
+  if (innerWidth < 1000) return;
+  const head = d.querySelector(".opshead"), availH = d.clientHeight - head.offsetHeight - 40, availW = d.clientWidth - 40;
+  // Largest zoom (2.2 down to 1) where the list, laid out at the screen width ÷ zoom (so long notes wrap), fits the height.
+  for (let z = 2.2; z >= 1; z -= 0.05) {
+    box.style.zoom = z.toFixed(2); box.style.width = Math.floor(availW / z) + "px";
+    if (box.scrollHeight * z <= availH) return;
+  }
+  box.style.zoom = 1; box.style.width = availW + "px";
+}
+window.addEventListener("resize", () => { const d = document.getElementById("dlgWaveAc"); if (d && d.open) obWaveAcFit(d); });
 const obUrlCache = {};
 async function obChartUrl(key) {
   const f = OB.files[key], stamp = f ? (f.updated_at || f.id) : "";
@@ -1200,7 +1216,7 @@ select.obcs option{background:var(--paper);color:var(--ink)}
 .obchart>.btn:first-child{flex:1 1 100%;text-align:left}.obchart .btn.small{flex:0 0 auto;width:auto}
 .obup{cursor:pointer;margin-left:auto}
 #dlgChart{width:min(1100px,calc(100vw - 16px))}
-#dlgWaveAc{width:min(1400px,calc(100vw - 16px))}.obwvpick{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
+#dlgWaveAc{width:min(1400px,calc(100vw - 16px))}@media (min-width:1000px){#dlgWaveAc{width:calc(100vw - 24px);max-width:none;height:calc(100vh - 24px);max-height:none}#dlgWaveAc .obwvac{width:100%}#dlgWaveAc .obwvbody{margin:0 auto}}.obwvpick{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
 table.obwvac{min-width:0}.obwvac td{vertical-align:middle;padding:5px 8px}.obwvac td small{display:block;color:var(--muted);font-size:.75rem}
 .obwvac td.obwvcs{white-space:nowrap}.obwvac td.obwvtail{font-size:1.05rem;white-space:nowrap}.obwvac td.nw{white-space:nowrap}.obwvac td.nw .obpill+.obpill{margin-left:3px}
 .obwvac tr.obwvf td{border-top:2px solid var(--line)}.obwvac tr.obwvbad td.obwvtail{color:var(--late)}.obwvac .obrestr{color:var(--out)}
