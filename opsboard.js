@@ -543,12 +543,12 @@ function obWaveAcHtml(get, wi) {
       const notes = [...(t ? String(t.notes || "").split("\n").filter(Boolean).map(obNoteLine) : []),
         ...restr.filter(x => x.note && a.tail && String(x.ac || "").split(/[,/&]|\s+AND\s+/i).some(p => key(p) === key(a.tail))).map(x => `<span class="obrestr">${esc(x.note)}</span>`)];
       rows.push(`<tr class="${k === 0 ? "obwvf" : ""}${t && t.status !== "S" ? " obwvbad" : ""}">${k === 0 ? `<td rowspan="${ls.length}" class="obwvcs"><b>${esc(f.callsign || "-")}</b><small>${esc(f.etd || "?")}–${esc(f.eta || "?")}Z${f.brief ? ` · brief ${esc(f.brief)}` : ""}</small></td>` : ""}
-        <td class="obwvn">${esc(a.n || "")}</td><td class="obwvtail"><b>${esc(a.tail ? opsTail(a.tail, day) : "-")}</b></td><td class="nw">${st}</td>
-        <td class="nw"><b>${opsX(a.crew1 || "")}</b>${a.crew2 ? ` / ${opsX(a.crew2)}` : ""}${opsIsAdd(f, a) ? ` <span class="hint">ops add</span>` : ""}</td><td class="nw">${esc(a.mission || "")}</td><td class="obnotes">${notes.join("<br>") || `<span class="hint">-</span>`}</td></tr>`);
+        <td class="obwvn">${esc(a.n || "")}</td><td class="nw"><b>${opsX(a.crew1 || "")}</b>${a.crew2 ? ` / ${opsX(a.crew2)}` : ""}${opsIsAdd(f, a) ? ` <span class="hint">ops add</span>` : ""}</td><td class="nw">${esc(a.mission || "")}</td>
+        <td class="obwvtail"><b>${esc(a.tail ? opsTail(a.tail, day) : "-")}</b></td><td class="nw">${st}</td><td class="obnotes">${notes.join("<br>") || `<span class="hint">-</span>`}</td><td>${esc(a.rmk || "")}</td></tr>`);
     });
   }
   const head = `<p class="hint" style="margin:0 0 6px">${esc(w.name)}${w.sxo ? ` · SXO <b>${opsX(w.sxo)}</b>` : ""}${w.opsO ? ` · OPS O <b>${opsX(w.opsO)}</b>` : ""}${w.remarks ? ` · ⚠ ${esc(w.remarks)}` : ""}</p>`;
-  return pick + head + (rows.length ? `<div class="tablewrap"><table class="opst obwvac"><thead><tr><th>Callsign</th><th>#</th><th>A/C</th><th>Status</th><th>Aircrew</th><th>Mission</th><th>Aircraft notes / restrictions</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>` : `<p class="hint">No aircraft in this wave.</p>`);
+  return pick + head + (rows.length ? `<div class="tablewrap"><table class="opst obwvac"><thead><tr><th>Callsign</th><th>#</th><th>Aircrew</th><th>Mission</th><th>A/C</th><th>Status</th><th>Aircraft notes / restrictions</th><th>Remarks</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>` : `<p class="hint">No aircraft in this wave.</p>`);
 }
 function obShowWaveAc(wi) {
   const get = obTodayGet();
@@ -1218,7 +1218,7 @@ select.obcs option{background:var(--paper);color:var(--ink)}
 #dlgChart{width:min(1100px,calc(100vw - 16px))}
 #dlgWaveAc{width:min(1400px,calc(100vw - 16px))}@media (min-width:1000px){#dlgWaveAc{width:calc(100vw - 24px);max-width:none;height:calc(100vh - 24px);max-height:none}#dlgWaveAc .obwvac{width:100%}#dlgWaveAc .obwvbody{margin:0 auto}}.obwvpick{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
 table.obwvac{min-width:0}.obwvac td{vertical-align:middle;padding:5px 8px}.obwvac td small{display:block;color:var(--muted);font-size:.75rem}
-.obwvac td.obwvcs{white-space:nowrap}.obwvac td.obwvtail{font-size:1.05rem;white-space:nowrap}.obwvac td.nw{white-space:nowrap}.obwvac td.nw .obpill+.obpill{margin-left:3px}
+.obwvac td.obwvcs{white-space:nowrap}.obwvac td.obwvtail{font-size:1.05rem;white-space:nowrap;border-left:1px dashed var(--line)}.obwvac td.nw{white-space:nowrap}.obwvac td.nw .obpill+.obpill{margin-left:3px}
 .obwvac tr.obwvf td{border-top:2px solid var(--line)}.obwvac tr.obwvbad td.obwvtail{color:var(--late)}.obwvac .obrestr{color:var(--out)}
 /* TV: the chart window hugs the chart (Gordon, 10 Oct), on a dimmed TV */
 body.tvmode #dlgChart{width:fit-content;max-width:calc(100vw - 40px);height:auto;max-height:calc(100vh - 24px);padding:0;overflow:hidden}
