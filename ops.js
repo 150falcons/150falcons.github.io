@@ -278,6 +278,7 @@ function renderFlyTv(v) {
   if (OPS.day !== day && !OPS.edit) { OPS.day = day; OPS.rowsDay = null; }
   if (OPS.rowsDay !== OPS.day) { v.innerHTML = `<div class="empty">Loading today's programme…</div>`; if (!OPS.loading) opsLoad(OPS.day); return; }
   const fl = opsGet("flying"), st = opsStats(fl), n = new Date(), tw = opsFlyTvWaves(fl), phone = OPS.tvPhone = opsTvPhone();
+  document.body.classList.toggle("tvscroll", phone); // phone: the page scrolls (TV mode otherwise locks it)
   const pane = (cls, key, title, body) => `<section class="card opscard flypane ${cls}">${title ? `<div class="opshead"><h2>${title}</h2></div>` : ""}<div class="tvpane" data-pane="${key}">${body || `<p class="hint" style="display:block;margin:0">Nothing entered.</p>`}</div></section>`;
   v.innerHTML = `<div class="tvstage${phone ? " phone" : ""}"><div class="tvbar"><b>150 Falcon Det · Flying program</b><span>${esc(opsLongDay(OPS.day))}</span>
       <span class="tvclock">${esc(n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}L <small>${esc(n.toISOString().slice(11, 19).replace(/:/g, ""))}Z</small></span>
@@ -1415,7 +1416,9 @@ table.flyph{width:100%;min-width:0!important;table-layout:fixed;margin-bottom:6p
 .flyph td small{display:block;font-size:.72rem;color:var(--muted);font-weight:400}
 .flyph tr.f td{border-top:1px solid var(--line)}.flyph tr.rmk td{border-top:0;padding-top:0!important;font-size:.75rem;color:var(--out);font-style:italic}
 .flyph td.act{background:color-mix(in srgb,var(--ok,#1F8A4C) 10%,transparent)}.flyph td.act b{color:var(--ok,#1F8A4C)}
-.flyph tr.opsadd td{font-style:italic;opacity:.85}.flyph .opsplan{display:block}
+.flyph tr.opsadd td{font-style:italic;opacity:.85}
+body.tvmode.tvscroll{overflow:auto}
+.flyph td.tm .opsdl,.flyph td.tm .opsveh{display:inline-block;font:600 .72rem var(--body);color:var(--muted);margin:2px 8px 0 0;white-space:nowrap}.flyph .opsplan{display:block}
 /* Fixed windows (Gordon, 10 Oct): the page doesn't scroll; each window scrolls inside itself. */
 .flytvl,.flytvr{display:flex;flex-direction:column;min-height:0}
 .flytv .card.flypane{display:flex;flex-direction:column;min-height:0;margin:0;padding:10px 12px}
