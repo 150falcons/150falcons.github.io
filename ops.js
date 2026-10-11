@@ -485,16 +485,19 @@ function renderOps(v) {
   v.innerHTML = html;
   const d = $("#opsDate"); if (d) d.onchange = e => { if (e.target.value) opsGo(e.target.value); };
 }
+// Toolbar in labelled groups (Gordon, 11 Oct "arrange this properly"): Day · Edit · Print · Display.
 function opsBar() {
-  return `<div class="opsbar">
-    <button class="btn small" data-ops="day" data-n="-1" aria-label="Previous day">‹</button>
-    <input type="date" id="opsDate" value="${esc(OPS.day)}">
-    <button class="btn small" data-ops="day" data-n="1" aria-label="Next day">›</button>
-    <button class="btn small" data-ops="today">Today</button>
+  const here = OPS.rowsDay === OPS.day, fly = here && opsData("flying"), can = opsCanEdit();
+  const grp = (label, body) => body ? `<div class="opsgrp"><span class="opsgrpl">${label}</span><div class="opsgrpb">${body}</div></div>` : "";
+  const edit = can ? [
+    fly && !OPS.edit ? `<button class="btn small${OPS.logOpen ? " primary" : ""}" data-ops="log">${OPS.logOpen ? "Done logging" : "Log flown times"}</button>` : "",
+    `<button class="btn small" data-ops="copy">Copy from…</button>`,
+    here && OPS_ORDER.some(opsData) && !OPS.edit ? `<button class="btn small danger" data-ops="clear">Clear day</button>` : ""].join("") : "";
+  const print = `<button class="btn small" data-ops="pdf" title="Daily programme to send out">Daily PDF</button>${fly ? `<button class="btn small" data-ops="pdfeod" title="End-of-day copy with flown times, for filing">End of day PDF</button>` : ""}`;
+  return `<div class="opsbar grp">
+    ${grp("Day", `<button class="btn small" data-ops="day" data-n="-1" aria-label="Previous day">‹</button><input type="date" id="opsDate" value="${esc(OPS.day)}"><button class="btn small" data-ops="day" data-n="1" aria-label="Next day">›</button><button class="btn small" data-ops="today">Today</button>`)}
     <span class="grow"></span>
-    ${opsCanEdit() && OPS.rowsDay === OPS.day && opsData("flying") && !OPS.edit ? `<button class="btn small${OPS.logOpen ? " primary" : ""}" data-ops="log">${OPS.logOpen ? "Done logging" : "Log flown times"}</button>` : ""}
-    ${opsCanEdit() ? `<button class="btn small" data-ops="copy">Copy from…</button>${OPS.rowsDay === OPS.day && OPS_ORDER.some(opsData) && !OPS.edit ? `<button class="btn small danger" data-ops="clear">Clear day</button>` : ""}` : ""}
-    <button class="btn small" data-ops="pdf" title="Daily programme to send out">PDF</button>${OPS.rowsDay === OPS.day && opsData("flying") ? `<button class="btn small" data-ops="pdfeod" title="End-of-day copy with flown times, for filing">End of day PDF</button>` : ""}${OPS.edit ? "" : `<button class="btn small primary" data-tab="flytv">TV mode</button>`}</div>`;
+    ${grp("Edit", edit)}${grp("Print", print)}${OPS.edit ? "" : grp("Display", `<button class="btn small primary" data-tab="flytv">TV mode</button>`)}</div>`;
 }
 function opsGo(day) {
   if (OPS.edit && !confirm("Discard your unsaved changes?")) { const d = $("#opsDate"); if (d) d.value = OPS.day; return; }
@@ -972,6 +975,10 @@ function opsFlownStats(fl) {
   const s = document.createElement("style");
   s.textContent = `
 .opsbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
+.opsbar.grp{gap:8px 18px;align-items:flex-end;margin-bottom:12px}
+.opsgrp{display:flex;flex-direction:column;gap:3px}.opsgrpl{font:700 .68rem var(--cond);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.opsgrpb{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.opsgrp+.opsgrp{padding-left:18px;border-left:1px solid var(--line)}.grow+.opsgrp{padding-left:0;border-left:0}
+@media (max-width:700px){.opsbar.grp .grow{flex-basis:100%;height:0}.opsgrp+.opsgrp{padding-left:0;border-left:0}}
 .opsbar input[type=date]{width:auto;padding:5px 8px}
 .opsbar .grow,.opsed .grow{flex:1}
 .opstitle{font:700 1.4rem/1.1 var(--cond);margin:4px 0 12px;text-transform:uppercase}
