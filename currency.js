@@ -10,7 +10,7 @@ const CUR_RULES = [
   "IRT expires at the end of the month, one year after the IRT date.",
   "IPC (FTI): CAT A yearly, B1 6-monthly, B2 2-monthly (all to the end of the month); CAT C monthly, date to date.",
   "EP sims: last EP sim + 90 days. The last EP sim fills in from i-SATR (keyed EP dates and EP sims on the simulator programme); a date typed under Records overrides it.",
-  "i-SATR: per QFI per half-year (Jan–Jun, Jul–Dec), each List 1 / List 2 / simulator item done vs required. Required numbers are set per QFI (Set standard requirements, then change any). List % counts done items up to the number required. Flying days remaining = working days (Mon–Fri) from today to the end of cycle, less non-flying days. EP 1–8 fill in from the simulator programme (mission containing \"EP n\", aircrew seat) once the sim has ended. Excel note: CAT A / B1 / B2 need only 3 EP sims per quarter, CAT C all 4; set the requirements to match.",
+  "i-SATR: per QFI per half-year (Jan–Jun, Jul–Dec), each List 1 / List 2 / simulator item done vs required. Required numbers are worked out from the QFI's quals (A/G qual and night qual, ticked on the i-SATR page or under Records): A/A only = List 1 GH/IF, BFM, CAP 2 each and List 2 = 20; A/G = List 1 GH/IF, BFM, CAP, SAT 1 each + surface attack 2 (or 1 + night flying 1 when night qualified) and List 2 = 28; night qualified adds 4 night items to List 2 (32). Any one number can be overridden on the person's page; clear it to go back to automatic. List % counts done items up to the number required. Flying days remaining = working days (Mon–Fri) from today to the end of cycle, less non-flying days. EP 1–8 fill in from the simulator programme (mission containing \"EP n\", aircrew seat) once the sim has ended. Excel note: CAT A / B1 / B2 need only 3 EP sims per quarter, CAT C all 4; set the requirements to match.",
   "ST Tow: FCF sims prof check and TOW qual prof check valid 12 months; FCF flight currency = last flown on type + 15 days.",
   "Trainee solo currency: last solo + 2 days (MOD 1–3), + 3 (MOD 4–6), + 4 (MOD 7+).",
   "Non-syllabus flying days (since last syllabus / DCO sortie): 8–13 optional flex, 14–30 flex, 31–59 2 × flex, 60+ flex package.",
@@ -253,7 +253,7 @@ const curArchive = (name, why) => curCanEdit() ? curMove(name, true, why) : Prom
 const curRestore = name => curCanEdit() ? curMove(name, false) : Promise.resolve(false);
 // Records: the dates behind the board, per group (like the Excel's DATA ENTRY). Editors type, everyone else views.
 const CUR_FIELDS = {
-  QFI: [["last", "Last flown", "d"], ["irt", "IRT achieved", "d"], ["night", "Last night sortie", "d"], ["noNight", "Not night qual", "c"], ["ipc", "Most recent IPC (FTI)", "d"], ["ep", "Last EP sim", "d"], ["rating", "IRT rating", "t"], ["opsCat", "Ops CAT", "t"], ["qfiCat", "QFI CAT (if no login)", "t"], ["med", "Medical (blank = GO)", "t"]],
+  QFI: [["last", "Last flown", "d"], ["irt", "IRT achieved", "d"], ["night", "Last night sortie", "d"], ["noNight", "Not night qual", "c"], ["ag", "A/G qual", "c"], ["ipc", "Most recent IPC (FTI)", "d"], ["ep", "Last EP sim", "d"], ["rating", "IRT rating", "t"], ["opsCat", "Ops CAT", "t"], ["qfiCat", "QFI CAT (if no login)", "t"], ["med", "Medical (blank = GO)", "t"]],
   ST: [["last", "Last flown", "d"], ["irt", "IRT achieved", "d"], ["fcfSim", "FCF sims prof chk", "d"], ["tow", "TOW qual prof chk", "d"], ["fcf", "Last FCF flight", "d"], ["med", "Medical (blank = GO)", "t"]],
   FIC: [["fic.last", "Last flown (front)", "d"], ["fic.lastBack", "Last flown (back)", "d"], ["fic.lastSyl", "Last syllabus", "d"], ["irt", "IRT achieved", "d"], ["med", "Medical (blank = GO)", "t"]],
   PGF: [["last", "Last flown", "d"], ["lastSyl", "Last syllabus", "d"], ["ifApp", "Last IF app", "d"], ["irt", "IRT achieved", "d"], ["med", "Medical (blank = GO)", "t"]],
@@ -292,8 +292,17 @@ const IS_LISTS = [
   ["SIM", "Simulator", [["ep1", "EP 1"], ["ep2", "EP 2 (night IF qual)"], ["ep3", "EP 3"], ["ep4", "EP 4 (night IF qual)"], ["ep5", "EP 5"], ["ep6", "EP 6 (night IF qual)"], ["ep7", "EP 7"], ["ep8", "EP 8 (night IF qual)"], ["x1", "Extra (if req)"], ["x2", "Extra (if req) 2"]]],
 ];
 const IS_ITEMS = IS_LISTS.flatMap(l => l[2].map(([k, lab]) => ({ k, lab, list: l[0] })));
-// Standard requirements per half-year (the full row in the Excel, e.g. LIM W), offered for a QFI with none set yet.
-const IS_STD = { gh: 1, bfm: 1, cap: 1, sa: 1, sat: 1, night: 1, ncct: 4, notef: 2, seng: 2, llcct: 2, ah: 1, spat: 1, ua: 3, bfm2: 3, ti: 2, vishi: 2, vislo: 2, strafe: 2, eoir: 1, llthr: 1, ncctn: 2, tin: 2, ep1: 1, ep2: 1, ep3: 1, ep4: 1, ep5: 1, ep6: 1, ep7: 1, ep8: 1 };
+// Requirements per half-year worked out from the QFI's quals (Gordon, 11 Oct: "it was supposed to be that way"):
+// A/A only: List 1 GH/IF 2, BFM 2, CAP 2; List 2 the 20 A/A items. A/G qual (rec.ag, Records): List 1 GH/IF, BFM, CAP, SAT 1 each
+// and surface attack 2 (1 + night flying 1 if night qual); List 2 + the 8 A/G items (28). Night qual (no "Not night qual" tick):
+// List 2 + the 4 night items (32). Sims EP 1–8 once each. A number typed on the person's page (rec.isatr.req) overrides one item.
+const IS_A2A = { ncct: 4, notef: 2, seng: 2, llcct: 2, ah: 1, spat: 1, ua: 3, bfm2: 3, ti: 2 }, IS_AG = { vishi: 2, vislo: 2, strafe: 2, eoir: 1, llthr: 1 }, IS_NIGHT = { ncctn: 2, tin: 2 };
+function isReqAuto(rec) {
+  const ag = !!rec.ag, night = !rec.noNight, r = ag ? { gh: 1, bfm: 1, cap: 1, sa: night ? 1 : 2, sat: 1, ...(night ? { night: 1 } : {}) } : { gh: 2, bfm: 2, cap: 2 };
+  Object.assign(r, IS_A2A, ag ? IS_AG : {}, night ? IS_NIGHT : {});
+  for (let i = 1; i <= 8; i++) r["ep" + i] = 1;
+  return r;
+}
 function isPer(key) {
   const k = key || (todayStr().slice(0, 4) + "H" + (+todayStr().slice(5, 7) <= 6 ? 1 : 2)), y = +k.slice(0, 4), h = +k.slice(5);
   const cfgP = (curDoc().isatrCfg || {})[k] || {};
@@ -333,14 +342,14 @@ function isDone(x) {
 const isLastEp = x => { const o = isDone(x); return cuMax(...IS_ITEMS.filter(i => /^ep/.test(i.k)).flatMap(i => (o[i.k] || []).map(y => y.d))); };
 // One person in one period: per item done (in the period) and required; per list totals and what's outstanding.
 function isSum(x, P) {
-  const req = (x.rec.isatr || {}).req, done = isDone(x), items = {}, lists = {};
+  const over = (x.rec.isatr || {}).req || {}, auto = isReqAuto(x.rec), done = isDone(x), items = {}, lists = {};
   for (const it of IS_ITEMS) {
-    const ds = (done[it.k] || []).filter(y => y.d >= P.start && y.d <= P.last), r = req ? +req[it.k] || 0 : 0;
-    items[it.k] = { ds, n: ds.length, r, owe: Math.max(0, r - ds.length) };
+    const ds = (done[it.k] || []).filter(y => y.d >= P.start && y.d <= P.last), set = over[it.k] != null, r = set ? +over[it.k] || 0 : auto[it.k] || 0;
+    items[it.k] = { ds, n: ds.length, r, set, auto: auto[it.k] || 0, owe: Math.max(0, r - ds.length) };
     const L = lists[it.list] || (lists[it.list] = { n: 0, r: 0, owe: [] });
     L.n += Math.min(ds.length, r); L.r += r; if (r > ds.length) L.owe.push(`${r - ds.length} × ${it.lab}`);
   }
-  return { set: !!req, items, lists };
+  return { set: true, items, lists, overs: Object.keys(over).filter(k => over[k] != null).length };
 }
 function isView(people, can) {
   const P = isPer(CUR.isp), today = todayStr();
@@ -350,7 +359,7 @@ function isView(people, can) {
   const cell = L => { const p = pct(L); return p == null ? `<td class="cu na">–</td>` : `<td class="cu ${p >= 100 ? "ok" : today > P.end ? "bad" : "warn"}"><b>${L.n} / ${L.r}</b><small class="cusub">${p}%</small></td>`; };
   const rows = people.map(x => { const s = isSum(x, P), cat = (x.prof && x.prof.qfi_cat) || x.rec.qfiCat || "-";
     const owe = id => s.set ? (s.lists[id].owe.length ? s.lists[id].owe.map(esc).join("<br>") : `<span class="isdone">Completed</span>`) : "";
-    return `<tr class="isrow${sel === x ? " on" : ""}" data-cur="isopen" data-k="${esc(x.name)}"><td class="cuname"><b>${esc(x.name)}</b>${(x.rec.isatr || {}).note ? ` <span class="hint" title="${esc(x.rec.isatr.note)}">📝</span>` : ""}</td><td>${esc(cat)}</td>${s.set ? IS_LISTS.map(l => cell(s.lists[l[0]])).join("") : `<td class="cu na" colspan="3">Requirements not set</td>`}<td class="isowe">${owe("L1")}</td><td class="isowe">${owe("L2")}</td><td class="isowe">${owe("SIM")}</td></tr>`; }).join("");
+    return `<tr class="isrow${sel === x ? " on" : ""}" data-cur="isopen" data-k="${esc(x.name)}"><td class="cuname"><b>${esc(x.name)}</b>${(x.rec.isatr || {}).note ? ` <span class="hint" title="${esc(x.rec.isatr.note)}">📝</span>` : ""}</td><td>${esc(cat)}<small class="cusub">${x.rec.ag ? "A/G" : "A/A"}${!x.rec.noNight ? " + N" : ""}</small></td>${s.set ? IS_LISTS.map(l => cell(s.lists[l[0]])).join("") : `<td class="cu na" colspan="3">Requirements not set</td>`}<td class="isowe">${owe("L1")}</td><td class="isowe">${owe("L2")}</td><td class="isowe">${owe("SIM")}</td></tr>`; }).join("");
   const tot = IS_LISTS.map(l => people.reduce((a, x) => { const s = isSum(x, P); if (s.set) { a.n += s.lists[l[0]].n; a.r += s.lists[l[0]].r; } return a; }, { n: 0, r: 0 }));
   const perBar = `<div class="opsbar"><span class="seg"><button class="btn small" data-cur="isp" data-k="${P.prev}">‹</button><b style="padding:0 8px">${esc(P.lab)}</b><button class="btn small" data-cur="isp" data-k="${P.next}">›</button>${CUR.isp ? `<button class="btn small" data-cur="isp" data-k="">This half</button>` : ""}</span><span class="grow"></span>
     <span class="isleft"><b>${left}</b> flying days remaining for i-SATR List 1 &amp; 2</span>
@@ -364,9 +373,9 @@ function isView(people, can) {
 function isPerson(x, P, can) {
   const s = isSum(x, P), I = x.rec.isatr || {}, nm = esc(x.name);
   const lists = IS_LISTS.map(([id, title, items]) => `<div class="isl"><h3>${esc(title)} <span class="opsmeta">${s.set ? `${s.lists[id].n} / ${s.lists[id].r}` : ""}</span></h3><table class="opst ispt"><tbody>${items.map(([k, lab]) => { const it = s.items[k], c = !s.set || !it.r ? (it.n ? "ok" : "na") : it.n >= it.r ? "ok" : todayStr() > P.end ? "bad" : "warn";
-    return `<tr><td class="isit">${esc(lab)}</td><td class="cu ${c}">${it.n}${s.set ? ` / ${can ? `<input type="number" min="0" max="9" data-isr="${nm}|${k}" value="${it.r}" class="isreq">` : it.r}` : ""}</td><td class="isds">${it.ds.map(y => `<span class="isd${y.auto ? " auto" : ""}" title="${y.auto ? esc(`From the simulator programme: ${y.mission}`) : "Keyed in"}">${esc(cuFmt(y.d))}${can ? `<button class="isx" data-cur="isdel" data-k="${nm}|${k}|${y.d}|${y.auto ? 1 : ""}" title="Remove">✕</button>` : ""}</span>`).join("")}</td></tr>`; }).join("")}</tbody></table></div>`).join("");
-  return `<section class="card opscard" id="isPerson"><div class="opshead"><h2>${nm} · ${esc(P.lab)}</h2><span class="grow"></span>${can && !s.set ? `<button class="btn small primary" data-cur="isstd" data-k="${nm}">Set standard requirements</button>` : ""}<button class="btn small" data-cur="isopen" data-k="">Close</button></div>
-    ${!s.set ? `<p class="hint">No requirements set for ${nm} yet${can ? ": tap Set standard requirements (then change any number), or add dates straight away" : ""}.</p>` : ""}
+    return `<tr><td class="isit">${esc(lab)}</td><td class="cu ${c}">${it.n}${s.set ? ` / ${can ? `<input type="number" min="0" max="9" data-isr="${nm}|${k}" value="${it.set ? it.r : ""}" placeholder="${it.auto}" class="isreq${it.set ? " isover" : ""}" title="${it.set ? `Set by hand (worked out: ${it.auto}); clear to go back to automatic` : "Worked out from the quals; type a number to override"}">` : it.r}` : ""}</td><td class="isds">${it.ds.map(y => `<span class="isd${y.auto ? " auto" : ""}" title="${y.auto ? esc(`From the simulator programme: ${y.mission}`) : "Keyed in"}">${esc(cuFmt(y.d))}${can ? `<button class="isx" data-cur="isdel" data-k="${nm}|${k}|${y.d}|${y.auto ? 1 : ""}" title="Remove">✕</button>` : ""}</span>`).join("")}</td></tr>`; }).join("")}</tbody></table></div>`).join("");
+  return `<section class="card opscard" id="isPerson"><div class="opshead"><h2>${nm} · ${esc(P.lab)}</h2><span class="grow"></span>${can ? `<label class="isq"><input type="checkbox" data-isq="${nm}|ag"${x.rec.ag ? " checked" : ""}> A/G qual</label><label class="isq"><input type="checkbox" data-isq="${nm}|night"${!x.rec.noNight ? " checked" : ""}> Night qual</label>` : `<span class="opsmeta">${x.rec.ag ? "A/G" : "A/A only"}${!x.rec.noNight ? " + night" : ""}</span>`}<button class="btn small" data-cur="isopen" data-k="">Close</button></div>
+    <p class="hint" style="margin:0 0 8px">Required numbers are worked out from the quals (A/A only: List 2 = 20; A/G: 28; A/G + night: 32).${s.overs ? ` Amber boxes are set by hand; clear one to go back to automatic.` : ""}</p>
     ${can ? `<div class="isaddbar"><b>Add done:</b><select id="isItem">${IS_LISTS.map(([, t, items]) => `<optgroup label="${esc(t)}">${items.map(([k, lab]) => `<option value="${k}"${CUR.isItem === k ? " selected" : ""}>${esc(lab)}</option>`).join("")}</optgroup>`).join("")}</select><input type="date" id="isDate" value="${esc(CUR.isDate || (todayStr() > P.last ? P.last : todayStr()))}"><button class="btn small primary" data-cur="isadd" data-k="${nm}">+ Done</button></div>` : ""}
     <div class="isls">${lists}</div>
     <label class="hint" style="display:block;margin-top:8px">Note (e.g. owed from last cycle) ${can ? `<input data-isn="${nm}" value="${esc(I.note || "")}" style="width:100%">` : `<div>${esc(I.note || "–")}</div>`}</label></section>`;
@@ -376,7 +385,7 @@ async function isSave(name, fn, cfgFn) {
   for (let tries = 0; tries < 2; tries++) {
     const { data: row } = await S.sb.from("ops_state").select("*").eq("key", "currency").maybeSingle();
     const d = JSON.parse(JSON.stringify((row && row.data) || { people: {} })), ppl = d.people || (d.people = {});
-    if (cfgFn) cfgFn(d); else { const k = Object.keys(ppl).find(x => opsNorm(x) === name) || name; const r = ppl[k] || (ppl[k] = { grp: "QFI" }); fn(r.isatr || (r.isatr = {})); }
+    if (cfgFn) cfgFn(d); else { const k = Object.keys(ppl).find(x => opsNorm(x) === name) || name; const r = ppl[k] || (ppl[k] = { grp: "QFI" }); fn(r.isatr || (r.isatr = {}), r); }
     const { data: ver, error } = await S.sb.rpc("ops_state_save", { p_key: "currency", p_data: d, p_version: row ? row.version : 0 });
     if (!error) { OB.state.currency = { ...(row || { key: "currency" }), data: d, version: ver, updated_at: new Date().toISOString(), updated_by: S.me.id }; return true; }
     if (!/changed/i.test(error.message)) { toast("Not saved: " + errMsg(error)); return false; }
@@ -385,7 +394,9 @@ async function isSave(name, fn, cfgFn) {
 }
 document.addEventListener("change", async e => {
   const t = e.target, ds = t.dataset || {}; if (S.tab !== "cur" || !curCanEdit()) return;
-  if (ds.isr) { const [n, k] = ds.isr.split("|"), v = Math.max(0, Math.min(9, parseInt(t.value) || 0)); if (await isSave(n, I => { (I.req ||= {})[k] = v; })) render(); }
+  if (ds.isr) { const [n, k] = ds.isr.split("|"), raw = t.value.trim(), v = Math.max(0, Math.min(9, parseInt(raw) || 0));
+    if (await isSave(n, (I, r) => { const auto = isReqAuto(r)[k] || 0; I.req ||= {}; if (raw === "" || v === auto) delete I.req[k]; else I.req[k] = v; if (!Object.keys(I.req).length) delete I.req; })) render(); }
+  else if (ds.isq) { const [n, q] = ds.isq.split("|"), on = t.checked; if (await isSave(n, (I, r) => { if (q === "ag") { if (on) r.ag = true; else delete r.ag; } else r.noNight = !on; })) render(); }
   else if (ds.isn != null) { const n = ds.isn, v = t.value.trim(); if (await isSave(n, I => { if (v) I.note = v; else delete I.note; })) toast("Note saved."); }
   else if (ds.isc) { const P = isPer(CUR.isp), f = ds.isc, v = t.value; if (await isSave(null, null, d => { const c = (d.isatrCfg ||= {})[P.key] || (d.isatrCfg[P.key] = {}); if (f === "end") { if (v) c.end = v; else delete c.end; } else c.nonFly = Math.max(0, parseInt(v) || 0); })) render(); }
 });
@@ -395,7 +406,6 @@ document.addEventListener("click", async e => {
   if (a === "isp") { CUR.isp = k || null; return render(); }
   if (a === "isopen") { if (e.target.closest("input,button:not([data-cur=isopen])")) return; CUR.isOpen = CUR.isOpen === k || !k ? null : k; render(); const el = $("#isPerson"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
   if (!curCanEdit()) return;
-  if (a === "isstd") { b.disabled = true; if (await isSave(k, I => { I.req = { ...IS_STD }; })) render(); return; }
   if (a === "isadd") { const n = k, it = ($("#isItem") || {}).value, d = ($("#isDate") || {}).value; if (!it || !d) return toast("Pick the item and the date first.");
     CUR.isItem = it; CUR.isDate = d;
     b.disabled = true; if (await isSave(n, I => { const l = ((I.done ||= {})[it] ||= []); l.push(d); l.sort(); I.skip = (I.skip || []).filter(s => s !== d + "|" + it); })) render(); return; }
@@ -443,7 +453,7 @@ table.cut{min-width:0;width:auto}.cut th{white-space:nowrap;font-size:.78rem}.cu
 .isleft{margin-right:12px}.isleft b{font-size:1.3rem}.opsbar label.hint input{width:auto;margin:0 0 0 4px;padding:3px 6px}
 .isls{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,430px),1fr));gap:14px}.isl h3{margin:4px 0 6px;font-size:1rem}
 table.ispt{width:100%;min-width:0;table-layout:fixed}.ispt td{padding:4px 6px;vertical-align:top}.ispt td.isit{white-space:normal;width:40%}.ispt td.isds{white-space:normal}.ispt td.cu{white-space:nowrap;text-align:center;width:70px}.ispt td.cu.ok{color:var(--ok,#1F8A4C);font-weight:600}.ispt td.cu.warn{background:color-mix(in srgb,var(--out) 22%,transparent);font-weight:600}.ispt td.cu.bad{background:color-mix(in srgb,var(--late) 25%,transparent);color:var(--late);font-weight:700}.ispt td.cu.na{color:var(--muted)}
-.isreq{width:42px!important;padding:2px 4px!important;margin:0!important;display:inline-block}
+.isq{display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:.85rem}.isq input{width:auto;margin:0}.isreq.isover{border-color:var(--out);color:var(--out);font-weight:700}.isreq::placeholder{color:var(--muted);font-style:italic;opacity:1}.isreq{width:42px!important;padding:2px 4px!important;margin:0!important;display:inline-block}
 .isds{font-size:.82rem}.isd{display:inline-flex;align-items:center;gap:2px;background:var(--chip,color-mix(in srgb,var(--muted) 15%,transparent));border-radius:10px;padding:1px 8px;margin:1px 3px 1px 0;white-space:nowrap}.isd.auto{font-style:italic;color:var(--muted)}
 .isx{border:0;background:none;color:var(--muted);cursor:pointer;padding:0 0 0 3px;font-size:.75rem}.isaddbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px}.isaddbar select,.isaddbar input{width:auto;margin:0;padding:4px 6px}.isadd input{width:135px;padding:2px 4px;margin:0}
 </style>`);
