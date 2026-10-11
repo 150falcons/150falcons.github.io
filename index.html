@@ -391,7 +391,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 
 <div class="toast" id="toast" hidden></div>
 
-<script src="ops.js?v=44"></script>
+<script src="ops.js?v=45"></script>
 <script src="opsboard.js?v=54"></script>
 <script>
 /* =====================================================================
@@ -709,9 +709,11 @@ function homeDash(hs) {
       const r = (g.rows || []).find(r => names.includes(opsNorm(r.name))); if (!r) continue;
       const pg = hx && ((hx.prev.duties || {}).groups || []).find(x => opsNorm(x.name) === opsNorm(g.name));
       const pr = pg && (pg.rows || []).find(x => opsNorm(x.name) === opsNorm(r.name));
-      const ii = opsMin(r.inTime), oo = opsMin(r.outTime), po = pr ? opsMin(pr.outTime) : null;
-      const bits = [r.inTime && `In <b>${esc(r.inTime)}</b>`, r.outTime && `Out <b>${esc(r.outTime)}</b>`, ii != null && oo != null && `Duty <b>${opsHM(opsSpan(ii, oo))}</b>`,
-        po != null && ii != null && `Rest <b>${opsHM(ii + 1440 - po)}</b> <span class="hint">(out ${esc(pr.outTime)} yesterday)</span>`].filter(Boolean);
+      const io = opsInOut(r, get), pget = sec => { const d = hx && hx.prev[sec]; return d && Object.keys(d).length ? d : opsBlank[sec](); };
+      const pout = (pr && pr.outTime) || (hx ? opsAutoInOut(r.name, pget).out : "");
+      const ii = opsMin(io.in), oo = opsMin(io.out), po = opsMin(pout);
+      const bits = [io.in && `In <b>${esc(io.in)}</b>`, io.out && `Out <b>${esc(io.out)}</b>`, ii != null && oo != null && `Duty <b>${opsHM(opsSpan(ii, oo))}</b>`,
+        po != null && ii != null && `Rest <b>${opsHM(ii + 1440 - po)}</b> <span class="hint">(out ${esc(pout)} yesterday)</span>`].filter(Boolean);
       if (bits.length) rows.push(`<div class="hdrow"><span class="hdk">Duty times</span><span>${bits.join(" · ")}</span><a href="#" data-tab="ops" class="hdgo">Duties ›</a></div>`);
       break;
     }

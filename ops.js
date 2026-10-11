@@ -183,10 +183,35 @@ function opsAuto(name, fl, sim, ground) {
   return out;
 }
 const opsCell = (auto, manual) => [...new Set([...auto, ...(manual ? String(manual).split(/\s*\/\s*/) : [])].map(s => s.trim().toUpperCase()).filter(Boolean))].join(" / ");
+// Yesterday's out time: typed in yesterday's duties, else worked out from yesterday's programme.
 function opsPrevOut(groupName, name) {
   const g = ((OPS.prevDuties || {}).groups || []).find(g => opsNorm(g.name) === opsNorm(groupName));
   const r = g && (g.rows || []).find(r => opsNorm(r.name) === opsNorm(name));
-  return r ? r.outTime : "";
+  if (r && r.outTime) return r.outTime;
+  const pr = OPS.prevRows || {};
+  return opsAutoInOut(name, sec => (pr[sec] && Object.keys(pr[sec]).length ? pr[sec] : opsBlank[sec]())).out;
+}
+// In / out worked out from the programme (Gordon, 11 Oct): In = the person's first brief / step / take-off / sim /
+// ground event / start of a wave they're SXO or OPS O for; Out = 1 h after their last landing / sim end / event / wave end.
+const OPS_OUT_AFTER = 60;
+function opsAutoInOut(name, get) {
+  const n = opsNorm(name), st = [], en = [];
+  if (!n) return { in: "", out: "" };
+  const push = (a, b) => { const x = opsMin(a), y = opsMin(b); if (x != null) st.push(x); if (y != null) en.push(y); else if (x != null) en.push(x); };
+  const fl = opsNameWaves(opsClone(get("flying")));
+  for (const w of fl.waves || []) {
+    for (const f of w.flights || []) for (const a of f.ac || []) if (opsCrewHas(a, n)) { [f.brief, f.step].forEach(t => push(t)); push(f.etd, f.eta); }
+    if (opsHas(w.sxo, n) || opsHas(w.opsO, n)) for (const f of w.flights || []) { [f.brief, f.step].forEach(t => push(t)); push(f.etd, f.eta); }
+  }
+  for (const r of get("sim").rows || []) for (const a of r.ac || []) if (opsCrewHas(a, n)) push(r.etd, r.eta);
+  for (const g of get("ground").groups || []) for (const r of g.rows || []) if (opsGroundHas(r.personnel, n)) push(r.time);
+  const hhmm = m => String(Math.floor(m / 60) % 24).padStart(2, "0") + String(m % 60).padStart(2, "0");
+  return st.length ? { in: hhmm(Math.min(...st)), out: hhmm(Math.max(...en) + OPS_OUT_AFTER) } : { in: "", out: "" };
+}
+// A duty row's in / out: typed wins, else worked out (auto flags say which).
+function opsInOut(r, get) {
+  const a = opsAutoInOut(r.name, get || opsGet);
+  return { in: r.inTime || a.in, out: r.outTime || a.out, inAuto: !r.inTime && !!a.in, outAuto: !r.outTime && !!a.out, autoIn: a.in, autoOut: a.out };
 }
 const opsWaveShort = w => String(w.name || "").replace(/^WAVE\s*/i, "W").replace(/^NIGHT WAVE$/i, "N") || "-";
 
@@ -195,7 +220,7 @@ async function opsLoad(day) {
   OPS.loading = true;
   const [r1, r2] = await Promise.all([
     S.sb.from("ops_sections").select("*").eq("day", day),
-    S.sb.from("ops_sections").select("data").eq("day", opsShift(day, -1)).eq("section", "duties").maybeSingle(),
+    S.sb.from("ops_sections").select("section,data").eq("day", opsShift(day, -1)),
   ]);
   const r3 = await S.sb.from("ops_sections").select("data").lt("day", day).eq("section", "duties").order("day", { ascending: false }).limit(10);
   OPS.loading = false;
@@ -203,7 +228,8 @@ async function opsLoad(day) {
   if (r1.error) { toast("Couldn't load the programme: " + errMsg(r1.error)); return; }
   OPS.rows = {};
   for (const r of r1.data || []) OPS.rows[r.section] = r;
-  OPS.prevDuties = r2.data ? r2.data.data : null;
+  OPS.prevRows = {}; for (const r of r2.data || []) OPS.prevRows[r.section] = r.data;
+  OPS.prevDuties = OPS.prevRows.duties || null;
   const ld = (r3.data || []).find(r => r.data && (r.data.groups || []).length); // skip cleared days
   OPS.lastDuties = ld ? ld.data : null;
   OPS.rowsDay = day;
@@ -674,8 +700,9 @@ const opsView = {
       const auto = opsAuto(r.name, fl, sim);
       let hrs = "";
       if (g.hours) {
-        const prev = opsPrevOut(g.name, r.name), pi = opsMin(prev), ii = opsMin(r.inTime), oo = opsMin(r.outTime);
-        hrs = `<td class="t">${esc(prev)}</td><td class="t">${esc(r.inTime)}</td><td class="t">${pi != null && ii != null ? opsHM(ii + 1440 - pi) : ""}</td><td class="t">${esc(r.outTime)}</td><td class="t"><b>${ii != null && oo != null ? opsHM(opsSpan(ii, oo)) : ""}</b></td>`;
+        const io = opsInOut(r), prev = opsPrevOut(g.name, r.name), pi = opsMin(prev), ii = opsMin(io.in), oo = opsMin(io.out);
+        const at = (v, a) => a ? `<i class="opsautot" title="Worked out from the programme">${esc(v)}</i>` : esc(v);
+        hrs = `<td class="t">${esc(prev)}</td><td class="t">${at(io.in, io.inAuto)}</td><td class="t">${pi != null && ii != null ? opsHM(ii + 1440 - pi) : ""}</td><td class="t">${at(io.out, io.outAuto)}</td><td class="t"><b>${ii != null && oo != null ? opsHM(opsSpan(ii, oo)) : ""}</b></td>`;
       }
       return `<tr><td class="i">${i + 1}</td><td class="nm">${opsX(r.name)}</td>${waves.map((w, j) => `<td class="c">${cell(auto[j] || [], (r.cells || [])[j])}</td>`).join("")}${hrs}</tr>`;
     }).join("")}</tbody></table></div></div>`).join("")}</div>` + (gs.length ? `<p class="hint"><span class="dt dt-fly">#</span> flying · <span class="dt dt-add">(#)</span> ops add · <span class="dt dt-sim">SIMS</span> · <span class="dt dt-duty">SXO / OPS O</span> and ground events (MTG, IN BRIEF, ACAD…) fill in automatically from the programme. W1, W2… = waves.</p>` : "");
@@ -753,7 +780,7 @@ const opsEd = {
       ${g.extra ? `<p class="hint" style="margin:0 0 4px">Anyone else on today's programme who isn't on the standing list (auditors, visitors…). Only for this day.</p>` : ""}
       <div class="tablewrap"><table><thead><tr><th>Name</th>${waves.map(w => `<th>${esc(w.name)}</th>`).join("")}${g.hours ? "<th>In</th><th>Out</th>" : ""}${free ? "<th></th>" : ""}</tr></thead><tbody>${(g.rows || []).map((r, ri) => {
         const q = `groups.${gi}.rows.${ri}`, auto = opsAuto(r.name, fl, sim);
-        return `<tr><td>${free ? oP(q + ".name", r.name, "120px") : `<b class="opsfixed">${esc(r.name)}</b>`}</td>${waves.map((w, j) => `<td>${oI(`${q}.cells.${j}`, (r.cells || [])[j], "110px")}${auto[j] && auto[j].length ? `<div class="opsauto">+ ${esc(auto[j].join(" / "))}</div>` : ""}</td>`).join("")}${g.hours ? `<td>${oI(q + ".inTime", r.inTime, "60px")}</td><td>${oI(q + ".outTime", r.outTime, "60px")}</td>` : ""}${free ? `<td>${g.extra ? oB("del", `groups.${gi}.rows`, ri, "✕", "", "Remove") : oTools(`groups.${gi}.rows`, ri)}</td>` : ""}</tr>`;
+        return `<tr><td>${free ? oP(q + ".name", r.name, "120px") : `<b class="opsfixed">${esc(r.name)}</b>`}</td>${waves.map((w, j) => `<td>${oI(`${q}.cells.${j}`, (r.cells || [])[j], "110px")}${auto[j] && auto[j].length ? `<div class="opsauto">+ ${esc(auto[j].join(" / "))}</div>` : ""}</td>`).join("")}${g.hours ? (() => { const a = opsAutoInOut(r.name, opsGet); return `<td>${oI(q + ".inTime", r.inTime, "60px", a.in)}</td><td>${oI(q + ".outTime", r.outTime, "60px", a.out)}</td>`; })() : ""}${free ? `<td>${g.extra ? oB("del", `groups.${gi}.rows`, ri, "✕", "", "Remove") : oTools(`groups.${gi}.rows`, ri)}</td>` : ""}</tr>`;
       }).join("")}</tbody></table></div>
       ${free ? `<div class="tools">${oB("add", `groups.${gi}.rows`, "", "+ Person", "drow")}${open && !g.extra ? oB("roster", `groups.${gi}.rows`, "", "+ All trainees on roster") : ""}</div>` : ""}</div>`;
     }).join("")
@@ -925,7 +952,7 @@ function opsPrint(eod) {
   const duties = (opsGet("duties").groups || []).filter(g => (g.rows || []).length).map(g => `<table><tr class="wv"><td colspan="${waves.length + 2 + (g.hours ? 5 : 0)}">${e(g.name)}</td></tr><tr><th></th><th>Name</th>${waves.map(w => `<th>${e(w.name)}</th>`).join("")}${g.hours ? "<th>Prev day out</th><th>In time</th><th>Rest</th><th>Out time</th><th>Duty</th>" : ""}</tr>${g.rows.map((r, i) => {
     const auto = opsAuto(r.name, fl, sim);
     let hrs = "";
-    if (g.hours) { const prev = opsPrevOut(g.name, r.name), pi = opsMin(prev), ii = opsMin(r.inTime), oo = opsMin(r.outTime); hrs = `<td>${e(prev)}</td><td>${e(r.inTime)}</td><td>${pi != null && ii != null ? opsHM(ii + 1440 - pi) : ""}</td><td>${e(r.outTime)}</td><td>${ii != null && oo != null ? opsHM(opsSpan(ii, oo)) : ""}</td>`; }
+    if (g.hours) { const io = opsInOut(r), prev = opsPrevOut(g.name, r.name), pi = opsMin(prev), ii = opsMin(io.in), oo = opsMin(io.out); hrs = `<td>${e(prev)}</td><td>${e(io.in)}</td><td>${pi != null && ii != null ? opsHM(ii + 1440 - pi) : ""}</td><td>${e(io.out)}</td><td>${ii != null && oo != null ? opsHM(opsSpan(ii, oo)) : ""}</td>`; }
     return `<tr><td>${i + 1}</td><td>${e(r.name)}</td>${waves.map((w, j) => `<td>${e(opsCell(auto[j] || [], (r.cells || [])[j]))}</td>`).join("")}${hrs}</tr>`;
   }).join("")}</table>`).join("");
   const kv = (k, v) => v ? `<tr><th>${k}</th><td>${nl(v)}</td></tr>` : "";
@@ -975,6 +1002,7 @@ function opsFlownStats(fl) {
 (() => {
   const s = document.createElement("style");
   s.textContent = `
+.opsautot{color:var(--muted)}
 .opsbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
 .opsbar.grp{gap:8px 18px;align-items:flex-end;margin-bottom:12px}
 .opsgrp{display:flex;flex-direction:column;gap:3px}.opsgrpl{font:700 .68rem var(--cond);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.opsgrpb{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
