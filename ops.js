@@ -1214,65 +1214,87 @@ async function opsCopy() {
 function opsPrint(eod) {
   if (OPS.rowsDay !== OPS.day) return toast("Still loading.");
   const h = opsGet("header"), fl = opsGet("flying"), sim = opsGet("sim"), st = opsStats(fl), e = v => esc(v ?? "");
-  const nl = v => e(v).replace(/\n/g, "<br>");
-  const pplan = opsPlan(fl), waves = fl.waves || [];
+  const nl = v => e(v).replace(/\n/g, "<br>"), waves = fl.waves || [], pplan = opsPlan(fl);
+  const z4 = m => m == null ? "" : String(Math.floor(m / 60) % 24).padStart(2, "0") + String(m % 60).padStart(2, "0");
+  const crew = a => `<b>${e(a.crew1)}</b>${a.crew2 ? ` / <b>${e(a.crew2)}</b>` : ""}`;
   let n = 0;
-  const cols = eod ? 12 : 13;
+  // Flying lines: No · Brief / Step · ETD–ETA (or ATD–ATA) · Callsign (DL / van) · # · Aircrew · Mission · Area · A/C · Cfg · Remarks / Result.
   const flying = waves.map(w => {
-    const ws = opsStats({ waves: [w] }), z4 = m => m == null ? "" : String(Math.floor(m / 60) % 24).padStart(2, "0") + String(m % 60).padStart(2, "0");
-    let rows = `<tbody class="wv"><tr><td colspan="${cols}"><b>${e(w.name)}</b>${w.sxo ? `<span>SXO <b>${e(w.sxo)}</b></span>` : ""}${w.opsO ? `<span>OPS O <b>${e(w.opsO)}</b></span>` : ""}<span class="ws">${ws.sorties} sortie${ws.sorties === 1 ? "" : "s"}${ws.first != null ? ` · ${z4(ws.first)}–${z4(ws.last)}Z` : ""}</span></td></tr>${w.rmks ? `<tr class="wr"><td colspan="${cols}">⚠ ${nl(w.rmks)}</td></tr>` : ""}</tbody>`;
+    const ws = opsStats({ waves: [w] });
+    let rows = `<tbody class="wv"><tr><td colspan="10"><b>${e(w.name)}</b><span>SXO <b>${e(w.sxo || "-")}</b></span><span>OPS O <b>${e(w.opsO || "-")}</b></span><span class="ws">${ws.sorties} sortie${ws.sorties === 1 ? "" : "s"}${ws.first != null ? ` · ${z4(ws.first)}–${z4(ws.last)}Z` : ""}</span></td></tr>${w.rmks ? `<tr class="wr"><td colspan="10">⚠ ${nl(w.rmks)}</td></tr>` : ""}</tbody>`;
     (w.flights || []).forEach((f, fi) => {
       const ac = ((f.ac || []).length ? f.ac : [opsTpl.ac("")]).filter((a, i) => i === 0 || opsLineUsed(a)), sp = ac.length, pl = pplan.byF.get(f) || {};
       const tags = [pl.dl ? "DL " + e(pl.dl) : "", pl.veh ? e(pl.veh) : ""].filter(Boolean).join(" · ");
-      rows += `<tbody class="fl${fi % 2 ? " alt" : ""}${opsAllAdd(f) ? " add" : ""}">`;
+      rows += `<tbody class="fl${fi % 2 ? " alt" : ""}">`;
       ac.forEach((a, i) => {
         const add = opsIsAdd(f, a), no = add ? "*" : opsLineUsed(a) ? String(++n).padStart(2, "0") : "", L = a.log || {};
-        const first = i === 0 ? (eod ? "" : `<td rowspan="${sp}" class="t">${f.brief && f.brief !== "NA" ? e(f.brief) : "–"}<br><small>${f.step && f.step !== "NA" ? e(f.step) : "–"}</small></td><td rowspan="${sp}" class="t b">${e(f.etd)}</td><td rowspan="${sp}" class="t">${e(f.eta)}</td>`)
-          + `<td rowspan="${sp}" class="cs"><b>${e(f.callsign)}</b>${tags ? `<small>${tags}</small>` : ""}</td>` : "";
-        const act = eod ? (L.st === "cx" ? `<td class="t"></td><td class="t"></td>` : `<td class="t b">${e(L.st ? L.to : "")}</td><td class="t">${e(L.st ? L.ldg : "")}</td>`) : "";
-        rows += `<tr class="${add ? "ad" : ""}"><td class="no">${no}</td>${eod ? act : ""}${first}<td class="n">${e(a.n)}</td><td class="cr">${e(a.crew1)}</td><td class="cr">${e(a.crew2)}</td><td>${e(a.mission)}${add ? ` <small class="oa">OPS ADD</small>` : ""}</td>${i === 0 ? `<td rowspan="${sp}">${e(f.area)}${f.areaTime ? `<small>${e(f.areaTime)}</small>` : ""}</td>` : ""}<td class="t">${e(opsTail(a.tail, OPS.day))}</td><td class="t">${e(a.config)}</td><td class="rm">${eod ? `<b>${e(opsResText(a, L, true))}</b>` : `${opsIrtBad(a) ? `<b>⚠ ${OPS_IRT_MSG}</b> ` : ""}${nl(a.rmks)}`}</td></tr>`;
+        const tm = eod ? `<td class="t">${L.st && L.st !== "cx" ? `<b>${e(L.to)}</b>–${e(L.ldg)}` : ""}</td>`
+          : i === 0 ? `<td rowspan="${sp}" class="t"><b>${e(f.etd)}</b>–${e(f.eta)}<small>${[f.brief && f.brief !== "NA" ? "B " + e(f.brief) : "", f.step && f.step !== "NA" ? "S " + e(f.step) : ""].filter(Boolean).join(" ")}</small></td>` : "";
+        rows += `<tr class="${add ? "ad" : ""}"><td class="no">${no}</td>${tm}${i === 0 ? `<td rowspan="${sp}" class="cs"><b>${e(f.callsign)}</b>${tags ? `<small>${tags}</small>` : ""}</td>` : ""}<td class="n">${e(a.n)}</td><td>${crew(a)}</td><td>${e(a.mission)}${add ? ` <span class="oa">OPS ADD</span>` : ""}</td>${i === 0 ? `<td rowspan="${sp}">${e(f.area)}${f.areaTime ? `<small>${e(f.areaTime)}</small>` : ""}</td>` : ""}<td class="t">${e(opsTail(a.tail, OPS.day))}</td><td class="t">${e(a.config)}</td><td class="rm">${eod ? `<b>${e(opsResText(a, L, true))}</b>` : `${opsIrtBad(a) ? `<b>⚠ ${OPS_IRT_MSG}</b> ` : ""}${nl(a.rmks)}`}</td></tr>`;
       });
       rows += `</tbody>`;
     });
     return rows;
   }).join("");
-  const fhead = `<thead><tr><th class="no">No</th>${eod ? `<th>ATD</th><th>ATA</th>` : `<th>Brief<br><small>Step</small></th><th>ETD</th><th>ETA</th>`}<th>Callsign</th><th>#</th><th>Aircrew</th><th>Aircrew</th><th>Mission</th><th>Area</th><th>A/C</th><th>Cfg</th><th>${eod ? "Result" : "Remarks"}</th></tr></thead>`;
-  const fcols = `<colgroup><col style="width:3%">${eod ? `<col style="width:4.5%"><col style="width:4.5%">` : `<col style="width:4.5%"><col style="width:4%"><col style="width:4%">`}<col style="width:8%"><col style="width:2%"><col style="width:9%"><col style="width:9%"><col style="width:9%"><col style="width:9%"><col style="width:4.5%"><col style="width:3.5%"><col></colgroup>`;
+  const fly = `<table class="g fly"><colgroup><col style="width:3.5%"><col style="width:11%"><col style="width:10%"><col style="width:2.5%"><col style="width:21%"><col style="width:11%"><col style="width:11%"><col style="width:5.5%"><col style="width:4.5%"><col></colgroup>
+    <thead><tr><th>No</th><th>${eod ? "ATD–ATA" : "ETD–ETA <small>brief · step</small>"}</th><th>Callsign</th><th>#</th><th>Aircrew</th><th>Mission</th><th>Area</th><th>A/C</th><th>Cfg</th><th>${eod ? "Result" : "Remarks"}</th></tr></thead>${flying}</table>`;
+  // Simulator: No · ETD–ETA · Callsign · Aircrew / Console · Mission (FMS, cfg) · Remarks.
   let sn = 0;
-  const sims = (sim.rows || []).filter(opsSimUsed).map((s, si) => `<tbody class="fl${si % 2 ? " alt" : ""}">` + (s.ac || []).filter((a, i) => i === 0 || opsLineUsed(a)).map((a, i, arr) => `<tr><td class="no">${opsLineUsed(a) ? String(++sn).padStart(2, "0") : ""}</td>${i === 0 ? `<td rowspan="${arr.length}" class="t b">${e(s.etd)}</td><td rowspan="${arr.length}" class="t">${e(s.eta)}</td><td rowspan="${arr.length}" class="cs"><b>${e(s.callsign)}</b></td>` : ""}<td class="n">${e(a.n)}</td><td class="cr">${e(a.crew1)}</td><td class="cr">${e(a.crew2)}</td><td>${e(a.mission)}</td><td class="t">${e(a.fms)}</td><td class="t">${e(a.config)}</td><td class="rm">${nl(a.rmks)}</td></tr>`).join("") + `</tbody>`).join("");
-  const ground = (opsGet("ground").groups || []).filter(g => (g.rows || []).length).map(g => `<tbody class="fl"><tr class="gh"><td colspan="4">${e(g.name)}</td></tr>${g.rows.map(r => `<tr><td class="t b">${e(r.time)}</td><td>${e(r.event)}</td><td>${e(r.personnel)}</td><td>${e(r.venue)}</td></tr>`).join("")}</tbody>`).join("");
+  const sims = (sim.rows || []).filter(opsSimUsed).map((s, si) => `<tbody class="fl${si % 2 ? " alt" : ""}">` + (s.ac || []).filter((a, i) => i === 0 || opsLineUsed(a)).map((a, i, arr) =>
+    `<tr><td class="no">${opsLineUsed(a) ? String(++sn).padStart(2, "0") : ""}</td>${i === 0 ? `<td rowspan="${arr.length}" class="t"><b>${e(s.etd)}</b>–${e(s.eta)}</td><td rowspan="${arr.length}" class="cs"><b>${e(s.callsign)}</b></td>` : ""}<td>${e(a.n ? a.n + " " : "")}${crew(a)}</td><td>${e(a.mission)}${a.fms || a.config ? `<small>${[a.fms ? "FMS " + e(a.fms) : "", e(a.config)].filter(Boolean).join(" · ")}</small>` : ""}</td><td class="rm">${nl(a.rmks)}</td></tr>`).join("") + `</tbody>`).join("");
+  const ground = (opsGet("ground").groups || []).filter(g => (g.rows || []).length).map(g => `<tbody class="fl"><tr class="gh"><td colspan="4">${e(g.name)}</td></tr>${g.rows.map(r => `<tr><td class="t"><b>${e(r.time)}</b></td><td>${e(r.event)}</td><td>${e(r.personnel)}</td><td>${e(r.venue)}</td></tr>`).join("")}</tbody>`).join("");
   const af = opsGet("airfield"), nt = opsGet("notes");
   const box = (title, body) => body ? `<div class="box"><div class="bt">${title}</div>${body}</div>` : "";
   const kv = (k, v) => v ? `<tr><th>${k}</th><td>${nl(v)}</td></tr>` : "";
-  const briefs = `<table class="kv">${kv("In time", h.inTime)}${kv("Late in", h.lateIn)}${kv("WX / NTM brief", h.wxBrief)}${kv("MODB", h.modb)}${kv("Night ops brief", h.nightBrief)}${kv("SII of the qtr", h.sqnSii)}${kv("Emer of the day", h.emer)}</table>`;
-  const wtab = waves.length ? `<table class="kv"><tr><th></th><th>SXO</th><th>OPS O</th></tr>${waves.map(w => `<tr><th>${e(w.name)}</th><td><b>${e(w.sxo)}</b></td><td>${e(w.opsO)}</td></tr>`).join("")}</table>` : "";
+  const listT = rows => rows.length ? `<table class="g lt">${rows.map(r => `<tr><td><b>${e(r[0])}</b></td><td>${e(r[1])}</td></tr>`).join("")}</table>` : "";
   const fs = eod ? opsFlownStats(fl) : null;
   const nums = `<div class="nums">${[["Daily req", h.dailyReq], ["Sorties", st.sorties], ["Hours", st.hours], ["First T/O", opsHM(st.first)], ["Last LDG", opsHM(st.last)], ["HH:MM", opsHM(st.span)],
     ...(eod ? [["Flown", fs.sorties], ["Flown h", opsHrs(fs.mins) || "0.0"], ["CX / open", `${fs.cx} / ${fs.open}`]] : [])].map(([k, v]) => `<div><small>${k}</small><b>${e(v ?? "")}</b></div>`).join("")}</div>`;
-  const people = `<table class="kv">${kv("Tower", h.tower)}${kv("DI", h.di)}${kv("Sqn duty officer", h.sdo)}${kv("Trainee duty officer", h.tdo)}${kv("Gym / SFT", h.gym)}</table>`;
-  const listT = (rows, a, b) => rows.length ? `<table class="lt">${rows.map(r => `<tr><td class="b">${e(r[a])}</td><td>${e(r[b])}</td></tr>`).join("")}</table>` : "";
-  const duties = (opsGet("duties").groups || []).filter(g => (g.rows || []).length).map(g => `<table class="dt"><thead><tr><th colspan="${waves.length + 1 + (g.hours ? 3 : 0)}">${e(g.name)}</th></tr><tr><th>Name</th>${waves.map((w, j) => `<th>W${j + 1}</th>`).join("")}${g.hours ? "<th>In</th><th>Out</th><th>Duty</th>" : ""}</tr></thead><tbody>${opsDutyRows(g).map(r => {
+  const briefs = `<table class="kv">${kv("In time", h.inTime)}${kv("Late in", h.lateIn)}${kv("WX / NTM", h.wxBrief)}${kv("MODB", h.modb)}${kv("Night ops brief", h.nightBrief)}${kv("SII of the qtr", h.sqnSii)}${kv("Emer of the day", h.emer)}</table>`;
+  const pp = [["Tower", h.tower], ["DI", h.di], ["SDO", h.sdo], ["TDO", h.tdo]].filter(x => x[1]);
+  const people = `<table class="kv">${Array.from({ length: Math.ceil(pp.length / 2) }, (_, i) => `<tr>${pp.slice(i * 2, i * 2 + 2).map(([k, v]) => `<th>${k}</th><td>${nl(v)}</td>`).join("")}</tr>`).join("")}${h.gym ? `<tr><th>Gym / SFT</th><td colspan="3">${nl(h.gym)}</td></tr>` : ""}</table>`;
+  const duties = (opsGet("duties").groups || []).filter(g => (g.rows || []).length).map(g => `<table class="g dt"><thead><tr><th colspan="${waves.length + 1 + (g.hours ? 3 : 0)}">${e(g.name)}</th></tr><tr class="sub"><th>Name</th>${waves.map((w, j) => `<th>W${j + 1}</th>`).join("")}${g.hours ? "<th>In</th><th>Out</th><th>Duty</th>" : ""}</tr></thead><tbody>${opsDutyRows(g).map(r => {
     const auto = opsAuto(r.name, fl, sim);
     let hrs = ""; if (g.hours) { const io = opsInOut(r), ii = opsMin(io.in), oo = opsMin(io.out); hrs = `<td class="t">${e(io.in)}</td><td class="t">${e(io.out)}</td><td class="t">${ii != null && oo != null ? opsHM(opsSpan(ii, oo)) : ""}</td>`; }
-    return `<tr><td class="b">${e(r.name)}</td>${waves.map((w, j) => `<td class="t">${e(opsCell(auto[j] || [], (r.cells || [])[j]))}</td>`).join("")}${hrs}</tr>`;
+    return `<tr><td><b>${e(r.name)}</b></td>${waves.map((w, j) => `<td class="t">${e(opsCell(auto[j] || [], (r.cells || [])[j]))}</td>`).join("")}${hrs}</tr>`;
   }).join("")}</tbody></table>`).join("");
   let el = document.getElementById("opsPrint");
   if (!el) { el = document.createElement("div"); el.id = "opsPrint"; document.body.appendChild(el); }
-  el.innerHTML = `<div class="top"><div><div class="ttl">150 SQUADRON ${eod ? "ACTUAL DAY PROGRAM" : "FLYING PROGRAM"}</div><div class="day">${e(opsLongDay(OPS.day))}</div></div><div class="cls">RESTRICTED</div></div>
-    <div class="strip">${box("Briefs", briefs)}${box("Waves", wtab)}<div class="box">${nums}${people}</div></div>
-    <table class="fly">${fcols}${fhead}${flying}</table>
-    <div class="two"><div>
-        ${sims ? box("Simulator program", `<table class="fly sm"><colgroup><col style="width:5%"><col style="width:7%"><col style="width:7%"><col style="width:12%"><col style="width:3%"><col style="width:11%"><col style="width:11%"><col style="width:15%"><col style="width:5%"><col style="width:5%"><col></colgroup><thead><tr><th class="no">No</th><th>${eod ? "ATD" : "ETD"}</th><th>${eod ? "ATA" : "ETA"}</th><th>Callsign</th><th>#</th><th>Aircrew</th><th>Console</th><th>Mission</th><th>FMS</th><th>Cfg</th><th>Remarks</th></tr></thead>${sims}</table>`) : ""}
-        ${ground ? box("Ground program", `<table class="fly sm"><colgroup><col style="width:10%"><col style="width:32%"><col style="width:38%"><col></colgroup><thead><tr><th>Time</th><th>Event</th><th>Personnel</th><th>Venue</th></tr></thead>${ground}</table>`) : ""}
-      </div><div>
-        ${box("Airfield restrictions", listT([...(af.rows || []).map(r => ({ a: r.time, b: r.what })), ...(af.sunset ? [{ a: af.sunset, b: "SUNSET" }] : [])], "a", "b"))}
-        ${box("Currencies", listT(nt.currencies || [], "who", "note"))}
-        ${box("Aircraft restrictions", listT(nt.aircraft || [], "ac", "note"))}
-      </div></div>
-    ${duties ? box("Duties", `<div class="duties">${duties}</div>`) : ""}
-    <div class="sign"><span>Planned by <b>${e(h.plannedBy)}</b></span><span>Vetted &amp; approved by <b>${e(h.vettedBy)}</b></span><span>Currency checked by <b>${e(h.currencyBy)}</b></span><span class="stamp">Printed ${e(new Date().toLocaleString("en-GB"))}</span></div>
-    <div class="cls foot">RESTRICTED</div>`;
+  el.innerHTML = `<div class="pg">
+    <div class="top"><div class="ttl">150 SQUADRON ${eod ? "ACTUAL DAY PROGRAM" : "FLYING PROGRAM"}<span>${e(opsLongDay(OPS.day))}</span></div><div class="cls">RESTRICTED</div></div>
+    <div class="strip">${box("Briefs", briefs)}${box("Day", nums + people)}</div>
+    <div class="main"><div class="l">${fly}</div><div class="r">
+      ${sims ? box("Simulator program", `<table class="g sm"><colgroup><col style="width:7%"><col style="width:17%"><col style="width:15%"><col style="width:27%"><col style="width:20%"><col></colgroup><thead><tr><th>No</th><th>${eod ? "ATD–ATA" : "ETD–ETA"}</th><th>Callsign</th><th>Aircrew / Console</th><th>Mission</th><th>Rmks</th></tr></thead>${sims}</table>`) : ""}
+      ${ground ? box("Ground program", `<table class="g sm"><colgroup><col style="width:13%"><col style="width:33%"><col style="width:36%"><col></colgroup><thead><tr><th>Time</th><th>Event</th><th>Personnel</th><th>Venue</th></tr></thead>${ground}</table>`) : ""}
+      ${box("Airfield restrictions", listT([...(af.rows || []).map(r => [r.time, r.what]), ...(af.sunset ? [[af.sunset, "SUNSET"]] : [])]))}
+      ${box("Currencies", listT((nt.currencies || []).map(r => [r.who, r.note])))}
+      ${box("Aircraft restrictions", listT((nt.aircraft || []).map(r => [r.ac, r.note])))}
+    </div></div>
+    ${duties ? `<div class="duties">${duties}</div>` : ""}
+    <div class="sign"><span>Planned by <b>${e(h.plannedBy)}</b></span><span>Vetted &amp; approved by <b>${e(h.vettedBy)}</b></span><span>Currency checked by <b>${e(h.currencyBy)}</b></span><span class="stamp">Printed ${e(new Date().toLocaleString("en-GB"))}</span><span class="cls">RESTRICTED</span></div>
+  </div>`;
+  opsPrintFit(el);
   window.print();
+}
+// One page (Gordon, 12 Oct "see the entire program in one page"): lay the sheet out at A4-landscape width, measure it and
+// shrink it with zoom until it fits one page (widening the layout as it shrinks so the space is used). Floor 0.55, then it
+// simply runs onto a second page.
+function opsPrintFit(el) {
+  const mm = 96 / 25.4, W = 281 * mm, H = 189 * mm, pg = el.querySelector(".pg");
+  el.classList.add("measure"); let z = 1;
+  // Balance the two columns: move notes boxes from the bottom of the right column under the flying lines while that
+  // makes the taller column shorter.
+  pg.style.zoom = 1; pg.style.width = W + "px";
+  const L = pg.querySelector(".main .l"), R = pg.querySelector(".main .r");
+  for (let k = 0; k < 6 && R && L; k++) {
+    const bx = R.lastElementChild; if (!bx) break;
+    const lh = L.offsetHeight, rh = R.offsetHeight, bh = bx.offsetHeight + 6;
+    if (Math.max(lh + bh, rh - bh) >= Math.max(lh, rh)) break;
+    let nb = L.querySelector(".lnotes"); if (!nb) { nb = document.createElement("div"); nb.className = "lnotes"; L.appendChild(nb); }
+    nb.insertBefore(bx, nb.firstChild);
+  }
+  for (let i = 0; i < 6; i++) { pg.style.zoom = 1; pg.style.width = W / z + "px"; const hh = pg.scrollHeight, nz = Math.max(0.55, Math.min(1, H / hh)); if (Math.abs(nz - z) < 0.005) { z = nz; break; } z = nz; }
+  pg.style.width = W / z + "px"; pg.style.zoom = z; el.classList.remove("measure");
 }
 
 // Flown totals for the end-of-day sheet: every flown line counts (ops adds too), CX and lines not yet logged are counted separately.
@@ -1490,68 +1512,58 @@ body.tvmode .flytvr td.nm{white-space:nowrap!important}.flytvr td,.flytvr th{whi
 .opsauto{font-size:.7rem;color:var(--muted);margin-top:1px}
 .opsfixed{white-space:nowrap;display:inline-block;padding:4px 6px 4px 0}
 .opswavename{font:700 1.1rem var(--cond);margin-right:8px}
-#opsPrint{display:none}
+#opsPrint{position:absolute;left:-100000px;top:0;visibility:hidden}
+#opsPrint.measure{visibility:hidden}
+#opsPrint .pg{font:7.4pt/1.28 Arial,Helvetica,sans-serif;color:#111;background:#fff}
+#opsPrint .pg *{box-sizing:border-box;background:transparent;color:#111;box-shadow:none;text-shadow:none;font-family:Arial,Helvetica,sans-serif;letter-spacing:0;text-transform:none;min-width:0;max-width:none;float:none}
+#opsPrint th,#opsPrint td{font-size:inherit;line-height:1.28;font-weight:400;padding:1.3pt 2.6pt;text-align:left;vertical-align:top;border:0}
+#opsPrint b{font-weight:700}
+#opsPrint small{display:block;font-size:.84em;color:#5a6472;font-weight:400}
+#opsPrint .top{display:flex;justify-content:space-between;align-items:center;border-bottom:1.5pt solid #1f3a5f;padding-bottom:2pt;margin-bottom:4pt}
+#opsPrint .ttl{font-weight:700;font-size:12pt;color:#1f3a5f}#opsPrint .ttl span{font-size:9.5pt;color:#111;margin-left:12pt}
+#opsPrint .cls{font-weight:700;letter-spacing:.12em;font-size:7.5pt;border:1pt solid #000;padding:.5pt 5pt}
+#opsPrint .strip{display:grid;grid-template-columns:1.25fr 1fr;gap:5pt;margin-bottom:5pt}
+#opsPrint .box{display:block;border:.6pt solid #b8c2cf;border-radius:3pt;padding:2.5pt 4pt;margin:0 0 5pt;background:#fff}
+#opsPrint .strip .box{margin:0}
+#opsPrint .bt{font-weight:700;font-size:6.6pt;text-transform:uppercase;letter-spacing:.08em;color:#1f3a5f;margin-bottom:1.5pt}
+#opsPrint table{width:100%;border-collapse:collapse;font-size:7.4pt}
+#opsPrint .kv th{width:1%;white-space:nowrap;color:#5a6472;font-weight:400;padding-right:5pt}
+#opsPrint .kv tr+tr>*{border-top:.4pt solid #e3e7ec}
+#opsPrint .nums{display:grid;grid-template-columns:repeat(9,auto);justify-content:start;gap:2pt;margin-bottom:2pt}
+#opsPrint .nums div{background:#eef2f7;border-radius:2pt;padding:1pt 5pt;text-align:center}
+#opsPrint .nums{font-size:6.6pt}#opsPrint .nums b{font-size:9pt;display:block}#opsPrint .nums small{color:#5a6472}
+#opsPrint .lnotes{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:5pt;margin-top:5pt}#opsPrint .lnotes .box{margin:0}#opsPrint .main .l{display:flex;flex-direction:column}#opsPrint .main{display:grid;grid-template-columns:1.62fr 1fr;gap:5pt;align-items:start}
+#opsPrint table.g{table-layout:fixed}
+#opsPrint table.g thead th{background:#1f3a5f;color:#fff;font-size:.86em;text-transform:uppercase;letter-spacing:.03em;padding:1.8pt 2.6pt;font-weight:700}
+#opsPrint table.g thead th small{color:#cfd8e3;display:inline;text-transform:none}
+#opsPrint table.sm thead th{background:#55677e}
+#opsPrint tbody.fl td{border-top:.4pt solid #e3e7ec}
+#opsPrint tbody.fl tr:first-child td{border-top:.8pt solid #9aa7b6}
+#opsPrint tbody.fl.alt td{background:#f3f6fa}
+#opsPrint tbody.fl{break-inside:avoid}
+#opsPrint tbody.wv td{background:#dfe6ef;color:#0f2540;padding:1.8pt 3pt;border-top:1.1pt solid #1f3a5f}
+#opsPrint tbody.wv td *{color:#0f2540}#opsPrint tbody.wv td span{margin-left:10pt}#opsPrint tbody.wv td .ws{float:right;margin:0}
+#opsPrint tbody.wv tr.wr td{background:#fff4d6;border-top:0;font-size:.92em;padding:1.2pt 3pt}#opsPrint tbody.wv tr.wr td,#opsPrint tbody.wv tr.wr td *{color:#6b4a00}
+#opsPrint td.no{color:#7a8492}
+#opsPrint td.t{white-space:nowrap;font-variant-numeric:tabular-nums}
+#opsPrint td.rm{font-size:.92em;color:#333}
+#opsPrint tr.ad td{font-style:italic}#opsPrint tr.ad td,#opsPrint tr.ad td *{color:#4a4a4a}
+#opsPrint .oa{font-size:.78em;color:#8a5a00!important;font-style:normal;font-weight:700}
+#opsPrint table.sm{font-size:6.9pt}
+#opsPrint tr.gh td{background:#eef2f7;font-weight:700;font-size:.86em;text-transform:uppercase;letter-spacing:.03em}#opsPrint tr.gh td{color:#1f3a5f}
+#opsPrint table.lt{font-size:7pt}#opsPrint .lt td{border-top:.4pt solid #e3e7ec}#opsPrint .lt tr:first-child td{border-top:0}#opsPrint .lt td:first-child{width:36%}
+#opsPrint .duties{display:flex;flex-wrap:wrap;gap:3pt 6pt;align-items:flex-start;margin-bottom:4pt}
+#opsPrint .dt{width:auto;font-size:6.8pt}
+#opsPrint .dt thead tr.sub th{background:#eef2f7;color:#5a6472;font-size:.84em}
+#opsPrint .dt td{border-top:.4pt solid #e3e7ec;padding:.8pt 2.6pt}
+#opsPrint .sign{font-size:7pt;display:flex;gap:16pt;align-items:center;border-top:.8pt solid #9aa7b6;padding-top:2pt;font-size:.95em;color:#444}
+#opsPrint .sign span{color:#444}#opsPrint .sign b{color:#000}
+#opsPrint .sign .stamp{margin-left:auto;font-size:.85em}
 @media print{
   @page{size:A4 landscape;margin:7mm 8mm}
-  html,body{background:#fff!important;color:#000!important}
+  html,body{background:#fff!important;color:#000!important;margin:0!important;padding:0!important}
   body>*:not(#opsPrint){display:none!important}
-  body>#opsPrint{display:block!important;font:7.4pt/1.3 Arial,Helvetica,sans-serif;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  #opsPrint *{box-sizing:border-box;background:transparent;color:#111;box-shadow:none;text-shadow:none;font-family:Arial,Helvetica,sans-serif;letter-spacing:0;text-transform:none;min-width:0;max-width:none}
-  #opsPrint th,#opsPrint td{font-size:inherit;line-height:1.3;font-weight:400}
-  #opsPrint th{font-weight:700}
-  #opsPrint .top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1.6pt solid #1f3a5f;padding-bottom:3pt;margin-bottom:5pt}
-  #opsPrint .ttl{font:700 13pt Arial,Helvetica,sans-serif;letter-spacing:.04em;color:#1f3a5f}
-  #opsPrint .day{font-size:9pt;font-weight:700}
-  #opsPrint .cls{font-weight:700;letter-spacing:.12em;font-size:8pt;border:1pt solid #000;padding:1pt 6pt}
-  #opsPrint .cls.foot{text-align:center;border:0;margin-top:4pt}
-  #opsPrint .strip{display:grid;grid-template-columns:1.5fr 1fr 1.25fr;gap:6pt;margin-bottom:6pt}
-  #opsPrint .box{display:block;outline:0;border:.6pt solid #b8c2cf;border-radius:3pt;padding:3pt 5pt;margin-bottom:6pt;background:#fff}
-  #opsPrint .strip .box{margin:0}
-  #opsPrint .bt{font:700 7pt Arial,Helvetica,sans-serif;text-transform:uppercase;letter-spacing:.08em;color:#1f3a5f;margin-bottom:2pt}
-  #opsPrint table{width:100%;border-collapse:collapse;font-size:7.4pt}
-  #opsPrint th,#opsPrint td{padding:1.6pt 3pt;text-align:left;vertical-align:top;color:#111;background:none;border:0}
-  #opsPrint small{display:block;font-size:6.3pt;color:#555;font-weight:400}
-  #opsPrint .kv th{width:1%;white-space:nowrap;color:#555;font-weight:400;padding-right:6pt}
-  #opsPrint .kv tr:first-child th{color:#555}#opsPrint .kv td b{font-weight:700}
-  #opsPrint .kv tr+tr td,#opsPrint .kv tr+tr th{border-top:.4pt solid #e3e7ec}
-  #opsPrint .nums{display:grid;grid-template-columns:repeat(6,1fr);gap:2pt;margin-bottom:3pt}
-  #opsPrint .nums div{background:#eef2f7;border-radius:2pt;padding:1.5pt 3pt;text-align:center}
-  #opsPrint .nums b{font-size:9pt;display:block}#opsPrint .nums small{color:#555}
-  #opsPrint table.fly{table-layout:fixed;margin-bottom:6pt}
-  #opsPrint b{font-weight:700}
-  #opsPrint table.fly thead th{background:#1f3a5f;color:#fff;font-size:6.6pt;text-transform:uppercase;letter-spacing:.04em;padding:2pt 3pt}
-  #opsPrint table.fly thead th small{color:#cfd8e3}#opsPrint .dt thead tr:first-child th *{color:#fff}
-  #opsPrint tbody.fl td{border-top:.4pt solid #e3e7ec}
-  #opsPrint tbody.fl tr:first-child td{border-top:.8pt solid #9aa7b6}
-  #opsPrint tbody.fl.alt td{background:#f3f6fa}
-  #opsPrint tbody.fl{break-inside:avoid}
-  #opsPrint tbody.wv td{background:#dfe6ef;color:#0f2540;padding:2.4pt 4pt;border-top:1.2pt solid #1f3a5f}
-  #opsPrint tbody.wv td *{color:#0f2540}#opsPrint tbody.wv td span{margin-left:12pt;font-size:7pt}#opsPrint tbody.wv tr.wr td *{color:#6b4a00}
-  #opsPrint tbody.wv td .ws{float:right;font-weight:400}
-  #opsPrint tbody.wv tr.wr td{background:#fff4d6;color:#6b4a00;border-top:0;font-size:6.9pt;padding:1.6pt 4pt}
-  #opsPrint td.no{color:#666}
-  #opsPrint td.t{white-space:nowrap;font-variant-numeric:tabular-nums}
-  #opsPrint .b{font-weight:700}
-  #opsPrint td.cr{font-weight:700}
-  #opsPrint td.cs b{letter-spacing:.02em}
-  #opsPrint td.rm{font-size:6.8pt;color:#333}
-  #opsPrint tr.ad td{font-style:italic;color:#444}
-  #opsPrint .oa{display:inline;font-size:5.8pt;color:#8a5a00;font-style:normal;font-weight:700}
-  #opsPrint table.sm{font-size:7pt}
-  #opsPrint table.sm thead th{background:#55677e}
-  #opsPrint tr.gh td{background:#eef2f7;font-weight:700;font-size:6.6pt;text-transform:uppercase;letter-spacing:.04em;color:#1f3a5f}
-  #opsPrint .two{display:grid;grid-template-columns:1.7fr 1fr;gap:6pt}
-  #opsPrint .two .box table{margin:0}
-  #opsPrint .lt td{border-top:.4pt solid #e3e7ec}#opsPrint .lt tr:first-child td{border-top:0}
-  #opsPrint .lt td:first-child{width:38%;white-space:nowrap}
-  #opsPrint .duties{display:flex;flex-wrap:wrap;gap:4pt 8pt;align-items:flex-start}
-  #opsPrint .dt{width:auto;font-size:6.8pt}
-  #opsPrint .dt thead tr:first-child th{background:#1f3a5f;color:#fff;text-transform:uppercase;font-size:6.4pt}
-  #opsPrint .dt thead tr+tr th{color:#555;font-size:6.2pt;border-bottom:.6pt solid #9aa7b6}
-  #opsPrint .dt td{border-top:.4pt solid #e3e7ec;padding:1pt 3pt}
-  #opsPrint .sign{display:flex;gap:18pt;border-top:.8pt solid #9aa7b6;padding-top:3pt;font-size:7pt;color:#444}
-  #opsPrint .sign b{color:#000}
-  #opsPrint .sign .stamp{margin-left:auto;font-size:6.2pt}
+  body>#opsPrint{position:static;visibility:visible;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }`;
   document.head.appendChild(s);
 })();
