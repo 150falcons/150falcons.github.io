@@ -105,6 +105,8 @@ function opsTail(tail, day) {
 const opsLineUsed = a => !!(a.crew1 || a.crew2 || a.tail || a.mission);
 // Ops add: the whole flight, or just one aircraft in it (e.g. "#1 OPS ADD"). Shown as *, not counted.
 const opsIsAdd = (f, a) => !!(f.opsAdd || (a && a.opsAdd));
+// Whole formation is ops add (every line ticked, or the old flight-level flag).
+const opsAllAdd = f => !!f.opsAdd || ((f.ac || []).length > 0 && (f.ac || []).every(a => a.opsAdd));
 const opsSimUsed = s => !!(s.etd || s.eta || s.callsign || (s.ac || []).some(opsLineUsed));
 const opsMyNames = () => [me() && me().name, S.me && S.me.display_name, S.me && S.me.callsign, ...(typeof OB !== "undefined" ? obMyCrew().map(c => c.name) : [])].filter(Boolean).map(opsNorm).filter((n, i, a) => n && a.indexOf(n) === i);
 // Escape, and highlight the signed-in person's name.
@@ -418,7 +420,7 @@ function opsLogCard() {
       ls.forEach(([a, ai], k) => {
         const L = a.log || {}, key = `${wi}.${fi}.${ai}`, m = opsLogMins(L); lines++; if (L.st) logged++; if (m != null) mins += m;
         wr += `<tr class="${opsFlown(L) ? "lgok" : L.st === "cx" ? "lgcx" : ""}${k === 0 ? " lgf" : ""}">
-          ${k === 0 ? `<td rowspan="${ls.length}" class="lgcs"><b>${esc(f.callsign || "-")}</b><small>${esc(f.etd || "?")}–${esc(f.eta || "?")}Z${opsIsAdd(f, {}) ? " · ops add" : ""}</small><button class="btn small" data-ops="logplan" data-k="${wi}.${fi}">✓ As planned</button></td>` : ""}
+          ${k === 0 ? `<td rowspan="${ls.length}" class="lgcs"><b>${esc(f.callsign || "-")}</b><small>${esc(f.etd || "?")}–${esc(f.eta || "?")}Z${opsAllAdd(f) ? " · ops add" : ""}</small><button class="btn small" data-ops="logplan" data-k="${wi}.${fi}">✓ As planned</button></td>` : ""}
           <td class="lgcrew">${esc(a.n || "")} <b>${opsX(a.crew1)}</b>${a.crew2 ? ` / ${opsX(a.crew2)}` : ""}<small>${esc([a.mission, opsTail(a.tail, OPS.day)].filter(Boolean).join(" · "))}${opsIsAdd(f, a) ? " · ops add" : ""}</small></td>
           <td><input data-log="to" data-k="${key}" value="${esc(L.to || "")}" placeholder="${esc(f.etd || "T/O")}" inputmode="numeric" maxlength="5" aria-label="Take-off"></td>
           <td><input data-log="ldg" data-k="${key}" value="${esc(L.ldg || "")}" placeholder="${esc(f.eta || "LDG")}" inputmode="numeric" maxlength="5" aria-label="Landing"></td>
@@ -867,7 +869,7 @@ const opsView = {
       out += `<div class="tablewrap"><table class="opst opsfly${logged ? " logged" : ""}">${cols}<thead><tr><th>No</th><th>ETD (Z)</th><th>ETA (Z)</th><th>Callsign</th><th>#</th><th>Aircrew</th><th>Mission</th><th>Area</th><th>A/C</th><th>Cfg</th>${logged ? `<th class="act">ATD</th><th class="act">ATA</th><th class="act">Hrs</th>` : ""}<th>Remarks</th></tr></thead>`;
       for (const f of fs) {
         const ac = (f.ac || []).length ? f.ac : [opsTpl.ac("")], span = ac.length;
-        out += `<tbody class="fl${f.opsAdd ? " opsadd" : ""}">`;
+        out += `<tbody class="fl${opsAllAdd(f) ? " opsadd" : ""}">`;
         ac.forEach((a, i) => {
           const add = opsIsAdd(f, a), no = add ? `<span class="opsaddtag">OPS ADD</span>` : opsLineUsed(a) ? String(++n).padStart(2, "0") : "";
           const bs = [f.brief && f.brief !== "NA" ? "Brief " + f.brief : "", f.step && f.step !== "NA" ? "Step " + f.step : ""].filter(Boolean).join(" · ");
@@ -995,10 +997,10 @@ const opsEd = {
       <div class="grid"><label>SXO${oP(`waves.${wi}.sxo`, w.sxo)}</label><label>OPS O${oI(`waves.${wi}.opsO`, w.opsO, "", "e.g. LIM Y / LEE L (TKOVER @ 1100Z)")}</label></div>
       <label>Wave remarks (airfield notes for this wave)${oT(`waves.${wi}.rmks`, w.rmks)}</label>
       ${(w.flights || []).map((f, fi) => { const p = `waves.${wi}.flights.${fi}`; return `<div class="blk flt">
-        <div class="tablewrap"><table><thead><tr><th>Brief</th><th>Step</th><th class="opsetdh">ETD (key in first)</th><th>ETA</th><th>Callsign</th><th>DL</th><th>Vehicle</th><th>Area</th><th>Area time</th><th></th><th></th></tr></thead><tbody><tr>
+        <div class="tablewrap"><table><thead><tr><th>Brief</th><th>Step</th><th class="opsetdh">ETD (key in first)</th><th>ETA</th><th>Callsign</th><th>DL</th><th>Vehicle</th><th>Area</th><th>Area time</th><th></th></tr></thead><tbody><tr>
           <td>${opsAutoIn(p, f, "brief")}</td><td>${opsAutoIn(p, f, "step")}</td><td>${oI(p + ".etd", f.etd, "80px", "e.g. 0715").replace("<input", '<input class="opsetd"')}</td><td>${opsAutoIn(p, f, "eta")}</td>
           <td>${oI(p + ".callsign", f.callsign, "120px")}</td><td>${oSel(p + ".dl", f.dl, [["", "-"], ...OPS_DL.map(x => [x, x])])}</td><td>${oSel(p + ".veh", f.veh, [["", "Auto"], ...OPS_VEH.map(x => [x, x])])} <span class="opsplan" data-plan="${wi}.${fi}"></span></td><td>${oI(p + ".area", f.area, "120px")}</td><td>${oI(p + ".areaTime", f.areaTime, "110px")}</td>
-          <td>${oC(p + ".opsAdd", f.opsAdd, "Ops add")}</td><td>${oTools(`waves.${wi}.flights`, fi)}</td></tr></tbody></table>
+          <td>${oTools(`waves.${wi}.flights`, fi)}</td></tr></tbody></table>
         <table><thead><tr><th>#</th><th>Aircrew</th><th>Aircrew</th><th>Mission</th><th>A/C</th><th>Config</th><th>Rmks</th><th></th><th></th></tr></thead><tbody>
           ${(f.ac || []).map((a, ai) => { const q = `${p}.ac.${ai}`; return `<tr><td>${oI(q + ".n", a.n, "40px")}</td><td>${oP(q + ".crew1", a.crew1, "120px")}</td><td>${oP(q + ".crew2", a.crew2, "120px")}</td><td>${oI(q + ".mission", a.mission, "110px")}</td><td>${oI(q + ".tail", a.tail, "60px")}</td><td>${oI(q + ".config", a.config, "60px")}</td><td>${oI(q + ".rmks", a.rmks, "200px")}</td><td>${oC(q + ".opsAdd", a.opsAdd, "Ops add")}</td><td>${oB("del", p + ".ac", ai, "✕", "", "Remove aircraft")}</td></tr>${opsIrtBad(a) ? `<tr class="opswarn"><td colspan="9">⚠ ${OPS_IRT_MSG}${a.crew2 ? ` (${esc(a.crew2)} isn't ticked as IRE)` : " (no back seat)"}</td></tr>` : ""}`; }).join("")}
         </tbody></table></div>${oB("add", p + ".ac", "", "+ Aircraft", "ac")}</div>`; }).join("")}
@@ -1133,6 +1135,8 @@ document.addEventListener("click", async e => {
     const sec = el.dataset.sec;
     OPS.namesOpen = false;
     OPS.edit = { section: sec, data: opsClone(opsData(sec) || (sec === "duties" && opsSeedDuties()) || opsBlank[sec]()), version: OPS.rows[sec] ? OPS.rows[sec].version : 0 };
+    // One "Ops add" tick per aircraft line (Gordon, 12 Oct): an old flight-level tick becomes a tick on each of its lines.
+    if (sec === "flying") for (const w of OPS.edit.data.waves || []) for (const f of w.flights || []) if (f.opsAdd) { for (const a of f.ac || []) a.opsAdd = true; f.opsAdd = false; }
     renderOps($("#view")); const c = $("#ops-" + sec); if (c) c.scrollIntoView({ block: "start" });
   } else if (a === "names") { e.preventDefault(); OPS.namesOpen = !OPS.namesOpen; opsRerenderEdit(); }
   else if (a === "cancel") { OPS.edit = null; renderOps($("#view")); }
