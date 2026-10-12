@@ -1311,8 +1311,8 @@ function opsPrintFitPage(pg, max) {
 const ATT = { ev: "", t: "" };
 function opsAttEvents(h) {
   const tm = s => { const m = /(\d{4})\s*Z?/.exec(String(s || "")); return m ? m[1] : ""; };
-  const ob = /(?:OPS BRIEF|SODB)\s*:?\s*(\d{4})/i.exec(`${h.inTime || ""}\n${h.lateIn || ""}`);
-  return [["ops", "Ops brief", ob ? ob[1] : ""], ["wx", "WX / NOTAM brief", tm(h.wxBrief)], ["modb", "MODB", tm(h.modb)], ["night", "Night ops brief", tm(h.nightBrief)], ["eowd", "EOWD", tm(h.eowd)], ["other", "Other time", ""]];
+  const txt = `${h.inTime || ""}\n${h.lateIn || ""}`, find = re => { const m = re.exec(txt); return m ? m[1] : ""; };
+  return [["ops", "Ops brief", find(/OPS BRIEF\s*:?\s*(\d{4})/i)], ["sodb", "SODB", find(/SODB\s*:?\s*(\d{4})/i)], ["wx", "WX / NOTAM brief", tm(h.wxBrief)], ["modb", "MODB", tm(h.modb)], ["night", "Night ops brief", tm(h.nightBrief)], ["eowd", "EOWD", tm(h.eowd)], ["other", "Other time", ""]];
 }
 function opsAttPeople(fl) {
   const flying = new Set(); for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) for (const n of [a.crew1, a.crew2]) if (opsNorm(n)) flying.add(opsNorm(n));
