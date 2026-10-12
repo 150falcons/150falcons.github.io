@@ -149,6 +149,7 @@ document.addEventListener("click", async e => {
     CFG_EDIT = null; toast("Settings saved."); render();
   }
 });
+document.head.insertAdjacentHTML("beforeend", `<style>.cfgt td.cfgv{white-space:normal!important;overflow-wrap:anywhere}</style>`);
 document.head.insertAdjacentHTML("beforeend", `<style>
 .cfggrid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}@media (min-width:1100px){.cfggrid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
 .cfgcard{min-width:0}table.cfgt{width:100%;min-width:0;table-layout:auto}.cfgt td{padding:6px 8px;vertical-align:middle;white-space:normal}.cfgt td.cfgv{white-space:nowrap;width:1%}.cfgt td.hint{width:1%;white-space:nowrap}

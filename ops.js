@@ -30,7 +30,7 @@ const opsTpl = {
   xgroup: () => ({ name: "ADDITIONAL (AUDITORS ETC.)", extra: true, hours: false, rows: [] }),
 };
 const opsBlank = {
-  header: () => ({ inTime: "", lateIn: "", wxBrief: "", modb: "", nightBrief: "", eowd: "", sqnSii: "", emer: "", dailyReq: "", tower: "", di: "", sdo: "", tdo: "", gym: "", plannedBy: "", vettedBy: "", currencyBy: "" }),
+  header: () => ({ inTime: "", lateIn: "", opsBrief: "", sodb: "", wxBrief: "", modb: "", nightBrief: "", eowd: "", sqnSii: "", emer: "", dailyReq: "", tower: "", di: "", sdo: "", tdo: "", gym: "", plannedBy: "", vettedBy: "", currencyBy: "" }),
   flying: () => ({ waves: [] }),
   sim: () => ({ rows: [] }),
   ground: () => ({ groups: ["GROUND PROGRAM", "QFI GROUND PROGRAM"].map(opsTpl.group) }),
@@ -38,12 +38,16 @@ const opsBlank = {
   notes: () => ({ currencies: [], aircraft: [] }),
   duties: () => ({ groups: [opsTpl.dgroup("QFI", true), opsTpl.dgroup("ST TOW"), opsTpl.dgroup("TRAINEES"), opsTpl.dgroup("ATCO / AOSX")] }),
 };
-const OPS_HEADER_FIELDS = [
-  ["inTime", "In time", 3], ["lateIn", "Late in", 2], ["wxBrief", "WX/NTM brief"], ["modb", "MODB"], ["nightBrief", "Night ops brief"], ["eowd", "EOWD (end of week debrief)"],
-  ["sqnSii", "SQN SII of the qtr"], ["emer", "Emer of the day"], ["dailyReq", "Daily req"], ["tower", "Tower"], ["di", "DI"],
-  ["sdo", "Squadron duty officer"], ["tdo", "Trainee duty officer"], ["gym", "Gym training / SFT"],
-  ["plannedBy", "Planned by"], ["vettedBy", "Vetted & approved by"], ["currencyBy", "Currency checked by"],
+// Day details, in groups for the editor (Gordon, 12 Oct "arrange the boxes to be more neat"): [key, label, textarea rows, placeholder].
+const OPS_HEADER_GROUPS = [
+  ["Times & briefs", [["inTime", "In time", 3, "0505Z (WAVE 1 PLAYERS) / 0550Z (M LIM, TOK J) / 0805Z"], ["lateIn", "Late in", 2, "0825Z (KOH Y, SNG J)"],
+    ["opsBrief", "Ops brief", 0, "0530Z (NEO M)"], ["sodb", "SODB", 0, "0805Z (YEW P / PEK X)"], ["wxBrief", "WX / NTM brief", 0, "0550Z (TOK J / KOK J)"],
+    ["modb", "MODB", 0, ""], ["nightBrief", "Night ops brief", 0, ""], ["eowd", "EOWD (end of week debrief)", 0, "1600Z"]]],
+  ["Safety", [["sqnSii", "SQN SII of the qtr", 0, ""], ["emer", "Emer of the day", 0, ""]]],
+  ["Duty & day", [["dailyReq", "Daily req", 0, "18"], ["tower", "Tower", 0, "NA / NA / NA"], ["di", "DI", 0, ""], ["sdo", "Squadron duty officer", 0, ""], ["tdo", "Trainee duty officer", 0, ""], ["gym", "Gym training / SFT", 0, ""]]],
+  ["Sign-off", [["plannedBy", "Planned by", 0, ""], ["vettedBy", "Vetted & approved by", 0, ""], ["currencyBy", "Currency checked by", 0, ""]]],
 ];
+const OPS_HEADER_FIELDS = OPS_HEADER_GROUPS.flatMap(g => g[1]);
 
 /* ---------- helpers ---------- */
 const opsClone = o => JSON.parse(JSON.stringify(o));
@@ -987,7 +991,8 @@ function opsEditor(sec) {
 }
 const opsEd = {
   header(h) {
-    return `<div class="grid">${OPS_HEADER_FIELDS.map(([k, label, rows]) => `<label>${esc(label)}${rows ? oT(k, h[k], rows) : oI(k, h[k])}</label>`).join("")}</div>
+    return OPS_HEADER_GROUPS.map(([title, fs]) => `<div class="opshg"><div class="opshgt">${esc(title)}</div><div class="opshgg">${fs.map(([k, label, rows, ph]) =>
+      `<label class="${rows ? "wide" : ""}">${esc(label)}${rows ? oT(k, h[k], rows).replace("<textarea", `<textarea placeholder="${esc(ph ? "e.g. " + ph : "")}"`) : oI(k, h[k], "", ph ? "e.g. " + ph : "")}</label>`).join("")}</div></div>`).join("") + `
       <p class="hint">Planned sorties, planned hours, first takeoff, last landing and HH:MM are worked out from the flying program.</p>`;
   },
   flying(fl) {
@@ -1251,7 +1256,7 @@ function opsPrint(eod) {
   const fs = eod ? opsFlownStats(fl) : null;
   const nums = `<div class="nums">${[["Daily req", h.dailyReq], ["Sorties", st.sorties], ["Hours", st.hours], ["First T/O", opsHM(st.first)], ["Last LDG", opsHM(st.last)], ["HH:MM", opsHM(st.span)],
     ...(eod ? [["Flown", fs.sorties], ["Flown h", opsHrs(fs.mins) || "0.0"], ["CX / open", `${fs.cx} / ${fs.open}`]] : [])].map(([k, v]) => `<div><small>${k}</small><b>${e(v ?? "")}</b></div>`).join("")}</div>`;
-  const briefs = `<table class="kv">${kv("In time", h.inTime)}${kv("Late in", h.lateIn)}${kv("WX / NTM", h.wxBrief)}${kv("MODB", h.modb)}${kv("Night ops brief", h.nightBrief)}${kv("EOWD", h.eowd)}${kv("SII of the qtr", h.sqnSii)}${kv("Emer of the day", h.emer)}</table>`;
+  const briefs = `<table class="kv">${kv("In time", h.inTime)}${kv("Late in", h.lateIn)}${kv("Ops brief", h.opsBrief)}${kv("SODB", h.sodb)}${kv("WX / NTM", h.wxBrief)}${kv("MODB", h.modb)}${kv("Night ops brief", h.nightBrief)}${kv("EOWD", h.eowd)}${kv("SII of the qtr", h.sqnSii)}${kv("Emer of the day", h.emer)}</table>`;
   const pp = [["Tower", h.tower], ["DI", h.di], ["SDO", h.sdo], ["TDO", h.tdo]].filter(x => x[1]);
   const people = `<table class="kv">${Array.from({ length: Math.ceil(pp.length / 2) }, (_, i) => `<tr>${pp.slice(i * 2, i * 2 + 2).map(([k, v]) => `<th>${k}</th><td>${nl(v)}</td>`).join("")}</tr>`).join("")}${h.gym ? `<tr><th>Gym / SFT</th><td colspan="3">${nl(h.gym)}</td></tr>` : ""}</table>`;
   const duties = (opsGet("duties").groups || []).filter(g => (g.rows || []).length).map(g => `<table class="g dt"><thead><tr><th colspan="${waves.length + 1 + (g.hours ? 3 : 0)}">${e(g.name)}</th></tr><tr class="sub"><th>Name</th>${waves.map((w, j) => `<th>W${j + 1}</th>`).join("")}${g.hours ? "<th>In</th><th>Out</th><th>Duty</th>" : ""}</tr></thead><tbody>${opsDutyRows(g).map(r => {
@@ -1312,7 +1317,7 @@ const ATT = { ev: "", t: "" };
 function opsAttEvents(h) {
   const tm = s => { const m = /(\d{4})\s*Z?/.exec(String(s || "")); return m ? m[1] : ""; };
   const txt = `${h.inTime || ""}\n${h.lateIn || ""}`, find = re => { const m = re.exec(txt); return m ? m[1] : ""; };
-  return [["ops", "Ops brief", find(/OPS BRIEF\s*:?\s*(\d{4})/i)], ["sodb", "SODB", find(/SODB\s*:?\s*(\d{4})/i)], ["wx", "WX / NOTAM brief", tm(h.wxBrief)], ["modb", "MODB", tm(h.modb)], ["night", "Night ops brief", tm(h.nightBrief)], ["eowd", "EOWD", tm(h.eowd)], ["other", "Other time", ""]];
+  return [["ops", "Ops brief", tm(h.opsBrief) || find(/OPS BRIEF\s*:?\s*(\d{4})/i)], ["sodb", "SODB", tm(h.sodb) || find(/SODB\s*:?\s*(\d{4})/i)], ["wx", "WX / NOTAM brief", tm(h.wxBrief)], ["modb", "MODB", tm(h.modb)], ["night", "Night ops brief", tm(h.nightBrief)], ["eowd", "EOWD", tm(h.eowd)], ["other", "Other time", ""]];
 }
 function opsAttPeople(fl) {
   const flying = new Set(); for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) for (const n of [a.crew1, a.crew2]) if (opsNorm(n)) flying.add(opsNorm(n));
@@ -1400,6 +1405,12 @@ function opsFlownStats(fl) {
   const s = document.createElement("style");
   s.textContent = `
 .opsautot{color:var(--muted)}
+.opsaddtag{white-space:normal!important;line-height:1.1;max-width:100%;text-align:center}@media (max-width:760px){table.opsfly td.cs{white-space:normal!important;overflow-wrap:anywhere;font-size:.85rem!important}}
+@media (min-width:1200px){.opsrow .opst{min-width:0}.opsrow .opst td{overflow-wrap:anywhere}}
+.flytv .flypane.sim td:last-child,.flytv .flypane.sim th:last-child{white-space:normal!important;overflow-wrap:anywhere}
+.opshg{margin:0 0 12px}.opshgt{font:700 .72rem var(--cond);text-transform:uppercase;letter-spacing:.07em;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:3px;margin-bottom:8px}
+.opshgg{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr));gap:8px 14px}.opshgg label{margin:0;min-width:0}.opshgg label.wide{grid-column:span 2}
+@media (max-width:520px){.opshgg label.wide{grid-column:auto}}.opshgg input,.opshgg textarea{width:100%;margin-top:3px}
 table.opsgnd{table-layout:fixed;width:100%}table.opsgnd td{overflow-wrap:anywhere}
 .attbtn{opacity:.7}#dlgAtt{width:min(1100px,calc(100vw - 16px))}.attbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 10px}.attbar select,.attbar input{width:auto;margin:0;padding:4px 6px}.attbar input{width:70px}
 .attcols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:14px}.attcols h3{margin:0 0 6px;font-size:1rem}.attg{margin:0 0 8px}.attg div{line-height:1.5}
@@ -1450,7 +1461,7 @@ table.opsfly .act{font-variant-numeric:tabular-nums;white-space:nowrap;color:var
 table.opsfly th.act{color:var(--muted)}
 table.opsfly td.act{background:color-mix(in srgb,var(--ok,#1F8A4C) 6%,transparent)}
 table.opsfly td small{display:block;color:var(--muted);font-size:.74rem;white-space:nowrap;margin-top:2px}
-table.opsfly td.cs{font:700 .95rem var(--cond);letter-spacing:.02em;white-space:nowrap}
+table.opsfly td.cs{font:700 .95rem var(--cond);letter-spacing:.02em;white-space:nowrap;padding-right:8px}
 table.opsfly td.no{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600}
 table.opsfly td.n{color:var(--muted)}
 table.opsfly td.fcrew{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
