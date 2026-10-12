@@ -1009,6 +1009,8 @@ const opsEd = {
   },
   flying(fl) {
     setTimeout(opsPlanRefresh);
+    // Wide screens: one compact grid per wave (a row per aircraft line) so most of the day fits on one screen (Gordon, 12 Oct).
+    if (opsEdGrid()) return opsEdFlyGrid(fl);
     return (fl.waves || []).map((w, wi) => `<div class="blk">
       <div class="tools" style="margin-bottom:4px"><b class="opswavename">${esc(w.name)}</b>${oC(`waves.${wi}.night`, w.night, "Night wave")}<span class="grow"></span>${oTools("waves", wi)}</div>
       <div class="grid"><label>SXO${oP(`waves.${wi}.sxo`, w.sxo)}</label><label>OPS O${oI(`waves.${wi}.opsO`, w.opsO, "", "e.g. LIM Y / LEE L (TKOVER @ 1100Z)")}</label></div>
@@ -1022,7 +1024,7 @@ const opsEd = {
           ${(f.ac || []).map((a, ai) => { const q = `${p}.ac.${ai}`; return `<tr><td>${oI(q + ".n", a.n, "40px")}</td><td>${oP(q + ".crew1", a.crew1, "120px")}</td><td>${oP(q + ".crew2", a.crew2, "120px")}</td><td>${oI(q + ".mission", a.mission, "110px")}</td><td>${oI(q + ".tail", a.tail, "60px")}</td><td>${oI(q + ".config", a.config, "60px")}</td><td>${oI(q + ".rmks", a.rmks, "200px")}</td><td>${oC(q + ".opsAdd", a.opsAdd, "Ops add")}</td><td>${oB("del", p + ".ac", ai, "✕", "", "Remove aircraft")}</td></tr>${opsIrtBad(a) ? `<tr class="opswarn"><td colspan="9">⚠ ${OPS_IRT_MSG}${a.crew2 ? ` (${esc(a.crew2)} isn't ticked as IRE)` : " (no back seat)"}</td></tr>` : ""}`; }).join("")}
         </tbody></table></div>${oB("add", p + ".ac", "", "+ Aircraft", "ac")}</div>`; }).join("")}
       <div class="tools">${oB("add", `waves.${wi}.flights`, "", "+ Flight", "flight")}</div></div>`).join("")
-      + `<div class="tools">${oB("add", "waves", "", "+ Wave", "wave")}${oB("add", "waves", "", "+ Night wave", "nwave")}</div>` + `<p class="hint"><b>Key in the ETD first:</b> ETA (ETD + ${cfgN("fly.eta")} min), step (ETD − ${cfgN("fly.step")} min) and brief (step − ${cfgN("fly.brief")} min) fill in by themselves (shown in grey). Type over any of them to match the ops or WX / NOTAM brief; clear a box to go back to the worked-out time. Times as 0725 (Zulu). Tick "Ops add" on the flight (whole flight) or on one aircraft line (e.g. #1 ops add): they show as * and don't count in planned sorties or hours.</p>`;
+      + `<div class="tools">${oB("add", "waves", "", "+ Wave", "wave")}${oB("add", "waves", "", "+ Night wave", "nwave")}</div>` + `<p class="hint"><b>Key in the ETD first:</b> ETA (ETD + ${cfgN("fly.eta")} min), step (ETD − ${cfgN("fly.step")} min) and brief (step − ${cfgN("fly.brief")} min) fill in by themselves (shown in grey). Type over any of them to match the ops or WX / NOTAM brief; clear a box to go back to the worked-out time. Times as 0725 (Zulu). Tick "Ops add" on an aircraft line (e.g. #1 ops add): it shows as * and doesn't count in planned sorties or hours.</p>`;
   },
   sim(sim) {
     return (sim.rows || []).map((s, si) => { const p = `rows.${si}`; return `<div class="blk flt"><div class="tablewrap">
@@ -1066,6 +1068,42 @@ const opsEd = {
       <p class="hint">The names are the squadron's standing list and carry over to each new day. <a href="#" data-ops="names">${open ? "Done changing names" : "Change standing names"}</a> (when someone is posted in or out).</p>`;
   },
 };
+// Compact flying editor for wide screens (Gordon, 12 Oct: "need to scroll a lot to key in and plan"): one table per wave,
+// one row per aircraft line, the formation's times / callsign / DL / vehicle / area once on its first row.
+const opsEdGrid = () => window.innerWidth >= 1100;
+const OPS_GRID_COLS = [4, 4, 4.5, 4, 6.5, 4, 6, 6.5, 6.5, 2.5, 7, 7, 6.5, 4, 3.5, 11.5, 2.5, 2, 7.5];
+// Text that can run long wraps onto more lines instead of hiding (one-line box that grows; Enter doesn't add a line).
+const oA = (p, v) => `<textarea class="ag" data-p="${p}" rows="1">${esc(v ?? "")}</textarea>`;
+const opsAgFit = el => { el.style.height = "auto"; el.style.height = el.scrollHeight + 2 + "px"; };
+function opsEdFlyGrid(fl) {
+  const head = `<colgroup>${OPS_GRID_COLS.map(w => `<col style="width:${w}%">`).join("")}</colgroup><thead><tr><th>Brief</th><th>Step</th><th class="opsetdh" title="Key in the ETD first: ETA, step and brief fill in by themselves">ETD ⬅</th><th>ETA</th><th>Callsign</th><th>DL</th><th>Vehicle</th><th>Area</th><th>Area time</th>
+    <th class="sep">#</th><th>Aircrew</th><th>Aircrew</th><th>Mission</th><th>A/C</th><th>Cfg</th><th>Rmks</th><th class="wr" title="Ops add: shows as *, not counted">Ops add</th><th></th><th></th></tr></thead>`;
+  return (fl.waves || []).map((w, wi) => {
+    const rl = Math.max(1, String(w.rmks || "").split("\n").length);
+    const body = (w.flights || []).map((f, fi) => {
+      const p = `waves.${wi}.flights.${fi}`, ac = f.ac || [], n = Math.max(1, ac.length), rs = n > 1 ? ` rowspan="${n}"` : "";
+      const fc = `<td${rs}>${opsAutoIn(p, f, "brief")}</td><td${rs}>${opsAutoIn(p, f, "step")}</td><td${rs}>${oI(p + ".etd", f.etd, "", "0715").replace("<input", '<input class="opsetd"')}</td><td${rs}>${opsAutoIn(p, f, "eta")}</td>
+        <td${rs}>${oI(p + ".callsign", f.callsign)}</td><td${rs}>${oSel(p + ".dl", f.dl, [["", "-"], ...OPS_DL.map(x => [x, x])])}</td><td${rs}>${oSel(p + ".veh", f.veh, [["", "Auto"], ...OPS_VEH.map(x => [x, x])])}<span class="opsplan" data-plan="${wi}.${fi}"></span></td>
+        <td${rs}>${oA(p + ".area", f.area)}</td><td${rs}>${oA(p + ".areaTime", f.areaTime)}</td>`;
+      const ft = `<td${rs} class="ftools">${oB("add", p + ".ac", "", "+ A/C", "ac", "Add an aircraft line")}${oTools(`waves.${wi}.flights`, fi)}</td>`;
+      const line = (a, ai) => { const q = `${p}.ac.${ai}`;
+        return `<td class="sep">${oI(q + ".n", a.n)}</td><td>${oP(q + ".crew1", a.crew1)}</td><td>${oP(q + ".crew2", a.crew2)}</td><td>${oA(q + ".mission", a.mission)}</td><td>${oI(q + ".tail", a.tail)}</td><td>${oI(q + ".config", a.config)}</td>
+          <td>${oA(q + ".rmks", a.rmks)}${opsIrtBad(a) ? `<div class="opsirt" title="${esc(OPS_IRT_MSG)}">⚠ IRT: ${a.crew2 ? `${esc(a.crew2)} isn't IRE` : "no back seat"}</div>` : ""}</td>
+          <td class="c"><input type="checkbox" data-p="${q}.opsAdd" ${a.opsAdd ? "checked" : ""} title="Ops add"></td><td>${oB("del", p + ".ac", ai, "✕", "", "Remove aircraft")}</td>`; };
+      const rows = ac.length ? ac.map((a, ai) => `<tr${a.opsAdd ? ' class="oadd"' : ""}>${ai ? "" : fc}${line(a, ai)}${ai ? "" : ft}</tr>`) : [`<tr>${fc}<td class="sep" colspan="9"><span class="hint">No aircraft. Tap + A/C.</span></td>${ft}</tr>`];
+      return `<tbody class="fl">${rows.join("")}</tbody>`;
+    }).join("");
+    return `<div class="blk opsgw${w.night ? " night" : ""}">
+      <div class="opsgwh"><b class="opswavename">${esc(w.name)}</b>${oC(`waves.${wi}.night`, w.night, "Night")}
+        <label class="inl">SXO${oP(`waves.${wi}.sxo`, w.sxo)}</label><label class="inl wide">OPS O${oI(`waves.${wi}.opsO`, w.opsO, "", "e.g. LIM Y / LEE L (TKOVER @ 1100Z)")}</label>
+        <span class="opswavest" data-wst="${wi}"></span>${oTools("waves", wi)}</div>
+      <label class="inl rmk">Remarks<textarea data-p="waves.${wi}.rmks" rows="${rl}" placeholder="Airfield notes for this wave">${esc(w.rmks || "")}</textarea></label>
+      ${(w.flights || []).length ? `<div class="tablewrap"><table class="opsgrid">${head}${body}</table></div>` : ""}
+      <div class="tools">${oB("add", `waves.${wi}.flights`, "", "+ Flight", "flight")}</div></div>`;
+  }).join("")
+    + `<div class="tools">${oB("add", "waves", "", "+ Wave", "wave")}${oB("add", "waves", "", "+ Night wave", "nwave")}</div>`
+    + `<p class="hint"><b>Key in the ETD first</b> (blue box): ETA (ETD + ${cfgN("fly.eta")} min), step (ETD − ${cfgN("fly.step")} min) and brief (step − ${cfgN("fly.brief")} min) fill in by themselves (grey). Type over any of them to match the ops or WX / NOTAM brief (amber); clear a box to go back to the worked-out time. Times as 0725 (Zulu). Tick "Ops add" on a line: it shows as * and doesn't count in planned sorties or hours. + A/C adds a line to that formation.</p>`;
+}
 // Flight times worked out from the ETD (Gordon, 10 Oct): ETA = ETD + 1 h, step = ETD − 1 h, brief = step − 45 min.
 // A typed value overrides (f.man[k] = true); clearing the box goes back to the worked-out time.
 const OPS_AUTO_T = ["eta", "step", "brief"]; // offsets from the ETD come from Settings (fly.eta / fly.step / fly.brief)
@@ -1102,6 +1140,9 @@ function opsSetPath(obj, path, val) {
 function opsPlanRefresh() {
   if (!OPS.edit || OPS.edit.section !== "flying") return;
   const plan = opsPlan(OPS.edit.data);
+  document.querySelectorAll("#opsEdit textarea.ag").forEach(opsAgFit);
+  document.querySelectorAll("#opsEdit [data-wst]").forEach(el => { const w = (OPS.edit.data.waves || [])[+el.dataset.wst]; if (!w) return; const ws = opsStats({ waves: [w] });
+    el.textContent = `${ws.sorties} sortie${ws.sorties === 1 ? "" : "s"}${ws.first != null ? ` · ${opsZ4(ws.first)}–${opsZ4(ws.last)}Z` : ""}`; });
   document.querySelectorAll("#opsEdit [data-plan]").forEach(el => { const p = plan[el.dataset.plan]; if (!p) return;
     el.innerHTML = `${p.veh ? `<b>${esc(p.veh)}</b>${p.auto ? "" : " (set)"}` : ""}${p.people ? ` <span class="hint">${p.people} crew</span>` : ""}${[...p.warn, p.dlWarn].filter(Boolean).map(w => `<span class="opsplanw">⚠ ${esc(w)}</span>`).join("")}`; });
 }
@@ -1113,10 +1154,12 @@ function opsRerenderEdit() {
 }
 document.addEventListener("input", e => {
   const el = e.target; if (!OPS.edit || !el.dataset || !el.dataset.p || !el.closest("#opsEdit")) return;
+  if (el.classList.contains("ag")) { if (/\n/.test(el.value)) el.value = el.value.replace(/\s*\n\s*/g, " "); opsAgFit(el); }
   opsSetPath(OPS.edit.data, el.dataset.p, el.type === "checkbox" ? el.checked : el.value);
   if (OPS.edit.section === "flying") { opsAutoTimes(el); opsPlanRefresh(); }
   if (OPS.edit.section === "duties" && el.dataset.p.endsWith(".name")) return; // auto hints refresh on next re-render
 });
+document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.matches && e.target.matches("#opsEdit textarea.ag")) e.preventDefault(); });
 document.addEventListener("change", e => {
   const el = e.target; if (!OPS.edit || !el.dataset || !el.dataset.p || !el.closest("#opsEdit")) return;
   if (el.dataset.auto && !el.value.trim()) { // cleared: back to the worked-out time
@@ -1626,6 +1669,27 @@ body.tvmode .flytvr td.nm{white-space:nowrap!important}.flytvr td,.flytvr th{whi
 .opsauto{font-size:.7rem;color:var(--muted);margin-top:1px}
 .opsfixed{white-space:nowrap;display:inline-block;padding:4px 6px 4px 0}
 .opswavename{font:700 1.1rem var(--cond);margin-right:8px}
+.opsed .opsgw{padding:6px 8px;margin-bottom:8px}.opsed .opsgw.night{border-color:color-mix(in srgb,var(--in) 50%,var(--line))}
+.opsgwh{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;margin-bottom:4px}.opsgwh .opswavest{margin-left:auto;padding:0;color:var(--muted)}
+.opsed label.inl{display:flex;align-items:center;gap:6px;margin:0;font-size:.78rem;white-space:nowrap}.opsed label.inl input{width:150px;margin:0}.opsed label.inl.wide input{width:280px}
+.opsed label.inl.rmk{align-items:flex-start;margin:0 0 4px}.opsed label.inl.rmk textarea{flex:1;margin:0;resize:vertical}
+.opsed table.opsgrid{table-layout:fixed;width:100%;min-width:1100px;border-collapse:collapse;margin:0 0 4px}
+.opsed table.opsgrid th.wr{white-space:normal;line-height:1.05}.opsed table.opsgrid th{font-size:.7rem;text-align:left;padding:2px 2px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.opsed table.opsgrid td{padding:1px 2px;vertical-align:top}
+.opsed table.opsgrid textarea.ag{width:100%;min-height:0;margin:0;padding:4px;font-size:.8rem;line-height:1.25;resize:none;overflow:hidden;box-sizing:border-box;display:block}
+.opsed table.opsgrid input:not([type=checkbox]),.opsed table.opsgrid select{width:100%!important;min-width:0;margin:0;padding:4px;font-size:.8rem;line-height:1.25;box-sizing:border-box}
+.opsed table.opsgrid select{padding:3px 0 3px 2px;background-position:right 2px center}
+.opsed table.opsgrid .sep{border-left:2px solid var(--line);padding-left:4px}
+.opsed table.opsgrid td.c{text-align:center;vertical-align:middle}.opsed table.opsgrid td.c input{margin:0}
+.opsed table.opsgrid tbody.fl{border-top:1px solid var(--line)}.opsed table.opsgrid tbody.fl:nth-of-type(even){background:color-mix(in srgb,var(--muted) 9%,transparent)}
+.opsed table.opsgrid tbody.fl td{padding-top:2px;padding-bottom:2px}
+.opsed table.opsgrid tr.oadd td:not([rowspan]) input{font-style:italic}
+.opsed table.opsgrid .btn.small{padding:2px 4px;min-height:0;font-size:.75rem}
+.opsed table.opsgrid td.ftools{white-space:nowrap}.opsed table.opsgrid td.ftools .btn{margin:0 1px 0 0}.opsed table.opsgrid td.ftools .tools{display:inline-flex;gap:2px}
+.opsed table.opsgrid .opsplan{display:block;font-size:.7rem;line-height:1.2;margin-top:1px;white-space:nowrap}.opsed table.opsgrid .opsplan .opsplanw{max-width:none;font-size:.68rem}
+.opsed table.opsgrid .opsirt{font-size:.7rem;line-height:1.2}
+.opsed table.opsgrid input::-webkit-calendar-picker-indicator{display:none!important}
+@media (max-width:1499px){.opsed table.opsgrid input:not([type=checkbox]),.opsed table.opsgrid select,.opsed table.opsgrid textarea.ag{font-size:.74rem;padding-left:3px;padding-right:2px}.opsed table.opsgrid td.ftools{white-space:normal}}
 #opsPrint{position:absolute;left:-100000px;top:0;visibility:hidden}
 #opsPrint.measure{visibility:hidden}
 #opsPrint .pg{font:7.4pt/1.28 Arial,Helvetica,sans-serif;color:#111;background:#fff}
