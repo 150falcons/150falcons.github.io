@@ -30,7 +30,7 @@ const opsTpl = {
   xgroup: () => ({ name: "ADDITIONAL (AUDITORS ETC.)", extra: true, hours: false, rows: [] }),
 };
 const opsBlank = {
-  header: () => ({ inTime: "", lateIn: "", wxBrief: "", modb: "", nightBrief: "", sqnSii: "", emer: "", dailyReq: "", tower: "", di: "", sdo: "", tdo: "", gym: "", plannedBy: "", vettedBy: "", currencyBy: "" }),
+  header: () => ({ inTime: "", lateIn: "", wxBrief: "", modb: "", nightBrief: "", eowd: "", sqnSii: "", emer: "", dailyReq: "", tower: "", di: "", sdo: "", tdo: "", gym: "", plannedBy: "", vettedBy: "", currencyBy: "" }),
   flying: () => ({ waves: [] }),
   sim: () => ({ rows: [] }),
   ground: () => ({ groups: ["GROUND PROGRAM", "QFI GROUND PROGRAM"].map(opsTpl.group) }),
@@ -39,7 +39,7 @@ const opsBlank = {
   duties: () => ({ groups: [opsTpl.dgroup("QFI", true), opsTpl.dgroup("ST TOW"), opsTpl.dgroup("TRAINEES"), opsTpl.dgroup("ATCO / AOSX")] }),
 };
 const OPS_HEADER_FIELDS = [
-  ["inTime", "In time", 3], ["lateIn", "Late in", 2], ["wxBrief", "WX/NTM brief"], ["modb", "MODB"], ["nightBrief", "Night ops brief"],
+  ["inTime", "In time", 3], ["lateIn", "Late in", 2], ["wxBrief", "WX/NTM brief"], ["modb", "MODB"], ["nightBrief", "Night ops brief"], ["eowd", "EOWD (end of week debrief)"],
   ["sqnSii", "SQN SII of the qtr"], ["emer", "Emer of the day"], ["dailyReq", "Daily req"], ["tower", "Tower"], ["di", "DI"],
   ["sdo", "Squadron duty officer"], ["tdo", "Trainee duty officer"], ["gym", "Gym training / SFT"],
   ["plannedBy", "Planned by"], ["vettedBy", "Vetted & approved by"], ["currencyBy", "Currency checked by"],
@@ -691,7 +691,7 @@ function opsBar() {
     fly && !OPS.edit ? `<button class="btn small${OPS.logOpen ? " primary" : ""}" data-ops="log">${OPS.logOpen ? "Done logging" : "Log flown times"}</button>` : "",
     `<button class="btn small" data-ops="copy">Copy from…</button>`,
     here && OPS_ORDER.some(opsData) && !OPS.edit ? `<button class="btn small danger" data-ops="clear">Clear day</button>` : ""].join("") : "";
-  const print = `<button class="btn small" data-ops="pdf" title="Daily programme to send out">Daily PDF</button>${fly ? `<button class="btn small" data-ops="pdfeod" title="End-of-day copy with flown times, for filing">End of day PDF</button>` : ""}`;
+  const print = `<button class="btn small" data-ops="pdf" title="Daily programme to send out">Daily PDF</button>${fly ? `<button class="btn small" data-ops="pdfeod" title="End-of-day copy with flown times, for filing">End of day PDF</button>` : ""}${here && OPS_ORDER.some(opsData) && !OPS.edit ? `<button class="btn small attbtn" data-ops="att" title="Who should be at the Ops brief / WX-NOTAM / EOWD, and who's away">Attendance</button>` : ""}`;
   return `<div class="opsbar grp">
     ${grp("Day", `<button class="btn small" data-ops="day" data-n="-1" aria-label="Previous day">‹</button><input type="date" id="opsDate" value="${esc(OPS.day)}"><button class="btn small" data-ops="day" data-n="1" aria-label="Next day">›</button><button class="btn small" data-ops="today">Today</button>`)}
     <span class="grow"></span>
@@ -934,7 +934,7 @@ const opsView = {
   },
   ground(g) {
     const gs = (g.groups || []).filter(x => (x.rows || []).length);
-    return gs.map(x => `<h3 class="opssub">${esc(x.name)}</h3><div class="tablewrap"><table class="opst opsnarrow"><thead><tr><th>Time</th><th>Event</th><th>Personnel</th><th>Venue</th></tr></thead><tbody>${x.rows.map(r =>
+    return gs.map(x => `<h3 class="opssub">${esc(x.name)}</h3><div class="tablewrap"><table class="opst opsnarrow opsgnd"><colgroup><col style="width:13%"><col style="width:33%"><col style="width:34%"><col style="width:20%"></colgroup><thead><tr><th>Time</th><th>Event</th><th>Personnel</th><th>Venue</th></tr></thead><tbody>${x.rows.map(r =>
       `<tr><td>${esc(r.time)}</td><td>${esc(r.event)}</td><td>${opsX(r.personnel)}</td><td>${esc(r.venue)}</td></tr>`).join("")}</tbody></table></div>`).join("");
   },
   airfield(a) {
@@ -1145,6 +1145,7 @@ document.addEventListener("click", async e => {
   else if (a === "clear") opsClearDay(el);
   else if (a === "pdf") opsPrint(false);
   else if (a === "pdfeod") opsPrint(true);
+  else if (a === "att") opsAttendance();
   else if (a === "log") { OPS.logOpen = !OPS.logOpen; renderOps($("#view")); if (OPS.logOpen) { const c = $("#ops-log"); if (c) c.scrollIntoView({ block: "start" }); } }
   else if (a === "logplan") opsLogPlanned(el);
   else if (a === "logcx") { const L = opsLogLine(el.dataset.k).log || {}; opsLogSave(el.dataset.k, null, null, L.st === "cx" ? "" : "cx", true); }
@@ -1250,7 +1251,7 @@ function opsPrint(eod) {
   const fs = eod ? opsFlownStats(fl) : null;
   const nums = `<div class="nums">${[["Daily req", h.dailyReq], ["Sorties", st.sorties], ["Hours", st.hours], ["First T/O", opsHM(st.first)], ["Last LDG", opsHM(st.last)], ["HH:MM", opsHM(st.span)],
     ...(eod ? [["Flown", fs.sorties], ["Flown h", opsHrs(fs.mins) || "0.0"], ["CX / open", `${fs.cx} / ${fs.open}`]] : [])].map(([k, v]) => `<div><small>${k}</small><b>${e(v ?? "")}</b></div>`).join("")}</div>`;
-  const briefs = `<table class="kv">${kv("In time", h.inTime)}${kv("Late in", h.lateIn)}${kv("WX / NTM", h.wxBrief)}${kv("MODB", h.modb)}${kv("Night ops brief", h.nightBrief)}${kv("SII of the qtr", h.sqnSii)}${kv("Emer of the day", h.emer)}</table>`;
+  const briefs = `<table class="kv">${kv("In time", h.inTime)}${kv("Late in", h.lateIn)}${kv("WX / NTM", h.wxBrief)}${kv("MODB", h.modb)}${kv("Night ops brief", h.nightBrief)}${kv("EOWD", h.eowd)}${kv("SII of the qtr", h.sqnSii)}${kv("Emer of the day", h.emer)}</table>`;
   const pp = [["Tower", h.tower], ["DI", h.di], ["SDO", h.sdo], ["TDO", h.tdo]].filter(x => x[1]);
   const people = `<table class="kv">${Array.from({ length: Math.ceil(pp.length / 2) }, (_, i) => `<tr>${pp.slice(i * 2, i * 2 + 2).map(([k, v]) => `<th>${k}</th><td>${nl(v)}</td>`).join("")}</tr>`).join("")}${h.gym ? `<tr><th>Gym / SFT</th><td colspan="3">${nl(h.gym)}</td></tr>` : ""}</table>`;
   const duties = (opsGet("duties").groups || []).filter(g => (g.rows || []).length).map(g => `<table class="g dt"><thead><tr><th colspan="${waves.length + 1 + (g.hours ? 3 : 0)}">${e(g.name)}</th></tr><tr class="sub"><th>Name</th>${waves.map((w, j) => `<th>W${j + 1}</th>`).join("")}${g.hours ? "<th>In</th><th>Out</th><th>Duty</th>" : ""}</tr></thead><tbody>${opsDutyRows(g).map(r => {
@@ -1297,6 +1298,87 @@ function opsPrintFit(el) {
   pg.style.width = W / z + "px"; pg.style.zoom = z; el.classList.remove("measure");
 }
 
+/* ---------- Attendance for a brief (Gordon, 12 Oct): who should be at the Ops brief / WX-NOTAM / EOWD and who's away ---------- */
+// For the briefer to copy onto his slides. People: every login except engineers and FSI; ST Tow only if flying that day;
+// trainees from the roster. Away when, at the brief time (Z): on leave / out of base (movement board, today), late in (named
+// with a later time in the In time / Late in lines), flying (flight brief to landing + 30 min), in sims (sim start − 1 h to
+// end + 30 min, incl. SXO / SUPP named in the sim remarks), SXO / OPS O of a wave under way, a ground event, or a typed duty note.
+const ATT = { ev: "", t: "" };
+function opsAttEvents(h) {
+  const tm = s => { const m = /(\d{4})\s*Z?/.exec(String(s || "")); return m ? m[1] : ""; };
+  const ob = /(?:OPS BRIEF|SODB)\s*:?\s*(\d{4})/i.exec(`${h.inTime || ""}\n${h.lateIn || ""}`);
+  return [["ops", "Ops brief", ob ? ob[1] : ""], ["wx", "WX / NOTAM brief", tm(h.wxBrief)], ["modb", "MODB", tm(h.modb)], ["night", "Night ops brief", tm(h.nightBrief)], ["eowd", "EOWD", tm(h.eowd)], ["other", "Other time", ""]];
+}
+function opsAttPeople(fl) {
+  const flying = new Set(); for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) for (const n of [a.crew1, a.crew2]) if (opsNorm(n)) flying.add(opsNorm(n));
+  const out = [], seen = new Set(), add = (grp, name, extra) => { const n = opsNorm(name); if (!n || seen.has(n)) return; seen.add(n); out.push({ grp, name: n, ...extra }); };
+  const profs = (S.profiles || []).filter(p => p.display_name && !p.trainee_id);
+  profs.filter(p => p.role === "admin" && !["CC", "FIC"].includes(p.appointment)).sort(instrSort).forEach(p => add("QFI", p.display_name));
+  profs.filter(p => p.role === "admin" && p.appointment === "FIC").forEach(p => add("FIC", p.display_name));
+  profs.filter(p => p.staff_role === "ST" && flying.has(opsNorm(p.display_name))).forEach(p => add("ST Tow", p.display_name));
+  const rank = c => /PGF/i.test(c) ? 0 : /FWC/i.test(c) ? 1 : /WSO/i.test(c) ? 2 : 3;
+  active().slice().sort((a, b) => rank(a.course || "") - rank(b.course || "") || String(a.course || "").localeCompare(String(b.course || ""), undefined, { numeric: true }) || a.name.localeCompare(b.name)).forEach(t => add("Trainees", t.name, { tid: t.id, course: t.course }));
+  profs.filter(p => p.role === "admin" && p.appointment === "CC").forEach(p => add("CEN", p.display_name));
+  profs.filter(p => ["HD CEN", "CEN"].includes(p.staff_role)).sort((a, b) => (a.staff_role === "HD CEN" ? 0 : 1) - (b.staff_role === "HD CEN" ? 0 : 1)).forEach(p => add("CEN", p.display_name));
+  profs.filter(p => p.role !== "admin" && (!p.staff_role || p.staff_role === "AOSX")).forEach(p => add("AOSX", p.display_name));
+  profs.filter(p => p.staff_role === "ATCO").forEach(p => add("ATCO", p.display_name));
+  return out;
+}
+// Why a person isn't at the brief at time t (minutes Z), or "".
+function opsAttWhy(x, t, ctx) {
+  const { fl, sim, ground, duties, h, today, wins } = ctx, n = x.name, hm = m => opsZ4(((m % 1440) + 1440) % 1440);
+  if (x.tid) {
+    const lv = (S.leaves || []).find(l => l.trainee_id === x.tid && (!l.until || l.until >= OPS.day));
+    if (lv) return `On leave${lv.until ? " till " + cuFmt(lv.until) : ""}`;
+    if (today) { const o = (S.open || []).find(m => m.status === "out" && (m.member_ids || []).includes(x.tid)); if (o) return `Out of base (${o.destination || "booked out"})`; }
+  }
+  for (const [txt, late] of [[h.lateIn, true], [h.inTime, false]]) for (const m of String(txt || "").matchAll(/(\d{4})\s*Z?\s*\(([^)]*)\)/g)) {
+    if (m[2].split(/[,/]/).some(s => opsNorm(s) === n)) { const it = opsMin(m[1]); if (it != null && it > t) return `Late in ${m[1]}Z`; if (late) break; }
+  }
+  for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) {
+    if (!opsCrewHas(a, n)) continue;
+    const etd = opsMin(f.etd), s = [f.brief, f.step].map(opsMin).find(v => v != null) ?? (etd != null ? etd + opsAutoOff().brief : null), e = opsMin(f.eta);
+    if (s != null && e != null && t >= s && t <= e + 30) return `Flying · ${[f.callsign, a.n].filter(Boolean).join(" ")} ${f.etd}–${f.eta}Z (${w.name})`;
+  }
+  for (const r of sim.rows || []) for (const a of r.ac || []) {
+    const role = opsSimRole(a, n); if (!role) continue;
+    const s = opsMin(r.etd), e = opsMin(r.eta);
+    if (s != null && e != null && t >= s - 60 && t <= e + 30) return `Sims${role !== "crew" ? " (" + role + ")" : ""} · ${r.callsign || ""} ${r.etd}–${r.eta}Z`;
+  }
+  for (let i = 0; i < (fl.waves || []).length; i++) { const w = fl.waves[i], win = wins[i]; if (!win || win.s == null || t < win.s || t > win.e) continue;
+    if (opsHas(w.sxo, n)) return `SXO ${w.name}`; if (opsHas(w.opsO, n)) return `OPS O ${w.name}`; }
+  for (const g of ground.groups || []) for (const r of g.rows || []) {
+    if (!opsGroundHas(r.personnel, n) && !(x.course && opsGroundHas(r.personnel, x.course))) continue;
+    const s = opsMin(r.time), e = opsEndMin(r.time) ?? (s != null ? s + 60 : null);
+    if (s != null && t >= s && t < e) return `${r.event || "Ground event"} ${hm(s)}Z${r.venue ? " · " + r.venue : ""}`;
+  }
+  const wi = opsTimeWave(hm(t), wins);
+  if (wi >= 0) for (const g of duties.groups || []) { const r = (g.rows || []).find(r => opsNorm(r.name) === n); const c = r && String((r.cells || [])[wi] || "").trim(); if (c) return `Duty: ${c}`; }
+  return "";
+}
+function opsAttendance() {
+  if (OPS.rowsDay !== OPS.day) return toast("Still loading.");
+  const h = opsGet("header"), evs = opsAttEvents(h);
+  if (!ATT.ev || !evs.find(e => e[0] === ATT.ev)) { const f = evs.find(e => e[2]) || evs[evs.length - 1]; ATT.ev = f[0]; ATT.t = f[2]; }
+  let d = document.getElementById("dlgAtt");
+  if (!d) { d = document.createElement("dialog"); d.id = "dlgAtt"; document.body.appendChild(d);
+    d.onclick = e => { if (e.target.closest("[data-x=close]") || e.target === d) return d.close();
+      if (e.target.closest("[data-x=copy]")) { const txt = d.querySelector("textarea").value; (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast("Copied. Paste it into your slides."), () => { d.querySelector("textarea").select(); document.execCommand("copy"); toast("Copied."); }); } };
+    d.onchange = e => { if (e.target.id === "attEv") { ATT.ev = e.target.value; ATT.t = (opsAttEvents(opsGet("header")).find(x => x[0] === ATT.ev) || [])[2] || ATT.t; } if (e.target.id === "attT") ATT.t = e.target.value.replace(/\D/g, "").padStart(4, "0").slice(-4); opsAttendance(); }; }
+  const t = opsMin(ATT.t), fl = opsNameWaves(opsGet("flying")), ev = evs.find(e => e[0] === ATT.ev);
+  const ctx = { fl, sim: opsGet("sim"), ground: opsGet("ground"), duties: opsGet("duties"), h, today: OPS.day === todayStr(), wins: opsWindows(fl) };
+  const ppl = opsAttPeople(fl).map(x => ({ ...x, why: t == null ? "" : opsAttWhy(x, t, ctx) }));
+  const grps = [...new Set(ppl.map(x => x.grp))], here = ppl.filter(x => !x.why), away = ppl.filter(x => x.why);
+  const title = `${(ev ? ev[1] : "Brief").toUpperCase()}${t != null ? " " + ATT.t + "Z" : ""} · ${opsLongDay(OPS.day).toUpperCase()}`;
+  const text = [title, "", `ATTENDING (${here.length})`, ...grps.map(g => { const ns = here.filter(x => x.grp === g).map(x => x.name); return ns.length ? `${g}: ${ns.join(", ")}` : ""; }).filter(Boolean), "", `NOT ATTENDING (${away.length})`, ...away.map(x => `${x.name} – ${x.why}`)].join("\n");
+  d.innerHTML = `<div class="dlg"><div class="opshead"><h2>Attendance</h2><span class="grow"></span><button class="btn small primary" data-x="copy">Copy list</button><button class="btn small" data-x="close">Close</button></div>
+    <div class="attbar"><select id="attEv">${evs.map(([k, l, tt]) => `<option value="${k}"${k === ATT.ev ? " selected" : ""}>${esc(l)}${tt ? " · " + tt + "Z" : ""}</option>`).join("")}</select><label>Time (Z) <input id="attT" value="${esc(ATT.t)}" inputmode="numeric" maxlength="4" placeholder="0800"></label><span class="hint">${t == null ? "Key in the brief time." : `${here.length} attending · ${away.length} away`}</span></div>
+    ${t == null ? "" : `<div class="attcols"><div><h3>Attending (${here.length})</h3>${grps.map(g => { const ns = here.filter(x => x.grp === g); return ns.length ? `<div class="attg"><b>${esc(g)}</b> <span class="hint">${ns.length}</span><div>${ns.map(x => esc(x.name)).join(", ")}</div></div>` : ""; }).join("")}</div>
+      <div><h3>Not attending (${away.length})</h3>${away.length ? `<table class="opst attaway"><tbody>${away.map(x => `<tr><td><b>${esc(x.name)}</b><small class="hint">${esc(x.grp)}</small></td><td>${esc(x.why)}</td></tr>`).join("")}</tbody></table>` : `<p class="hint">Everyone should be there.</p>`}</div></div>
+      <details class="atttxt"><summary>Text to copy</summary><textarea readonly rows="10">${esc(text)}</textarea></details>`}
+    <p class="hint" style="margin:8px 0 0">Away = on leave / out of base, late in (from the In time / Late in lines), flying (flight brief to landing + 30 min), sims (start − 1 h to end + 30 min, incl. the SXO / SUPP in the sim remarks), SXO / OPS O of a wave under way, a ground event, or a duty note. ST Tow are listed only on days they fly; engineers and FSI aren't listed.</p></div>`;
+  if (!d.open) d.showModal();
+}
 // Flown totals for the end-of-day sheet: every flown line counts (ops adds too), CX and lines not yet logged are counted separately.
 function opsFlownStats(fl) {
   let sorties = 0, mins = 0, cx = 0, open = 0;
@@ -1313,6 +1395,10 @@ function opsFlownStats(fl) {
   const s = document.createElement("style");
   s.textContent = `
 .opsautot{color:var(--muted)}
+table.opsgnd{table-layout:fixed;width:100%}table.opsgnd td{overflow-wrap:anywhere}
+.attbtn{opacity:.7}#dlgAtt{width:min(1100px,calc(100vw - 16px))}.attbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 10px}.attbar select,.attbar input{width:auto;margin:0;padding:4px 6px}.attbar input{width:70px}
+.attcols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:14px}.attcols h3{margin:0 0 6px;font-size:1rem}.attg{margin:0 0 8px}.attg div{line-height:1.5}
+table.attaway{min-width:0;width:100%}.attaway td{padding:4px 6px;vertical-align:top}.attaway small{display:block}.atttxt{margin-top:10px}.atttxt textarea{width:100%;font:12px/1.4 ui-monospace,monospace}
 .opslog td.lgres select{width:auto;margin:0 0 2px;padding:3px 4px;display:block}.lgcxl{display:block;font-size:.75rem;color:var(--late);margin-bottom:2px}.opsres{display:block;font-size:.72rem;font-weight:700;color:var(--out)}
 .opswarn td{color:var(--late);font-size:.85rem;padding-top:0}.opsirt{color:var(--late);font-weight:600;font-size:.85em}
 .opsbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
