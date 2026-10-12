@@ -175,7 +175,15 @@ function opsGroundHas(personnel, n) {
 // What the programme already says a person does in each wave: # (flying), (#) ops add, SXO, OPS O, SIMS,
 // and ground events from the ground programme (placed in the wave whose time window they fall in; course
 // ground programmes show as ACAD).
-function opsAuto(name, fl, sim, ground) {
+// Briefs given by named people (Gordon, 12 Oct): Day details boxes written "0805Z (YEW P / PEK X)" → [{ lab, time, names }].
+const OPS_BRIEFS = [["opsBrief", "OPS BRIEF"], ["sodb", "SODB"], ["wxBrief", "WX BRIEF"], ["modb", "MODB"], ["nightBrief", "NIGHT BRIEF"], ["eowd", "EOWD"]];
+function opsBriefs(h) {
+  const out = [];
+  for (const [k, lab] of OPS_BRIEFS) for (const m of String((h || {})[k] || "").matchAll(/(\d{4})\s*Z?\s*(?:\(([^)]*)\))?/g))
+    out.push({ lab, time: m[1], names: (m[2] || "").split(/[,/&]/).map(opsNorm).filter(Boolean) });
+  return out;
+}
+function opsAuto(name, fl, sim, ground, header) {
   const waves = fl.waves || [], out = waves.map(() => []), n = opsNorm(name);
   if (!n) return out;
   waves.forEach((w, i) => {
@@ -197,6 +205,7 @@ function opsAuto(name, fl, sim, ground) {
       if (i >= 0 && lab && !out[i].includes(lab)) out[i].push(lab);
     }
   }
+  for (const b of opsBriefs(header || opsGet("header"))) if (b.names.includes(n)) { const i = opsTimeWave(b.time, wins); if (i >= 0 && !out[i].includes(b.lab)) out[i].push(b.lab); }
   return out;
 }
 const opsCell = (auto, manual) => [...new Set([...auto, ...(manual ? String(manual).split(/\s*\/\s*/) : [])].map(s => s.trim().toUpperCase()).filter(Boolean))].join(" / ");
@@ -234,6 +243,7 @@ function opsAutoInOut(name, get) {
   for (const g of get("ground").groups || []) for (const r of g.rows || []) if (opsGroundHas(r.personnel, n)) {
     s0(r.time); const e = opsEndMin(r.time); en.push(e != null ? e : opsMin(r.time));
   }
+  for (const b of opsBriefs(get("header"))) if (b.names.includes(n)) { s0(b.time); en.push(opsMin(b.time) + 30); } // giving a brief
   const hhmm = m => String(Math.floor(m / 60) % 24).padStart(2, "0") + String(m % 60).padStart(2, "0");
   const ends = en.filter(x => x != null && !isNaN(x));
   return st.length ? { in: hhmm(Math.min(...st)), out: ends.length ? hhmm(Math.max(...ends)) : "" } : { in: "", out: "" };
@@ -739,6 +749,7 @@ function opsMyItems(get, opts) {
   }
   for (const g of opsGet("ground").groups || []) for (const r of g.rows || [])
     if (names.some(n => opsGroundHas(r.personnel, n))) items.push(`${li(opsMin(r.time))}<b>${esc(r.time)}</b> ${esc(r.event)}${r.venue ? " · " + esc(r.venue) : ""}</li>`);
+  for (const b of opsBriefs(opsGet("header"))) if (names.some(n => b.names.includes(n))) items.push(`${li(opsMin(b.time) + 30)}<b>${esc(b.time)}Z</b> You give the ${esc(b.lab)}</li>`);
   if (!o.noDuty) (fl.waves || []).forEach(w => {
     if (names.some(n => opsHas(w.sxo, n))) items.push(`<li><b>${esc(w.name)}</b> SXO</li>`);
     if (names.some(n => opsHas(w.opsO, n))) items.push(`<li><b>${esc(w.name)}</b> OPS O</li>`);
@@ -825,6 +836,7 @@ function opsMyEvents(get) {
   }
   for (const s of get("sim").rows || []) for (const a of s.ac || []) if (names.some(n => opsSimHas(a, n))) { const r = opsSimRole(a, names.find(n => opsSimHas(a, n))); add(s.etd, `Sim${r !== "crew" ? " " + esc(r) : ""} · ${esc([s.callsign, a.n].filter(Boolean).join(" "))} ${esc(a.mission || "")}`); }
   for (const g of get("ground").groups || []) for (const r of g.rows || []) if (names.some(n => opsGroundHas(r.personnel, n))) add(r.time, `${esc(r.event)}${r.venue ? " · " + esc(r.venue) : ""}`);
+  for (const b of opsBriefs(get("header"))) if (names.some(n => b.names.includes(n))) add(b.time, `You give the <b>${esc(b.lab)}</b>`);
   return out.sort((a, b) => a.t - b.t);
 }
 // The signed-in person's SXO / OPS O duties on a day: ["WAVE 1 SXO", …].
