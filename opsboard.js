@@ -708,7 +708,7 @@ function obSoon(name, get, watch) {
     }
     if (opsHas(x.w.sxo, n)) list.push({ t: x.s, what: `${x.name} · SXO` });
     if (opsHas(x.w.opsO, n)) list.push({ t: x.s, what: `${x.name} · OPS O` });
-    for (const r of sim) { const t = opsMin(r.etd); if (t != null && t >= x.s && t <= x.e && (r.ac || []).some(a => opsCrewHas(a, n))) list.push({ t, what: `${x.name} · SIM ${r.etd}` }); }
+    for (const r of sim) { const t = opsMin(r.etd); if (t != null && t >= x.s && t <= x.e && (r.ac || []).some(a => opsSimHas(a, n))) list.push({ t, what: `${x.name} · SIM ${r.etd}` }); }
   }
   if (!list.length) return null;
   list.sort((a, b) => a.t - b.t);

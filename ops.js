@@ -84,6 +84,15 @@ const opsSpan = (a, b) => (a == null || b == null) ? null : (b - a + 1440) % 144
 const opsNorm = s => String(s ?? "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
 const opsHas = (text, name) => { const n = opsNorm(name); return !!n && (" " + opsNorm(text) + " ").includes(" " + n + " "); };
 const opsCrewHas = (a, n) => opsNorm(a.crew1) === n || opsNorm(a.crew2) === n;
+// Sims: besides Aircrew / Console, people named in the remarks as "SXO: SNG J" or "SUPP: V CHIN" (the sim SXO and the
+// support at the console outside) take part too (Gordon, 12 Oct). Returns "" or the role: "crew", "SXO", "SUPP"…
+function opsSimRole(a, n) {
+  if (opsCrewHas(a, n)) return "crew";
+  for (const m of String(a.rmks || "").matchAll(/\b(SXO|SUPP|SUP|SUPPORT|CONSOLE|INSTR?)\s*:\s*([^/;\n]+)/gi))
+    if (m[2].split(/,|&|\band\b/i).some(x => opsNorm(x) === n)) return m[1].toUpperCase().replace(/^SUP(PORT)?$/, "SUPP");
+  return "";
+}
+const opsSimHas = (a, n) => !!opsSimRole(a, n);
 // A/C as shown on the programme: the CFH mark comes from the Aircraft page (CFH 3 "#", CFH 2 "@"; Gordon, 10 Oct).
 // For a tail on the Aircraft page any typed #/@ is replaced by its current mark; other tails show as typed. Past days keep what was typed.
 function opsTail(tail, day) {
@@ -170,7 +179,7 @@ function opsAuto(name, fl, sim, ground) {
     if (f) out[i].push(opsIsAdd(f, (f.ac || []).find(a => opsCrewHas(a, n))) ? "(#)" : "#");
   });
   const wins = opsWindows(fl);
-  for (const s of sim.rows || []) if ((s.ac || []).some(a => opsCrewHas(a, n))) {
+  for (const s of sim.rows || []) if ((s.ac || []).some(a => opsSimHas(a, n))) {
     const i = opsSimWave(s, wins);
     if (i >= 0 && !out[i].includes("SIMS")) out[i].push("SIMS");
   }
@@ -215,7 +224,7 @@ function opsAutoInOut(name, get) {
       if (isFinite(last)) en.push(last + (oo ? OPS_OUT.opsO : OPS_OUT.sxo));
     }
   }
-  for (const r of get("sim").rows || []) for (const a of r.ac || []) if (opsCrewHas(a, n)) { s0(r.etd); e0(r.eta, OPS_OUT.sim); }
+  for (const r of get("sim").rows || []) for (const a of r.ac || []) if (opsSimHas(a, n)) { s0(r.etd); e0(r.eta, OPS_OUT.sim); }
   for (const g of get("ground").groups || []) for (const r of g.rows || []) if (opsGroundHas(r.personnel, n)) {
     s0(r.time); const e = opsEndMin(r.time); en.push(e != null ? e : opsMin(r.time));
   }
@@ -718,9 +727,9 @@ function opsMyItems(get, opts) {
     items.push(`${li(opsMin(f.eta))}<b>${esc(w.name)}</b> ${esc(f.etd)}–${esc(f.eta)}Z · ${esc([f.callsign, a.n].filter(Boolean).join(" "))} · ${esc(a.mission)}${mate ? " with " + esc(mate) : ""}${a.tail ? " · " + esc(opsTail(a.tail)) : ""}${f.area ? " · " + esc(f.area) : ""}${opsIsAdd(f, a) ? " <em>(ops add)</em>" : ""}</li>`);
   }
   for (const s of sim.rows || []) for (const a of s.ac || []) {
-    const n = names.find(n => opsCrewHas(a, n)); if (!n) continue;
-    const mate = opsNorm(a.crew1) === n ? a.crew2 : a.crew1;
-    items.push(`${li(opsMin(s.eta))}<b>SIM</b> ${esc(s.etd)}–${esc(s.eta)}Z · ${esc([s.callsign, a.n].filter(Boolean).join(" "))} · ${esc(a.mission)}${mate ? " with " + esc(mate) : ""}</li>`);
+    const n = names.find(n => opsSimHas(a, n)); if (!n) continue;
+    const role = opsSimRole(a, n), mate = role !== "crew" ? [a.crew1, a.crew2].filter(Boolean).join(" / ") : opsNorm(a.crew1) === n ? a.crew2 : a.crew1;
+    items.push(`${li(opsMin(s.eta))}<b>SIM${role !== "crew" ? " " + esc(role) : ""}</b> ${esc(s.etd)}–${esc(s.eta)}Z · ${esc([s.callsign, a.n].filter(Boolean).join(" "))} · ${esc(a.mission)}${mate ? (role !== "crew" ? " for " : " with ") + esc(mate) : ""}</li>`);
   }
   for (const g of opsGet("ground").groups || []) for (const r of g.rows || [])
     if (names.some(n => opsGroundHas(r.personnel, n))) items.push(`${li(opsMin(r.time))}<b>${esc(r.time)}</b> ${esc(r.event)}${r.venue ? " · " + esc(r.venue) : ""}</li>`);
@@ -808,7 +817,7 @@ function opsMyEvents(get) {
       if (ts.length) out.push({ t: Math.min(...ts), label: `${duty.join(" + ")} · <b>${esc(w.name)}</b>` });
     }
   }
-  for (const s of get("sim").rows || []) for (const a of s.ac || []) if (names.some(n => opsCrewHas(a, n))) add(s.etd, `Sim · ${esc([s.callsign, a.n].filter(Boolean).join(" "))} ${esc(a.mission || "")}`);
+  for (const s of get("sim").rows || []) for (const a of s.ac || []) if (names.some(n => opsSimHas(a, n))) { const r = opsSimRole(a, names.find(n => opsSimHas(a, n))); add(s.etd, `Sim${r !== "crew" ? " " + esc(r) : ""} · ${esc([s.callsign, a.n].filter(Boolean).join(" "))} ${esc(a.mission || "")}`); }
   for (const g of get("ground").groups || []) for (const r of g.rows || []) if (names.some(n => opsGroundHas(r.personnel, n))) add(r.time, `${esc(r.event)}${r.venue ? " · " + esc(r.venue) : ""}`);
   return out.sort((a, b) => a.t - b.t);
 }
