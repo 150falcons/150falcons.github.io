@@ -185,6 +185,7 @@ A book-in / book-out board for RSAF trainees at 150 Squadron (BA 120 Cazaux, Fra
 - **Before rollout:** accounts not yet handed out are on the standard temporary password `Falcons150` and must change it at first sign-in.
 - **Leftover test data:** one ended row in `leaves`. It doesn't show anywhere; delete it from the Supabase Table Editor if wanted (the MCP delete hung).
 - When Netlify credits reset, optionally replace the Netlify page with a "moved to …" notice.
+- **KIV (12 Oct, Gordon): daily programme import.** Gordon chose option 1 (an Import button on the Flying program that reads the squadron's daily-programme Excel (.xlsx, fixed layout) in the browser, fills the editor for ops to check, then Save; no AI, nothing leaves the board). Option 2 (send the file to the Claude API to read) was rejected for now (RESTRICTED data, cost). Don't build until Gordon says so; he'll send a sample .xlsx.
 
 ## 8. How Gordon likes to work
 - **Communication:** short, direct answers. Say what changed and how to try it. He tests on his phone, often in dark mode.
