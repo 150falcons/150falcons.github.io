@@ -1271,9 +1271,9 @@ function opsPrint(eod) {
       ${box("Currencies", listT((nt.currencies || []).map(r => [r.who, r.note])))}
       ${box("Aircraft restrictions", listT((nt.aircraft || []).map(r => [r.ac, r.note])))}
     </div></div>
-    ${duties ? `<div class="duties">${duties}</div>` : ""}
     <div class="sign"><span>Planned by <b>${e(h.plannedBy)}</b></span><span>Vetted &amp; approved by <b>${e(h.vettedBy)}</b></span><span>Currency checked by <b>${e(h.currencyBy)}</b></span><span class="stamp">Printed ${e(new Date().toLocaleString("en-GB"))}</span><span class="cls">RESTRICTED</span></div>
-  </div>`;
+  </div>
+  ${duties ? `<div class="pg pg2"><div class="top"><div class="ttl">DUTIES<span>${e(opsLongDay(OPS.day))}</span></div><div class="cls">RESTRICTED</div></div><div class="duties">${duties}</div></div>` : ""}`;
   opsPrintFit(el);
   window.print();
 }
@@ -1281,8 +1281,13 @@ function opsPrint(eod) {
 // shrink it with zoom until it fits one page (widening the layout as it shrinks so the space is used). Floor 0.55, then it
 // simply runs onto a second page.
 function opsPrintFit(el) {
-  const mm = 96 / 25.4, W = 281 * mm, H = 189 * mm, pg = el.querySelector(".pg");
-  el.classList.add("measure"); let z = 1;
+  el.classList.add("measure");
+  el.querySelectorAll(".pg").forEach(pg => opsPrintFitPage(pg, pg.classList.contains("pg2") ? 1.6 : 1.3));
+  el.classList.remove("measure");
+}
+// Page 1 (programme) and page 2 (duties) are each fitted to one page; a quiet day prints larger (up to max).
+function opsPrintFitPage(pg, max) {
+  const mm = 96 / 25.4, W = 281 * mm, H = 189 * mm; let z = 1;
   // Balance the two columns: move notes boxes from the bottom of the right column under the flying lines while that
   // makes the taller column shorter.
   pg.style.zoom = 1; pg.style.width = W + "px";
@@ -1294,8 +1299,8 @@ function opsPrintFit(el) {
     let nb = L.querySelector(".lnotes"); if (!nb) { nb = document.createElement("div"); nb.className = "lnotes"; L.appendChild(nb); }
     nb.insertBefore(bx, nb.firstChild);
   }
-  for (let i = 0; i < 6; i++) { pg.style.zoom = 1; pg.style.width = W / z + "px"; const hh = pg.scrollHeight, nz = Math.max(0.55, Math.min(1, H / hh)); if (Math.abs(nz - z) < 0.005) { z = nz; break; } z = nz; }
-  pg.style.width = W / z + "px"; pg.style.zoom = z; el.classList.remove("measure");
+  for (let i = 0; i < 8; i++) { pg.style.zoom = 1; pg.style.width = W / z + "px"; const hh = pg.scrollHeight, nz = Math.max(0.55, Math.min(max, H / hh)); if (Math.abs(nz - z) < 0.005) { z = nz; break; } z = nz; }
+  pg.style.width = W / z + "px"; pg.style.zoom = z;
 }
 
 /* ---------- Attendance for a brief (Gordon, 12 Oct): who should be at the Ops brief / WX-NOTAM / EOWD and who's away ---------- */
@@ -1638,7 +1643,7 @@ body.tvmode .flytvr td.nm{white-space:nowrap!important}.flytvr td,.flytvr th{whi
 #opsPrint table.sm{font-size:6.9pt}
 #opsPrint tr.gh td{background:#eef2f7;font-weight:700;font-size:.86em;text-transform:uppercase;letter-spacing:.03em}#opsPrint tr.gh td{color:#1f3a5f}
 #opsPrint table.lt{font-size:7pt}#opsPrint .lt td{border-top:.4pt solid #e3e7ec}#opsPrint .lt tr:first-child td{border-top:0}#opsPrint .lt td:first-child{width:36%}
-#opsPrint .duties{display:flex;flex-wrap:wrap;gap:3pt 6pt;align-items:flex-start;margin-bottom:4pt}
+#opsPrint .pg2{break-before:page;page-break-before:always}#opsPrint .duties{display:flex;flex-wrap:wrap;gap:6pt 10pt;align-items:flex-start;margin-bottom:4pt}
 #opsPrint .dt{width:auto;font-size:6.8pt}
 #opsPrint .dt thead tr.sub th{background:#eef2f7;color:#5a6472;font-size:.84em}
 #opsPrint .dt td{border-top:.4pt solid #e3e7ec;padding:.8pt 2.6pt}
