@@ -1262,7 +1262,7 @@ function opsPrint(eod) {
   let el = document.getElementById("opsPrint");
   if (!el) { el = document.createElement("div"); el.id = "opsPrint"; document.body.appendChild(el); }
   el.innerHTML = `<div class="pg">
-    <div class="top"><div class="ttl">150 SQUADRON ${eod ? "ACTUAL DAY PROGRAM" : "FLYING PROGRAM"}<span>${e(opsLongDay(OPS.day))}</span></div><div class="cls">RESTRICTED</div></div>
+    <div class="top"><div class="ttl">150 SQUADRON ${eod ? "ACTUAL DAY PROGRAM" : "FLYING PROGRAM"}<span>${e(opsLongDay(OPS.day))}</span></div><div class="cls">OFFICIAL (CLOSED)</div></div>
     <div class="strip">${box("Briefs", briefs)}${box("Day", nums + people)}</div>
     <div class="main"><div class="l">${fly}</div><div class="r">
       ${sims ? box("Simulator program", `<table class="g sm"><colgroup><col style="width:7%"><col style="width:17%"><col style="width:15%"><col style="width:27%"><col style="width:20%"><col></colgroup><thead><tr><th>No</th><th>${eod ? "ATD–ATA" : "ETD–ETA"}</th><th>Callsign</th><th>Aircrew / Console</th><th>Mission</th><th>Rmks</th></tr></thead>${sims}</table>`) : ""}
@@ -1271,9 +1271,9 @@ function opsPrint(eod) {
       ${box("Currencies", listT((nt.currencies || []).map(r => [r.who, r.note])))}
       ${box("Aircraft restrictions", listT((nt.aircraft || []).map(r => [r.ac, r.note])))}
     </div></div>
-    <div class="sign"><span>Planned by <b>${e(h.plannedBy)}</b></span><span>Vetted &amp; approved by <b>${e(h.vettedBy)}</b></span><span>Currency checked by <b>${e(h.currencyBy)}</b></span><span class="stamp">Printed ${e(new Date().toLocaleString("en-GB"))}</span><span class="cls">RESTRICTED</span></div>
+    <div class="sign"><span>Planned by <b>${e(h.plannedBy)}</b></span><span>Vetted &amp; approved by <b>${e(h.vettedBy)}</b></span><span>Currency checked by <b>${e(h.currencyBy)}</b></span><span class="stamp">Printed ${e(new Date().toLocaleString("en-GB"))}</span><span class="cls">OFFICIAL (CLOSED)</span></div>
   </div>
-  ${duties ? `<div class="pg pg2"><div class="top"><div class="ttl">DUTIES<span>${e(opsLongDay(OPS.day))}</span></div><div class="cls">RESTRICTED</div></div><div class="duties">${duties}</div></div>` : ""}`;
+  ${duties ? `<div class="pg pg2"><div class="top"><div class="ttl">DUTIES<span>${e(opsLongDay(OPS.day))}</span></div><div class="cls">OFFICIAL (CLOSED)</div></div><div class="duties">${duties}</div></div>` : ""}`;
   opsPrintFit(el);
   window.print();
 }
