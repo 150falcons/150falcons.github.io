@@ -83,11 +83,15 @@ function impParse(rows, forceOff) {
   const best = Object.entries(votes).sort((a, b) => b[1] - a[1])[0];
   const off = forceOff != null ? forceOff : best ? +best[0] : impOff(raw[0].day);
   const offHow = forceOff != null ? "set by you" : best ? `worked out from ${best[1]} area time${best[1] === 1 ? "" : "s"}` : "no area times, so French time assumed";
-  const zd = a => new Date((a - off) * 6e4).toISOString(), ev = raw.map(x => ({ ...x, day: zd(x.a).slice(0, 10), s: opsMin(zd(x.a).slice(11, 16).replace(":", "")), e: x.b == null ? null : opsMin(zd(x.b).slice(11, 16).replace(":", "")) }));
-  if (!ev.length) throw new Error("No events found in the file.");
-  const days = [...new Set(ev.map(x => x.day))].sort(), day = days[0];
-  const P = { day, days, off, offHow, waves: [], flights: [], sims: [], af: [], mbr: [], notes: [], areas: 0, skipped: [], unknownSt: {} };
-  const one = ev.filter(x => x.day === day);
+  // One file = one day's programme (Gordon, 14 Oct). The day is the Z date most sorties fall on; every row from 6 h before
+  // that day to 3 h after it is part of it (night flying past 0000Z, early briefs), with times counted from that day's 0000Z.
+  const zd = a => new Date((a - off) * 6e4).toISOString().slice(0, 10), cnt = {};
+  for (const x of raw.filter(x => x.type === "M346").length ? raw.filter(x => x.type === "M346") : raw) cnt[zd(x.a)] = (cnt[zd(x.a)] || 0) + 1;
+  const day = Object.entries(cnt).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0], d0 = Date.parse(day + "T00:00:00Z") / 6e4;
+  const ev = raw.map(x => ({ ...x, day, s: x.a - off - d0, e: x.b == null ? null : x.b - off - d0 }));
+  const one = ev.filter(x => x.s >= -360 && x.s < 1440 + 180), out = ev.length - one.length;
+  const days = [...new Set(ev.filter(x => !one.includes(x)).map(x => zd(x.a)))].sort();
+  const P = { day, days, out, off, offHow, waves: [], flights: [], sims: [], af: [], mbr: [], notes: [], areas: 0, skipped: [], unknownSt: {} };
   // Waves from the ERTMS windows ("W1 ERTMS", "NW1 ERTMS"…)
   for (const x of one) { const m = /^(N(?:IGHT)?\s*)?W(?:AVE)?\s*(\d+)\b.*ERTMS/i.exec(x.task); if (m && !x.type) P.waves.push({ no: +m[2], night: !!m[1], s: x.s, e: x.e, sxo: "", opsO: "", notes: [] }); }
   P.waves.sort((a, b) => a.s - b.s);
@@ -303,7 +307,7 @@ function opsImportShow() {
     : changes.length ? `<ul class="impl impchg">${changes.map(([k, a, b]) => `<li class="${k}"><b>${k === "new" ? "New" : k === "del" ? "Gone" : "Changed"}</b> ${esc(a)} <span>${esc(b)}</span></li>`).join("")}</ul>` : `<p class="hint">No changes to the flying lines.</p>`;
   const unk = Object.entries(P.unknownSt);
   d.innerHTML = `<div class="dlg"><h2>Import ${esc(opsLongDay(P.day))}</h2>
-    <p class="hint" style="margin:-6px 0 10px">${esc(file)} · times in the file read as <select id="impOff" title="If the times come out wrong, pick how far the file's clock is from Zulu">${Array.from({ length: 27 }, (_, i) => (i - 12) * 60).map(o => `<option value="${o}"${o === P.off ? " selected" : ""}>Z ${o < 0 ? "−" : "+"} ${Math.abs(o / 60)} h</option>`).join("")}</select> (${esc(P.offHow)})${P.days.length > 1 ? ` · the file also has ${P.days.length - 1} other day(s); only the first is imported` : ""}</p>
+    <p class="hint" style="margin:-6px 0 10px">${esc(file)} · times in the file read as <select id="impOff" title="If the times come out wrong, pick how far the file's clock is from Zulu">${Array.from({ length: 27 }, (_, i) => (i - 12) * 60).map(o => `<option value="${o}"${o === P.off ? " selected" : ""}>Z ${o < 0 ? "−" : "+"} ${Math.abs(o / 60)} h</option>`).join("")}</select> (${esc(P.offHow)})${P.out ? ` · ${P.out} row${P.out === 1 ? "" : "s"} for another day (${esc(P.days.join(", "))}) left out` : ""}</p>
     <div class="impsum"><div><b>${ws.length}</b><span>wave${ws.length === 1 ? "" : "s"}</span></div><div><b>${ws.reduce((n, w) => n + w.flights.length, 0)}</b><span>formations</span></div><div><b>${st.sorties}</b><span>sorties</span></div><div><b>${M.sim.rows.length}</b><span>sim slots</span></div><div><b>${M.airfield.rows.length}</b><span>airfield items</span></div></div>
     <h3>Flying lines vs the board</h3>${chg}
     ${M.notes.cx.length ? `<h3>Marked CX (cancelled in the file)</h3>${li(M.notes.cx.map(esc))}` : ""}
