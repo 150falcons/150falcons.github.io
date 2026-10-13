@@ -131,7 +131,7 @@ function opsStats(fl) {
     if (f.opsAdd) continue;
     const d = opsMin(f.etd), a = opsMin(f.eta), lines = (f.ac || []).filter(x => opsLineUsed(x) && !x.opsAdd).length;
     sorties += lines;
-    if (d != null && a != null) mins += lines * opsSpan(d, a);
+    if (d != null && a != null) mins += lines * opsTenth(opsSpan(d, a));
     if (d != null && (first == null || d < first)) first = d;
     if (a != null && (last == null || a > last)) last = a;
   }
@@ -421,7 +421,11 @@ function opsResText(a, L, withHrs) {
   const m = opsLogMins(L), t = (/\bIRT\b/i.test(a.mission || "") ? "IRT " : "") + r + (r !== "DCO" && L.why ? " " + L.why : "");
   return withHrs && m != null ? `${t} / ${opsHrs(m)}` : t;
 }
-const opsLogMins = L => { if (!opsFlown(L)) return null; const a = opsMin(L.to), b = opsMin(L.ldg); return a == null || b == null ? null : (b - a + 1440) % 1440; };
+// Flight time to logbook hours by the squadron's table (Gordon, 13 Oct): whole hours + tenths, where the leftover minutes
+// 1-2 = .0, 3-8 = .1, 9-14 = .2 … 51-56 = .9, 57-60 = 1.0. Kept in minutes (multiples of 6) so each sortie is converted
+// once and totals add up the tenths exactly.
+const opsTenth = m => m == null ? null : Math.floor(m / 60) * 60 + Math.floor((m % 60 + 3) / 6) * 6;
+const opsLogMins = L => { if (!opsFlown(L)) return null; const a = opsMin(L.to), b = opsMin(L.ldg); return a == null || b == null ? null : opsTenth((b - a + 1440) % 1440); };
 const opsHrs = m => m == null ? "" : (m / 60).toFixed(1);
 const opsT4 = v => { const m = opsMin(String(v || "").replace(/[^0-9:]/g, "").replace(/^(\d{3})$/, "0$1")); return m == null ? "" : opsZ4(m); };
 const opsLogLine = k => { const [w, f, a] = k.split(".").map(Number); return (((((OPS.rows.flying || {}).data || {}).waves || [])[w] || {}).flights || [])[f]?.ac?.[a] || {}; };
@@ -590,7 +594,7 @@ function hrsEntries(days) {
             }
             else if (solos.length) {
               const t0 = opsMin(a.log.to), end = Math.max(...solos);
-              if (t0 != null && isFinite(end)) { instr = Math.max(0, (end - t0 + 1440) % 1440); how = "solo lead"; }
+              if (t0 != null && isFinite(end)) { instr = opsTenth(Math.max(0, (end - t0 + 1440) % 1440)); how = "solo lead"; }
             }
           }
           le.push({ name: n, day: r.day, wave: w.name, night: !!w.night, callsign: f.callsign, ac: a.n, tail: opsTail(a.tail, r.day), mission: a.mission, mate: mate || "", seat: seat ? "Back" : "Front", to: a.log.to, ldg: a.log.ldg, mins: m, instr, wso, how, solo: !opsNorm(mate), k: `${wi}.${fi}.${ai}`, auto: instr });

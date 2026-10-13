@@ -74,6 +74,7 @@ const CFG_GROUPS = [
   ], rules: [
     "Each logged line gets a result: DCO (default once times are keyed), DPCO or DNCO, or CX. CX, DPCO and DNCO take a reason from the list above.",
     "The End of day PDF shows the actual times and the result in the remarks column (e.g. \"DCO / 1.1\", \"DNCO LOGS M1 / 0.5\", \"CX DUE WX\"); IRT lines read \"IRT DCO\".",
+    "Hours from take-off to landing use the squadron's table: whole hours plus tenths for the minutes left over (1–2 min = .0, 3–8 = .1, 9–14 = .2, 15–20 = .3, 21–26 = .4, 27–32 = .5, 33–38 = .6, 39–44 = .7, 45–50 = .8, 51–56 = .9, 57–60 = 1.0). Each sortie is converted on its own, then added up (Hours tab, currencies, hours limits, instructional hours, planned hours).",
   ] },
   { name: "Currencies", rows: [
     ["cur.amber", "Currency items show amber when expiring within", "days", 30],
