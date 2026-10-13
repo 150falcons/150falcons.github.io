@@ -50,7 +50,9 @@ const IMP_AREA = /^(31D\w*|BH\w*|B\/H\S*|R\d\w*|D\d\w*|ZRT\w*|CEL\w*)$/i;
 const impStr = v => v == null ? "" : String(v).replace(/\s+/g, " ").trim();
 // "Lim, W" → LIM W, "M, Lim" → M LIM (the board's spelling)
 const impName = s => opsNorm(String(s || "").replace(/,/g, " "));
-const impDay = v => typeof v === "number" ? new Date(Date.UTC(1899, 11, 30) + Math.floor(v) * 864e5).toISOString().slice(0, 10)
+const IMP_MON = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
+const impDayTxt = v => { const m = /^(\d{1,2})[-\s]([A-Za-z]{3})[A-Za-z]*[-\s](\d{2,4})$/.exec(String(v).trim()); if (!m || !IMP_MON[m[2].toUpperCase()]) return ""; const y = m[3].length === 2 ? "20" + m[3] : m[3]; return `${y}-${String(IMP_MON[m[2].toUpperCase()]).padStart(2, "0")}-${m[1].padStart(2, "0")}`; };
+const impDay = v => typeof v === "string" && impDayTxt(v) ? impDayTxt(v) : typeof v === "number" ? new Date(Date.UTC(1899, 11, 30) + Math.floor(v) * 864e5).toISOString().slice(0, 10)
   : (/(\d{4})-(\d{2})-(\d{2})/.exec(String(v)) || /(\d{2})\/(\d{2})\/(\d{4})/.exec(String(v)) || []).slice(1).join("-").replace(/^(\d{2})-(\d{2})-(\d{4})$/, "$3-$2-$1");
 const impMin = v => { if (typeof v === "number") return Math.round((v % 1) * 1440) % 1440; const m = /(\d{1,2}):(\d{2})/.exec(String(v || "")); return m ? +m[1] * 60 + +m[2] : null; };
 // French local time → Z for that day (summer / winter time worked out by the browser).
@@ -58,22 +60,33 @@ function impOff(day) {
   const h = +new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", hour: "2-digit", hourCycle: "h23" }).format(new Date(day + "T12:00:00Z"));
   return (h - 12) * 60;
 }
-function impParse(rows) {
+function impParse(rows, forceOff) {
   const hi = rows.findIndex(r => r && r.some(c => /^start time$/i.test(impStr(c))));
   if (hi < 0) throw new Error("Couldn't find the column headings (Start Date, Start Time, Asset Type, Callsign…). Is this the planning export?");
   const H = rows[hi].map(impStr), ix = n => H.findIndex(h => h.toLowerCase() === n), last = n => H.map(h => h.toLowerCase()).lastIndexOf(n);
   const C = { sd: ix("start date"), st: ix("start time"), ed: ix("end date"), et: ix("end time"), type: ix("asset type"), tail: ix("asset tail"), cs: ix("callsign"), cap: ix("captain"), crew: ix("crew"), task: ix("task"), det: ix("details"), status: ix("status"), why: last("status code") };
-  const ev = [];
+  // Times in the export follow whatever clock the planning PC uses (French local one day, Z − 12 h another: Gordon, 13–14 Oct),
+  // so the offset is worked out from the sorties' area times, which are always written in Z ("31DS 0715-0815"); else French time.
+  const raw = [];
   for (const r of rows.slice(hi + 1)) {
     if (!r || !r.some(c => c != null && c !== "")) continue;
     const g = k => C[k] < 0 ? "" : r[C[k]], day = impDay(g("sd")), s = impMin(g("st")), e = impMin(g("et"));
     if (!day || s == null) continue;
-    const off = impOff(day), z = m => m == null ? null : ((m - off) % 1440 + 1440) % 1440;
-    ev.push({ day, s: z(s), e: z(e), type: impStr(g("type")).toUpperCase().replace(/^N\/A$/, ""), tail: impStr(g("tail")), cs: impStr(g("cs")), cap: impStr(g("cap")), crew: impStr(g("crew")), task: impStr(g("task")), det: impStr(g("det")), st: impStr(g("status")).toUpperCase(), why: impStr(g("why")).toUpperCase() });
+    const d0 = Date.parse(day + "T00:00:00Z") / 6e4, eday = impDay(g("ed")) || day;
+    raw.push({ a: d0 + s, b: e == null ? null : Date.parse(eday + "T00:00:00Z") / 6e4 + e, day, type: impStr(g("type")).toUpperCase().replace(/^N\/A$/, ""), tail: impStr(g("tail")), cs: impStr(g("cs")), cap: impStr(g("cap")), crew: impStr(g("crew")), task: impStr(g("task")), det: impStr(g("det")), st: impStr(g("status")).toUpperCase(), why: impStr(g("why")).toUpperCase() });
   }
+  if (!raw.length) throw new Error("No events found in the file.");
+  const votes = {};
+  for (const x of raw) { const m = x.type === "M346" && /\b([0-2]\d)([0-5]\d)\s*-\s*[0-2]\d[0-5]\d\b/.exec(x.det); if (!m) continue;
+    let d = (((x.a % 1440) - (+m[1] * 60 + +m[2])) % 1440 + 1440) % 1440; if (d >= 690) d -= 1440; // ±12 h look alike: take −12 h (a PC left on Windows' first time zone, UTC−12)
+    const h = Math.round(d / 60) * 60; votes[h] = (votes[h] || 0) + 1; }
+  const best = Object.entries(votes).sort((a, b) => b[1] - a[1])[0];
+  const off = forceOff != null ? forceOff : best ? +best[0] : impOff(raw[0].day);
+  const offHow = forceOff != null ? "set by you" : best ? `worked out from ${best[1]} area time${best[1] === 1 ? "" : "s"}` : "no area times, so French time assumed";
+  const zd = a => new Date((a - off) * 6e4).toISOString(), ev = raw.map(x => ({ ...x, day: zd(x.a).slice(0, 10), s: opsMin(zd(x.a).slice(11, 16).replace(":", "")), e: x.b == null ? null : opsMin(zd(x.b).slice(11, 16).replace(":", "")) }));
   if (!ev.length) throw new Error("No events found in the file.");
   const days = [...new Set(ev.map(x => x.day))].sort(), day = days[0];
-  const P = { day, days, waves: [], flights: [], sims: [], af: [], areas: 0, skipped: [], unknownSt: {} };
+  const P = { day, days, off, offHow, waves: [], flights: [], sims: [], af: [], areas: 0, skipped: [], unknownSt: {} };
   const one = ev.filter(x => x.day === day);
   // Waves from the ERTMS windows ("W1 ERTMS", "NW1 ERTMS"…)
   for (const x of one) { const m = /^(N(?:IGHT)?\s*)?W(?:AVE)?\s*(\d+)\b.*ERTMS/i.exec(x.task); if (m && !x.type) P.waves.push({ no: +m[2], night: !!m[1], s: x.s, e: x.e, sxo: "", opsO: "", notes: [] }); }
@@ -232,20 +245,21 @@ function opsImportPick() {
     inp.onchange = () => { const f = inp.files[0]; inp.value = ""; if (f) opsImportFile(f); }; }
   inp.click();
 }
-async function opsImportFile(file) {
+async function opsImportFile(file, rows, forceOff) {
   let P;
-  try { P = impParse(await xlsxRows(file)); } catch (e) { return ask("Couldn't read the file", e.message || String(e), "OK"); }
+  try { rows = rows || await xlsxRows(file); P = impParse(rows, forceOff); } catch (e) { return ask("Couldn't read the file", e.message || String(e), "OK"); }
   const { data, error } = await S.sb.from("ops_sections").select("section,data,version").eq("day", P.day).in("section", ["flying", "sim", "airfield"]);
   if (error) return toast("Couldn't load " + P.day + ": " + errMsg(error));
   const cur = {}, ver = {}; for (const r of data || []) { cur[r.section] = r.data && Object.keys(r.data).length ? r.data : null; ver[r.section] = r.version; }
   const M = impMerge(P, cur);
-  IMP.res = { P, M, ver, file: file.name, changes: cur.flying && (cur.flying.waves || []).length ? impChanges(cur.flying, M.flying) : null };
+  IMP.res = { P, M, ver, file, rows, changes: cur.flying && (cur.flying.waves || []).length ? impChanges(cur.flying, M.flying) : null };
   opsImportShow();
 }
 function opsImportShow() {
-  const { P, M, file, changes } = IMP.res, st = opsStats(M.flying), ws = M.flying.waves || [];
+  const { P, M, changes } = IMP.res, file = IMP.res.file.name, st = opsStats(M.flying), ws = M.flying.waves || [];
   let d = document.getElementById("dlgImp");
   if (!d) { d = document.createElement("dialog"); d.id = "dlgImp"; document.body.appendChild(d);
+    d.onchange = e => { if (e.target.id === "impOff") opsImportFile(IMP.res.file, IMP.res.rows, +e.target.value); };
     d.onclick = e => { if (e.target.closest("[data-x=close]") || e.target === d) return d.close(); const s = e.target.closest("[data-x=save]"); if (s) opsImportSave(s); }; }
   // names that don't match a login, the roster or the crew list
   const known = new Set([...S.profiles.flatMap(p => [p.display_name, p.callsign]), ...active().map(t => t.name), ...((typeof OB !== "undefined" && OB.crew) || []).map(c => c.name)].map(opsNorm).filter(Boolean));
@@ -257,7 +271,7 @@ function opsImportShow() {
     : changes.length ? `<ul class="impl impchg">${changes.map(([k, a, b]) => `<li class="${k}"><b>${k === "new" ? "New" : k === "del" ? "Gone" : "Changed"}</b> ${esc(a)} <span>${esc(b)}</span></li>`).join("")}</ul>` : `<p class="hint">No changes to the flying lines.</p>`;
   const unk = Object.entries(P.unknownSt);
   d.innerHTML = `<div class="dlg"><h2>Import ${esc(opsLongDay(P.day))}</h2>
-    <p class="hint" style="margin:-6px 0 10px">${esc(file)}${P.days.length > 1 ? ` · the file also has ${P.days.length - 1} other day(s); only the first is imported` : ""}</p>
+    <p class="hint" style="margin:-6px 0 10px">${esc(file)} · times in the file read as <select id="impOff" title="If the times come out wrong, pick how far the file's clock is from Zulu">${Array.from({ length: 27 }, (_, i) => (i - 12) * 60).map(o => `<option value="${o}"${o === P.off ? " selected" : ""}>Z ${o < 0 ? "−" : "+"} ${Math.abs(o / 60)} h</option>`).join("")}</select> (${esc(P.offHow)})${P.days.length > 1 ? ` · the file also has ${P.days.length - 1} other day(s); only the first is imported` : ""}</p>
     <div class="impsum"><div><b>${ws.length}</b><span>wave${ws.length === 1 ? "" : "s"}</span></div><div><b>${ws.reduce((n, w) => n + w.flights.length, 0)}</b><span>formations</span></div><div><b>${st.sorties}</b><span>sorties</span></div><div><b>${M.sim.rows.length}</b><span>sim slots</span></div><div><b>${M.airfield.rows.length}</b><span>airfield items</span></div></div>
     <h3>Flying lines vs the board</h3>${chg}
     ${M.notes.cx.length ? `<h3>Marked CX (cancelled in the file)</h3>${li(M.notes.cx.map(esc))}` : ""}
@@ -283,7 +297,7 @@ async function opsImportSave(btn) {
   OPS.edit = null; OPS.day = P.day; OPS.rowsDay = null; S.tab = "ops"; render();
 }
 document.head.insertAdjacentHTML("beforeend", `<style>
-#dlgImp{width:min(900px,calc(100vw - 16px))}#dlgImp h3{font-size:.95rem;margin:12px 0 4px}
+#dlgImp{width:min(900px,calc(100vw - 16px))}#impOff{width:auto;display:inline-block;margin:0 2px;padding:1px 4px;font-size:.85rem}#dlgImp h3{font-size:.95rem;margin:12px 0 4px}
 .impsum{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 6px}.impsum div{border:1px solid var(--line);border-radius:6px;padding:4px 10px;background:var(--field);text-align:center}.impsum b{display:block;font:700 1.2rem var(--cond)}.impsum span{font-size:.75rem;color:var(--muted)}
 .impl{margin:0;padding-left:18px;font-size:.88rem}.impl li{margin:1px 0}.impchg li span{color:var(--muted)}.impchg li.new b{color:var(--ok)}.impchg li.del b{color:var(--late)}.impchg li.chg b{color:var(--out)}
 .impw{color:var(--late);font-size:.88rem;margin:6px 0}
