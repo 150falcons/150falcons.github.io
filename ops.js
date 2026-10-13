@@ -442,10 +442,10 @@ function opsLogCard() {
         wr += `<tr class="${opsFlown(L) ? "lgok" : L.st === "cx" ? "lgcx" : ""}${k === 0 ? " lgf" : ""}">
           ${k === 0 ? `<td rowspan="${ls.length}" class="lgcs"><b>${esc(f.callsign || "-")}</b><small>${esc(f.etd || "?")}–${esc(f.eta || "?")}Z${opsAllAdd(f) ? " · ops add" : ""}</small><button class="btn small" data-ops="logplan" data-k="${wi}.${fi}">✓ As planned</button></td>` : ""}
           <td class="lgcrew">${esc(a.n || "")} <b>${opsX(a.crew1)}</b>${a.crew2 ? ` / ${opsX(a.crew2)}` : ""}<small>${esc([a.mission, opsTail(a.tail, OPS.day)].filter(Boolean).join(" · "))}${opsIsAdd(f, a) ? " · ops add" : ""}</small></td>
-          <td><input data-log="to" data-k="${key}" value="${esc(L.to || "")}" placeholder="${esc(f.etd || "T/O")}" inputmode="numeric" maxlength="5" aria-label="Take-off"></td>
-          <td><input data-log="ldg" data-k="${key}" value="${esc(L.ldg || "")}" placeholder="${esc(f.eta || "LDG")}" inputmode="numeric" maxlength="5" aria-label="Landing"></td>
-          <td class="lghrs" data-hrs="${key}">${m != null ? opsHrs(m) : ""}</td>
-          <td><input data-instr="${key}" class="${typeof L.instr === "number" ? "lgset" : ""}" value="${typeof L.instr === "number" ? opsHrs(L.instr) : ""}" placeholder="${m != null ? opsHrs(auto[key] || 0) : ""}" inputmode="decimal" maxlength="4" ${m == null ? "disabled" : ""} aria-label="Instructional hours" title="Worked out from who flew with whom; type to change (0 = none), clear to go back to the worked-out figure"></td>
+          <td class="lgto" data-l="T/O (Z)"><input data-log="to" data-k="${key}" value="${esc(L.to || "")}" placeholder="${esc(f.etd || "T/O")}" inputmode="numeric" maxlength="5" aria-label="Take-off"></td>
+          <td class="lgldg" data-l="LDG (Z)"><input data-log="ldg" data-k="${key}" value="${esc(L.ldg || "")}" placeholder="${esc(f.eta || "LDG")}" inputmode="numeric" maxlength="5" aria-label="Landing"></td>
+          <td class="lghrs" data-l="Hrs" data-hrs="${key}">${m != null ? opsHrs(m) : ""}</td>
+          <td class="lginstr" data-l="Instr h"><input data-instr="${key}" class="${typeof L.instr === "number" ? "lgset" : ""}" value="${typeof L.instr === "number" ? opsHrs(L.instr) : ""}" placeholder="${m != null ? opsHrs(auto[key] || 0) : ""}" inputmode="decimal" maxlength="4" ${m == null ? "disabled" : ""} aria-label="Instructional hours" title="Worked out from who flew with whom; type to change (0 = none), clear to go back to the worked-out figure"></td>
           <td class="lgif">${[a.crew1, a.crew2].filter(n => opsNorm(n)).map(n => { const v = ((L.if || {})[opsNorm(n)] || []), dis = m == null ? "disabled" : "";
             return `<span class="lgifp"><small>${esc(opsNorm(n))}</small><input data-if="${key}|${esc(opsNorm(n))}|0" value="${esc(v[0] ?? "")}" placeholder="IF h" inputmode="decimal" ${dis} aria-label="IF hours ${esc(n)}"><input data-if="${key}|${esc(opsNorm(n))}|1" value="${esc(v[1] ?? "")}" placeholder="P" inputmode="numeric" ${dis} aria-label="Precision approaches ${esc(n)}"><input data-if="${key}|${esc(opsNorm(n))}|2" value="${esc(v[2] ?? "")}" placeholder="NP" inputmode="numeric" ${dis} aria-label="Non-precision approaches ${esc(n)}"></span>`; }).join("")}</td>
           <td class="lgres">${opsFlown(L) ? `<select data-res="${key}" aria-label="Result" title="Result: DCO unless changed">${OPS_RES.map(r => `<option${opsRes(L) === r ? " selected" : ""}>${r}</option>`).join("")}</select>` : L.st === "cx" ? `<b class="lgcxl">CX due</b>` : ""}${L.st === "cx" || (opsFlown(L) && L.res && L.res !== "DCO") ? `<select data-why="${key}" aria-label="Reason" title="Reason for CX / DPCO / DNCO"><option value="">Reason…</option>${[...new Set([...cfgWords("log.why"), ...(L.why ? [L.why] : [])])].map(w => `<option${L.why === w ? " selected" : ""}>${esc(w)}</option>`).join("")}</select>` : ""}</td>
@@ -1596,12 +1596,26 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .hrv{font-variant-numeric:tabular-nums;text-align:right;color:var(--ink)}.hrv small{color:var(--muted)}
 .opslog tr.lgok td.lgcrew{box-shadow:inset 3px 0 0 var(--ok,#1F8A4C)}
 .opslog tr.lgcx td.lgcrew{box-shadow:inset 3px 0 0 var(--late);opacity:.7}
-@media (max-width:700px){ /* phone: flight on its own line, then crew | T/O | LDG | hrs | buttons */
+@media (max-width:700px){ /* phone (Gordon, 14 Oct "disorganised"): one block per aircraft line:
+  crew + IPS CX ✕ · then T/O | LDG | Hrs · then Instr h | result · then IF per person; boxes that don't apply yet are hidden */
   .opslog,.opslog tbody{display:block;min-width:0}.opslog thead{display:none}
-  .opslog tr{display:grid;grid-template-columns:minmax(0,1fr) 62px 62px 30px auto;align-items:center;gap:0 4px}
-  .opslog tr.lgwv{display:block}.opslog td.lgcs{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .opslog tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(52px,auto);grid-template-areas:"cs cs cs" "crew crew btn" "to ldg hrs" "instr res res" "if if if";align-items:end;column-gap:6px;padding:6px 4px 8px;border-top:1px solid var(--line)}
+  .opslog tr.lgf{border-top:2px solid var(--muted)}.opslog tr.lgf td{border-top:0}
+  .opslog tr.lgwv{display:block;padding:0;border:0}
+  .opslog td{padding:2px 0;border:0!important;box-shadow:none!important}
+  .opslog td.lgcs{grid-area:cs;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-bottom:6px}
   .opslog td.lgcs small{display:inline}.opslog td.lgcs .btn{margin:0 0 0 auto}
-  .opslog input{width:58px;padding:4px}.opslog td{padding:3px 2px}}
+  .opslog td.lgcrew{grid-area:crew;padding-left:8px}
+  .opslog tr.lgok td.lgcrew{border-left:3px solid var(--ok,#1F8A4C)!important}.opslog tr.lgcx td.lgcrew{border-left:3px solid var(--late)!important}
+  .opslog td.lgto{grid-area:to}.opslog td.lgldg{grid-area:ldg}.opslog td.lghrs{grid-area:hrs;text-align:center;padding-bottom:9px}
+  .opslog td.lginstr{grid-area:instr}.opslog td.lgres{grid-area:res;display:flex;gap:6px;align-items:end;flex-wrap:wrap}.opslog td.lgres select{margin:0}
+  .opslog td.lgbtn{grid-area:btn;align-self:center;text-align:right}.opslog td.lgbtn .btn{margin:0 0 0 3px;padding:5px 8px}
+  .opslog td.lgif{grid-area:if;display:flex;flex-direction:column;gap:3px;padding-top:4px}
+  .opslog td[data-l]::before{content:attr(data-l);display:block;font-size:.68rem;color:var(--muted);margin-bottom:1px}
+  .opslog td.lgto input,.opslog td.lgldg input,.opslog td.lginstr input{width:100%;padding:6px;font-size:1rem}
+  .opslog .lgifp small{width:auto;min-width:64px}.opslog .lgifp input{width:56px;padding:5px}
+  .opslog td.lginstr:has(input:disabled),.opslog td.lgif:has(input:disabled){display:none}
+  .opslog td.lgres:empty{display:none}}
 .opsflown{display:inline-block;font-size:.75rem;font-weight:600;color:var(--ok,#1F8A4C);white-space:nowrap}
 .opscx{display:inline-block;font-size:.7rem;font-weight:700;color:var(--late);border:1px solid var(--late);border-radius:3px;padding:0 4px}
 .hrsper{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:.9rem}.hrsper select{width:auto;margin:0}
