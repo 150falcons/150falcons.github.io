@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script>/* Dark by default; a light pick from the top bar is remembered on this device (Gordon, 13 Oct). */try{document.documentElement.dataset.theme=localStorage.getItem("theme")||"dark"}catch(e){document.documentElement.dataset.theme="dark"}</script>
 <title>150 Falcon Det</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,7 +22,7 @@
   --bg:#151B22; --paper:#1E2630; --ink:#E7ECF1; --muted:#95A3B1; --line:#33404D;
   --in:#5C9BE0; --out:#F0B429; --late:#F06262; --accent:#D9DEE3; --accent-ink:#1A1F24; --field:#18202A; --ok:#4ADE80;
 }}
-:root[data-theme="dark"]{
+:root[data-theme="dark"]{color-scheme:dark;
   --bg:#151B22; --paper:#1E2630; --ink:#E7ECF1; --muted:#95A3B1; --line:#33404D;
   --in:#5C9BE0; --out:#F0B429; --late:#F06262; --accent:#D9DEE3; --accent-ink:#1A1F24; --field:#18202A; --ok:#4ADE80;
 }
@@ -210,6 +211,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 .authcard h2{font:700 1.6rem var(--cond);margin:0 0 6px}
 .topbar .signout{background:none;border:1px solid var(--line);border-radius:4px;padding:4px 10px;font:500 .85rem var(--body);color:var(--muted);cursor:pointer;margin-left:6px}
 .topbar .signout:hover{color:var(--ink)}
+.topbar .themebtn{padding:3px 8px;line-height:1;font-size:1.05rem}
 .rlist .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 /* QFI list: name + tags on the first line, login + buttons on the second, so nothing wraps awkwardly */
 .rlist li.qrow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:2px 10px;padding:8px 0}
@@ -255,7 +257,7 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
       <button role="tab" data-tab="opsboard" data-area="ops" aria-selected="false">Operations</button>
       <button role="tab" data-tab="roster" data-area="admin" aria-selected="false">Roster</button>
     </nav>
-    <div class="clock"><span id="clock"></span><button class="signout" id="btnSignOut" hidden>Sign out</button></div>
+    <div class="clock"><span id="clock"></span><button class="signout themebtn" id="btnTheme" type="button"></button><button class="signout" id="btnSignOut" hidden>Sign out</button></div>
   </div>
 </header>
 <div class="wrap">
@@ -624,6 +626,18 @@ function renderClock() {
   const tv = document.querySelector(".tvclock"); if (tv) tv.innerHTML = `${esc(loc)}L <small>${esc(z)}</small>`;
 }
 setInterval(renderClock, 1000);
+// Light / dark switch in the top bar (dark is the default; the choice is kept on this device).
+function renderThemeBtn() {
+  const b = $("#btnTheme"); if (!b) return; const dark = document.documentElement.dataset.theme !== "light";
+  b.textContent = dark ? "☀" : "☾"; b.title = b.ariaLabel = dark ? "Switch to light mode" : "Switch to dark mode";
+}
+document.addEventListener("click", e => {
+  if (!e.target.closest("#btnTheme")) return;
+  const t = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  document.documentElement.dataset.theme = t; try { localStorage.setItem("theme", t); } catch (_) {}
+  renderThemeBtn();
+});
+renderThemeBtn();
 function renderTally() {
   const now = Date.now(), ob = openByTrainee(); let i = 0, o = 0, l = 0, lv = 0;
   for (const t of active()) { const m = ob[t.id]; if (leaveOf(t.id)) lv++; else if (!m || isPend(m)) i++; else if (isLate(m, now)) l++; else o++; }
