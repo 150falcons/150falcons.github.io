@@ -86,7 +86,7 @@ function impParse(rows, forceOff) {
   const zd = a => new Date((a - off) * 6e4).toISOString(), ev = raw.map(x => ({ ...x, day: zd(x.a).slice(0, 10), s: opsMin(zd(x.a).slice(11, 16).replace(":", "")), e: x.b == null ? null : opsMin(zd(x.b).slice(11, 16).replace(":", "")) }));
   if (!ev.length) throw new Error("No events found in the file.");
   const days = [...new Set(ev.map(x => x.day))].sort(), day = days[0];
-  const P = { day, days, off, offHow, waves: [], flights: [], sims: [], af: [], areas: 0, skipped: [], unknownSt: {} };
+  const P = { day, days, off, offHow, waves: [], flights: [], sims: [], af: [], mbr: [], notes: [], areas: 0, skipped: [], unknownSt: {} };
   const one = ev.filter(x => x.day === day);
   // Waves from the ERTMS windows ("W1 ERTMS", "NW1 ERTMS"…)
   for (const x of one) { const m = /^(N(?:IGHT)?\s*)?W(?:AVE)?\s*(\d+)\b.*ERTMS/i.exec(x.task); if (m && !x.type) P.waves.push({ no: +m[2], night: !!m[1], s: x.s, e: x.e, sxo: "", opsO: "", notes: [] }); }
@@ -94,11 +94,17 @@ function impParse(rows, forceOff) {
   for (const x of one) {
     if (x.type === "M346") {
       const m = /^(.*?)(\d+)$/.exec(x.cs.replace(/\s+/g, "")), base = (m ? m[1] : x.cs).toUpperCase(), num = m ? String(+m[2]) : "";
-      const d = /^(\S+)?\s*(?:(\d{4})\s*-\s*(\d{4}))?\s*(.*)$/.exec(x.det) || [];
+      const d = /^(\S+)?\s*(?:(\d{4})\s*-\s*(\d{3,4})\b)?\s*(.*)$/.exec(x.det) || [];
       const isArea = d[1] && IMP_AREA.test(d[1]), area = isArea ? d[1].toUpperCase() : "", at = isArea && d[2] ? `${d[2]} - ${d[3]}` : "";
       const rmks = isArea ? impStr(d[4]) : x.det;
       const crew = x.crew.split(";").map(impName).filter(Boolean);
       P.flights.push({ base, num, s: x.s, e: x.e, area, at, line: { crew1: impName(x.cap), crew2: crew[0] || "", extra: crew.slice(1), mission: x.task.toUpperCase(), tail: x.tail.toUpperCase(), rmks: rmks.toUpperCase() }, st: x.st, why: x.why });
+    } else if (x.type === "MBR") {
+      // briefing-room strips: IN TIME, SODB, WX/NTM… (→ day details) and other briefs (→ ground programme)
+      const who = [x.cap, ...x.crew.split(";")].map(impName).filter(Boolean);
+      if (x.task) P.mbr.push({ s: x.s, e: x.e, task: x.task.toUpperCase(), who, det: x.det.toUpperCase() });
+    } else if (x.type === "FMS" && !x.cap && !x.task) {
+      // empty sim slot (no crew, no mission): nothing to show
     } else if (x.type === "FMS") {
       const crew = x.crew.split(";").map(impName).filter(Boolean), mis = x.task.toUpperCase();
       P.sims.push({ s: x.s, e: x.e, fms: (/(\d)\s*$/.exec(x.tail) || [])[1] || "", crew1: impName(x.cap), crew2: crew[0] || "", rmks: crew.slice(1).map(n => `${/EPE/.test(mis) ? "SXO" : "SUPP"}: ${n}`).join(" / "), mission: mis });
@@ -113,6 +119,8 @@ function impParse(rows, forceOff) {
       const det = x.det.toUpperCase();
       P.af.push({ what: x.task.toUpperCase() + (det ? ` (${det})` : ""), time: `${opsZ4(x.s)}Z - ${opsZ4(x.e)}Z`, s: x.s });
       if (det && P.waves.length) impWave(P.waves, x.s).notes.push(det);
+    } else if (!x.type && !x.task && x.det) {
+      P.notes.push({ s: x.s, e: x.e, text: x.det.toUpperCase() }); // e.g. "SNG J SIT-IN ENZO BRIEF"
     } else if ((x.type || x.task) && !/ERTMS/i.test(x.task)) P.skipped.push([x.type, x.task].filter(Boolean).join(" "));
   }
   P.af.sort((a, b) => a.s - b.s);
@@ -208,7 +216,31 @@ function impMerge(P, cur) {
   }
   const sim = { ...oldSim, rows };
   const airfield = { ...oldAf, rows: P.af.length ? P.af.map(({ what, time }) => ({ what, time })) : oldAf.rows || [] };
-  return { flying, sim, airfield, notes };
+  // Day details from the briefing strips: only boxes ops haven't filled in yet.
+  const header = { ...opsBlank.header(), ...(cur.header || {}) }, hdr = [];
+  const HK = [[/LATE\s*IN/, "lateIn"], [/IN\s*TIME/, "inTime"], [/SODB/, "sodb"], [/MODB/, "modb"], [/NIGHT.*BRIEF/, "nightBrief"], [/OPS\s*BRIEF/, "opsBrief"], [/EOWD/, "eowd"], [/\bWX\b|NTM|NOTAM/, "wxBrief"]];
+  const val = {}, other = [];
+  for (const b of [...P.mbr].sort((a, b) => a.s - b.s)) {
+    const k = (HK.find(([re]) => re.test(b.task)) || [])[1];
+    if (!k) { other.push(b); continue; }
+    const t = opsZ4(b.s) + "Z", g = (val[k] ||= []), same = g.find(x => x.t === t);
+    if (same) b.who.forEach(n => same.who.includes(n) || same.who.push(n)); else g.push({ t, who: [...b.who] });
+  }
+  for (const [k, g] of Object.entries(val)) {
+    const v = g.map(x => x.t + (x.who.length ? ` (${x.who.join(" / ")})` : "")).join(" / "), label = (OPS_HEADER_FIELDS.find(f => f[0] === k) || [k, k])[1];
+    if (!String(header[k] || "").trim()) { header[k] = v; hdr.push([label, v, true]); } else if (opsNorm(header[k]) !== opsNorm(v)) hdr.push([label, v, false]);
+  }
+  // Other briefing-room bookings and free notes → the ground programme (added once; re-imports don't duplicate).
+  const ground = opsClone(cur.ground && (cur.ground.groups || []).length ? cur.ground : opsBlank.ground()), gnd = [];
+  const gg = ground.groups.find(g => /^GROUND PROGRAM/i.test(g.name || "")) || ground.groups[0];
+  const add = (s, e, event, who) => {
+    const time = `${opsZ4(s)}${e != null && e !== s ? "-" + opsZ4(e) : ""}Z`;
+    if (ground.groups.some(g => (g.rows || []).some(r => opsNorm(r.event) === opsNorm(event) && opsMin(r.time) === s))) return;
+    (gg.rows ||= []).push({ time, event, personnel: who.join(", "), venue: "" }); gnd.push(`${time} ${event}${who.length ? " (" + who.join(", ") + ")" : ""}`);
+  };
+  for (const b of other) add(b.s, b.e, b.task + (b.det ? " " + b.det : ""), b.who);
+  for (const n of P.notes) add(n.s, n.e, n.text, []);
+  return { flying, sim, airfield, header, ground, notes, hdr, gnd };
 }
 
 /* ---------- what changed (for the preview) ---------- */
@@ -248,7 +280,7 @@ function opsImportPick() {
 async function opsImportFile(file, rows, forceOff) {
   let P;
   try { rows = rows || await xlsxRows(file); P = impParse(rows, forceOff); } catch (e) { return ask("Couldn't read the file", e.message || String(e), "OK"); }
-  const { data, error } = await S.sb.from("ops_sections").select("section,data,version").eq("day", P.day).in("section", ["flying", "sim", "airfield"]);
+  const { data, error } = await S.sb.from("ops_sections").select("section,data,version").eq("day", P.day).in("section", ["flying", "sim", "airfield", "header", "ground"]);
   if (error) return toast("Couldn't load " + P.day + ": " + errMsg(error));
   const cur = {}, ver = {}; for (const r of data || []) { cur[r.section] = r.data && Object.keys(r.data).length ? r.data : null; ver[r.section] = r.version; }
   const M = impMerge(P, cur);
@@ -277,18 +309,20 @@ function opsImportShow() {
     ${M.notes.cx.length ? `<h3>Marked CX (cancelled in the file)</h3>${li(M.notes.cx.map(esc))}` : ""}
     ${M.notes.add.length ? `<h3>Ticked Ops add</h3>${li(M.notes.add.map(esc))}` : ""}
     ${M.notes.kept.size ? `<p class="hint"><b>Kept from the board:</b> ${esc([...M.notes.kept].join(", "))}.</p>` : ""}
-    <p class="hint"><b>Not in the file, still for ops:</b> ${[ws.some(w => !w.opsO) ? "OPS O" : "", "config / DL on new lines", M.sim.rows.some(r => !r.callsign) ? "sim callsigns" : "", "ground programme", "day details", "duty extras"].filter(Boolean).join(", ")}.</p>
+    <p class="hint"><b>Not in the file, still for ops:</b> ${[ws.some(w => !w.opsO) ? "OPS O" : "", "config / DL on new lines", M.sim.rows.some(r => !r.callsign) ? "sim callsigns" : "", "rest of the ground programme / day details", "duty extras"].filter(Boolean).join(", ")}.</p>
     ${unknown.length ? `<p class="impw">⚠ Not matching any login, trainee or crew-list name: ${esc(unknown.join(", "))}. Check the spelling after importing.</p>` : ""}
     ${unk.length ? `<p class="impw">⚠ Status codes the board doesn't use yet: ${unk.map(([k, v]) => `<b>${esc(k)}</b> (${esc(v.join(", "))})`).join("; ")}.</p>` : ""}
     ${M.notes.warn.length ? li(M.notes.warn.map(w => `<span class="impw">⚠ ${esc(w)}</span>`)) : ""}
     ${P.skipped.length ? `<p class="hint">Skipped: ${esc([...new Set(P.skipped)].join(", "))}.</p>` : ""}
-    <p class="hint">Saving replaces this day's flying program, simulator program and airfield restrictions. Ground program, day details, notes and duties aren't touched.</p>
+    ${M.hdr.length ? `<h3>Day details (from the briefing strips)</h3>${li(M.hdr.map(([l, v, ok]) => `<b>${esc(l)}</b> ${esc(v)}${ok ? "" : ` <span class="hint">(not used: the box already has ops' entry)</span>`}`))}` : ""}
+    ${M.gnd.length ? `<h3>Added to the ground programme</h3>${li(M.gnd.map(esc))}` : ""}
+    <p class="hint">Saving replaces this day's flying program, simulator program and airfield restrictions, fills empty Day details boxes and adds new briefing bookings to the ground programme. What ops typed in Day details and the ground programme stays; notes and duties aren't touched.</p>
     <div class="row"><button class="btn" data-x="close">Cancel</button><button class="btn primary" data-x="save">Save to ${esc(opsLongDay(P.day).replace(/ \d{4}$/, ""))}</button></div></div>`;
   if (!d.open) d.showModal();
 }
 async function opsImportSave(btn) {
   const { P, M, ver } = IMP.res; btn.disabled = true;
-  for (const sec of ["flying", "sim", "airfield"]) {
+  for (const sec of ["flying", "sim", "airfield", ...(M.hdr.some(h => h[2]) ? ["header"] : []), ...(M.gnd.length ? ["ground"] : [])]) {
     const { error } = await S.sb.rpc("ops_save", { p_day: P.day, p_section: sec, p_data: M[sec], p_version: ver[sec] || 0 });
     if (error) { btn.disabled = false; return ask("Not saved", `${OPS_TITLES[sec]}: ${errMsg(error)}${/someone else/i.test(error.message) ? " Import the file again to pick up their change." : ""}`, "OK"); }
   }
