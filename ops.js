@@ -707,6 +707,7 @@ function opsBar() {
   const grp = (label, body) => body ? `<div class="opsgrp"><span class="opsgrpl">${label}</span><div class="opsgrpb">${body}</div></div>` : "";
   const edit = can ? [
     fly && !OPS.edit ? `<button class="btn small${OPS.logOpen ? " primary" : ""}" data-ops="log">${OPS.logOpen ? "Done logging" : "Log flown times"}</button>` : "",
+    !OPS.edit ? `<button class="btn small" data-ops="import" title="Load the planning software's Excel export (.xlsx): flying lines, SXO, sims and airfield items fill in by themselves">Import Excel</button>` : "",
     `<button class="btn small" data-ops="copy">Copy from…</button>`,
     here && OPS_ORDER.some(opsData) && !OPS.edit ? `<button class="btn small danger" data-ops="clear">Clear day</button>` : ""].join("") : "";
   const print = `<button class="btn small" data-ops="pdf" title="Daily programme to send out">Daily PDF</button>${fly ? `<button class="btn small" data-ops="pdfeod" title="End-of-day copy with flown times, for filing">End of day PDF</button>` : ""}${here && OPS_ORDER.some(opsData) && !OPS.edit ? `<button class="btn small attbtn" data-ops="att" title="Who should be at the Ops brief / WX-NOTAM / EOWD, and who's away">Attendance</button>` : ""}`;
@@ -1206,6 +1207,7 @@ document.addEventListener("click", async e => {
   else if (a === "cancel") { OPS.edit = null; renderOps($("#view")); }
   else if (a === "save") opsSave(el);
   else if (a === "copy") opsCopy();
+  else if (a === "import") opsImportPick();
   else if (a === "clear") opsClearDay(el);
   else if (a === "pdf") opsPrint(false);
   else if (a === "pdfeod") opsPrint(true);
