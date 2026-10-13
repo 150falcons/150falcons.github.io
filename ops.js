@@ -170,7 +170,9 @@ function opsGroundHas(personnel, n) {
   const parts = String(personnel || "").split(/[,;&\/]|\bAND\b/i).map(p => opsNorm(p.replace(/\(.*?\)/g, ""))).filter(Boolean);
   if (parts.includes(n)) return true;
   const t = (typeof active === "function" ? active() : []).find(x => opsNorm(x.name) === n);
-  return !!(t && t.course && parts.includes(opsNorm(t.course)));
+  // a course name matches its whole course; the programme writes WSO courses as "FWC-W" ("30 FWC-W" = 30 WSO, Gordon 14 Oct)
+  const crs = c => opsNorm(c).replace(/\bFWC W\b/g, "WSO");
+  return !!(t && t.course && parts.map(crs).includes(crs(t.course)));
 }
 // What the programme already says a person does in each wave: # (flying), (#) ops add, SXO, OPS O, SIMS,
 // and ground events from the ground programme (placed in the wave whose time window they fall in; course
