@@ -160,7 +160,7 @@ function impMerge(P, cur) {
         if (l.st === "A" || (ol && ol.opsAdd)) { a.opsAdd = true; if (l.st === "A") notes.add.push(`${g.base} ${a.crew1}`); }
         if (ol && ol.log && ol.log.st) a.log = ol.log; // flown times stay
         else if (l.st === "C") { const why = IMP_WHY[l.why] || (/^OTH/.test(l.why) ? "OTH" : l.why); a.log = { st: "cx", why, by: S.me && S.me.id, at: new Date().toISOString() }; notes.cx.push(`${g.base} ${a.crew1}${why ? " (" + why + ")" : ""}`); }
-        if (l.st && !"ACU".includes(l.st)) (P.unknownSt[l.st + (l.why ? " " + l.why : "")] ||= []).push(`${g.base} ${a.crew1}`);
+        // S (AREA, A/C) and D (BACK = slid back in the programme) are planning notes: ignored (Gordon, 13 Oct).
         nf.ac.push(a);
       });
       // ETA from the file; brief / step worked out from the ETD unless ops had typed them (and the ETD hasn't moved)
