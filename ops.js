@@ -813,6 +813,15 @@ function opsMyItems(get, opts) {
 // f.dl = "A" | "B" | "C" | "D" (blank = none). f.veh = "VAN" | "ZOE" typed by ops, blank = worked out by opsPlan.
 const OPS_DL = ["A", "B", "C", "D"], OPS_VEH = ["VAN", "ZOE"];
 const opsStepMin = f => { const s = opsMin(f.step); if (s != null) return s; const e = opsMin(f.etd); return e == null ? null : e - cfgN("fly.step"); };
+// Own WX / NOTAM (Gordon, 14 Oct): a formation still in its flight brief (brief → step) at the WX / NOTAM brief time does its
+// own WX / NOTAM inside the flight brief. f.wx = "own" / "mass" set by ops in the flying editor; blank = worked out.
+const opsFltBrief = f => { const e = opsMin(f.etd); return { b: opsMin(f.brief) ?? (e != null ? e + opsAutoOff().brief : null), s: opsStepMin(f) }; };
+const opsWxMin = h => { const m = /(\d{4})/.exec(String((h || {}).wxBrief || "")); return m ? opsMin(m[1]) : null; };
+function opsOwnWx(f, h) {
+  if (f.wx === "own" || f.wx === "mass") return { own: f.wx === "own", auto: false };
+  const t = opsWxMin(h), { b, s } = opsFltBrief(f);
+  return { own: t != null && b != null && s != null && t >= b && t < s, auto: true };
+}
 const opsFltPeople = f => [...new Set((f.ac || []).flatMap(a => [a.crew1, a.crew2]).map(opsNorm).filter(Boolean))].length;
 const opsFltAc = f => (f.ac || []).filter(opsLineUsed).length;
 // Works out, for every formation of the day, its vehicle and any warnings. Returns { "wi.fi": { veh, auto, people, warn: [], dl, dlWarn } }.
@@ -821,11 +830,11 @@ const opsFltAc = f => (f.ac || []).filter(opsLineUsed).length;
 //  · Van still out → the ZOE (veh.zoe seats, veh.zoeMax squeezed), driven by the crew and parked at the flight line until they
 //    land: busy until ETA + veh.zoeBack. If the ZOE is out too, the formation still gets the next van run, with a warning.
 //  · Datalink: aircraft on the same channel whose ETD–ETA overlap this formation's; more than dl.max → warning (not blocked).
-function opsPlan(fl) {
+function opsPlan(fl, h = opsGet("header")) {
   const out = {}, list = [], byF = new Map(); Object.defineProperty(out, "byF", { value: byF });
   (fl.waves || []).forEach((w, wi) => (w.flights || []).forEach((f, fi) => {
     const k = `${wi}.${fi}`, people = opsFltPeople(f);
-    out[k] = { veh: "", auto: true, people, warn: [], dl: OPS_DL.includes(f.dl) ? f.dl : "", dlWarn: "" }; byF.set(f, out[k]);
+    const wx = opsOwnWx(f, h); out[k] = { veh: "", auto: true, people, warn: [], dl: OPS_DL.includes(f.dl) ? f.dl : "", dlWarn: "", ownWx: wx.own, wxAuto: wx.auto }; byF.set(f, out[k]);
     const t = opsStepMin(f); if (t != null && people) list.push({ k, wi, f, t, people });
   }));
   list.sort((a, b) => a.t - b.t);
@@ -861,12 +870,13 @@ function opsPlan(fl) {
 function opsPlanTags(p) {
   if (!p) return "";
   return [p.dl ? `<span class="opsdl${p.dlWarn ? " bad" : ""}" title="${esc(p.dlWarn || "Datalink channel")}">DL ${esc(p.dl)}</span>` : "",
-    p.veh ? `<span class="opsveh${p.warn.length ? " bad" : ""}" title="${esc(p.warn.join("; ") || (p.auto ? "Worked out" : "Set by ops"))}">${esc(p.veh)}</span>` : ""].filter(Boolean).join("");
+    p.veh ? `<span class="opsveh${p.warn.length ? " bad" : ""}" title="${esc(p.warn.join("; ") || (p.auto ? "Worked out" : "Set by ops"))}">${esc(p.veh)}</span>` : "",
+    p.ownWx ? `<span class="opswx" title="${p.wxAuto ? "Still in their flight brief at the WX / NOTAM brief time, so they do their own WX / NOTAM" : "Set by ops"}">Own WX/NTM</span>` : ""].filter(Boolean).join("");
 }
 // brief / step / take-off for their flights, sim start, ground events, and the start of a wave they are SXO / OPS O for.
 function opsMyEvents(get) {
   const names = opsMyNames(); if (!names.length) return [];
-  const fl = opsNameWaves(get("flying")), out = [], add = (t, label) => { const m = opsMin(t); if (m != null) out.push({ t: m, label }); }, plan = opsPlan(fl);
+  const fl = opsNameWaves(get("flying")), out = [], add = (t, label) => { const m = opsMin(t); if (m != null) out.push({ t: m, label }); }, plan = opsPlan(fl, get("header"));
   for (const [wi, w] of (fl.waves || []).entries()) {
     for (const [fi, f] of (w.flights || []).entries()) for (const a of f.ac || []) {
       if (!names.some(n => opsCrewHas(a, n))) continue;
@@ -1065,7 +1075,7 @@ const opsEd = {
       ${(w.flights || []).map((f, fi) => { const p = `waves.${wi}.flights.${fi}`; return `<div class="blk flt">
         <div class="tablewrap"><table><thead><tr><th>Brief</th><th>Step</th><th class="opsetdh">ETD (key in first)</th><th>ETA</th><th>Callsign</th><th>DL</th><th>Vehicle</th><th>Area</th><th>Area time</th><th></th></tr></thead><tbody><tr>
           <td>${opsAutoIn(p, f, "brief")}</td><td>${opsAutoIn(p, f, "step")}</td><td>${oI(p + ".etd", f.etd, "80px", "e.g. 0715").replace("<input", '<input class="opsetd"')}</td><td>${opsAutoIn(p, f, "eta")}</td>
-          <td>${oI(p + ".callsign", f.callsign, "120px")}</td><td>${oSel(p + ".dl", f.dl, [["", "-"], ...OPS_DL.map(x => [x, x])])}</td><td>${oSel(p + ".veh", f.veh, [["", "Auto"], ...OPS_VEH.map(x => [x, x])])} <span class="opsplan" data-plan="${wi}.${fi}"></span></td><td>${oI(p + ".area", f.area, "120px")}</td><td>${oI(p + ".areaTime", f.areaTime, "110px")}</td>
+          <td>${oI(p + ".callsign", f.callsign, "120px")}</td><td>${oSel(p + ".dl", f.dl, [["", "-"], ...OPS_DL.map(x => [x, x])])}</td><td>${oSel(p + ".veh", f.veh, [["", "Auto"], ...OPS_VEH.map(x => [x, x])])} <span class="opsplan" data-plan="${wi}.${fi}"></span><div class="opswxsel" title="WX / NOTAM: Auto = own WX / NOTAM if still in the flight brief at the WX / NOTAM brief time">WX ${oSel(p + ".wx", f.wx, [["", "Auto"], ["own", "Own"], ["mass", "At brief"]])}</div></td><td>${oI(p + ".area", f.area, "120px")}</td><td>${oI(p + ".areaTime", f.areaTime, "110px")}</td>
           <td>${oTools(`waves.${wi}.flights`, fi)}</td></tr></tbody></table>
         <table><thead><tr><th>#</th><th>Aircrew</th><th>Aircrew</th><th>Mission</th><th>A/C</th><th>Config</th><th>Rmks</th><th></th><th></th></tr></thead><tbody>
           ${(f.ac || []).map((a, ai) => { const q = `${p}.ac.${ai}`; return `<tr><td>${oI(q + ".n", a.n, "40px")}</td><td>${oP(q + ".crew1", a.crew1, "120px")}</td><td>${oP(q + ".crew2", a.crew2, "120px")}</td><td>${oI(q + ".mission", a.mission, "110px")}</td><td>${oI(q + ".tail", a.tail, "60px")}</td><td>${oI(q + ".config", a.config, "60px")}</td><td>${oI(q + ".rmks", a.rmks, "200px")}</td><td>${oC(q + ".opsAdd", a.opsAdd, "Ops add")}</td><td>${oB("del", p + ".ac", ai, "✕", "", "Remove aircraft")}</td></tr>${opsIrtBad(a) ? `<tr class="opswarn"><td colspan="9">⚠ ${OPS_IRT_MSG}${a.crew2 ? ` (${esc(a.crew2)} isn't ticked as IRE)` : " (no back seat)"}</td></tr>` : ""}`; }).join("")}
@@ -1130,7 +1140,7 @@ function opsEdFlyGrid(fl) {
     const body = (w.flights || []).map((f, fi) => {
       const p = `waves.${wi}.flights.${fi}`, ac = f.ac || [], n = Math.max(1, ac.length), rs = n > 1 ? ` rowspan="${n}"` : "";
       const fc = `<td${rs}>${opsAutoIn(p, f, "brief")}</td><td${rs}>${opsAutoIn(p, f, "step")}</td><td${rs}>${oI(p + ".etd", f.etd, "", "0715").replace("<input", '<input class="opsetd"')}</td><td${rs}>${opsAutoIn(p, f, "eta")}</td>
-        <td${rs}>${oI(p + ".callsign", f.callsign)}</td><td${rs}>${oSel(p + ".dl", f.dl, [["", "-"], ...OPS_DL.map(x => [x, x])])}</td><td${rs}>${oSel(p + ".veh", f.veh, [["", "Auto"], ...OPS_VEH.map(x => [x, x])])}<span class="opsplan" data-plan="${wi}.${fi}"></span></td>
+        <td${rs}>${oI(p + ".callsign", f.callsign)}</td><td${rs}>${oSel(p + ".dl", f.dl, [["", "-"], ...OPS_DL.map(x => [x, x])])}</td><td${rs}>${oSel(p + ".veh", f.veh, [["", "Auto"], ...OPS_VEH.map(x => [x, x])])}<span class="opsplan" data-plan="${wi}.${fi}"></span><div class="opswxsel" title="WX / NOTAM: Auto = own WX / NOTAM if still in the flight brief at the WX / NOTAM brief time">WX ${oSel(p + ".wx", f.wx, [["", "Auto"], ["own", "Own"], ["mass", "At brief"]])}</div></td>
         <td${rs}>${oA(p + ".area", f.area)}</td><td${rs}>${oA(p + ".areaTime", f.areaTime)}</td>`;
       const ft = `<td${rs} class="ftools">${oB("add", p + ".ac", "", "+ A/C", "ac", "Add an aircraft line")}${oTools(`waves.${wi}.flights`, fi)}</td>`;
       const line = (a, ai) => { const q = `${p}.ac.${ai}`;
@@ -1191,7 +1201,7 @@ function opsPlanRefresh() {
   document.querySelectorAll("#opsEdit [data-wst]").forEach(el => { const w = (OPS.edit.data.waves || [])[+el.dataset.wst]; if (!w) return; const ws = opsStats({ waves: [w] });
     el.textContent = `${ws.sorties} sortie${ws.sorties === 1 ? "" : "s"}${ws.first != null ? ` · ${opsZ4(ws.first)}–${opsZ4(ws.last)}Z` : ""}`; });
   document.querySelectorAll("#opsEdit [data-plan]").forEach(el => { const p = plan[el.dataset.plan]; if (!p) return;
-    el.innerHTML = `${p.veh ? `<b>${esc(p.veh)}</b>${p.auto ? "" : " (set)"}` : ""}${p.people ? ` <span class="hint">${p.people} crew</span>` : ""}${[...p.warn, p.dlWarn].filter(Boolean).map(w => `<span class="opsplanw">⚠ ${esc(w)}</span>`).join("")}`; });
+    el.innerHTML = `${p.veh ? `<b>${esc(p.veh)}</b>${p.auto ? "" : " (set)"}` : ""}${p.people ? ` <span class="hint">${p.people} crew</span>` : ""}${p.ownWx ? ` <span class="opswx">Own WX/NTM${p.wxAuto ? " (auto)" : ""}</span>` : ""}${[...p.warn, p.dlWarn].filter(Boolean).map(w => `<span class="opsplanw">⚠ ${esc(w)}</span>`).join("")}`; });
 }
 function opsRerenderEdit() {
   if (!OPS.edit) return;
@@ -1333,7 +1343,7 @@ function opsPrint(eod) {
     let rows = `<tbody class="wv"><tr><td colspan="10"><b>${e(w.name)}</b><span>SXO <b>${e(w.sxo || "-")}</b></span><span>OPS O <b>${e(w.opsO || "-")}</b></span><span class="ws">${ws.sorties} sortie${ws.sorties === 1 ? "" : "s"}${ws.first != null ? ` · ${z4(ws.first)}–${z4(ws.last)}Z` : ""}</span></td></tr>${w.rmks ? `<tr class="wr"><td colspan="10">⚠ ${nl(w.rmks)}</td></tr>` : ""}</tbody>`;
     (w.flights || []).forEach((f, fi) => {
       const ac = ((f.ac || []).length ? f.ac : [opsTpl.ac("")]).filter((a, i) => i === 0 || opsLineUsed(a)), sp = ac.length, pl = pplan.byF.get(f) || {};
-      const tags = [pl.dl ? "DL " + e(pl.dl) : "", pl.veh ? e(pl.veh) : ""].filter(Boolean).join(" · ");
+      const tags = [pl.dl ? "DL " + e(pl.dl) : "", pl.veh ? e(pl.veh) : "", pl.ownWx ? "OWN WX/NTM" : ""].filter(Boolean).join(" · ");
       rows += `<tbody class="fl${fi % 2 ? " alt" : ""}">`;
       ac.forEach((a, i) => {
         const add = opsIsAdd(f, a), no = add ? "*" : opsLineUsed(a) ? String(++n).padStart(2, "0") : "", L = a.log || {};
@@ -1449,6 +1459,9 @@ function opsAttWhy(x, t, ctx) {
     if (it && it.min != null && it.min > t) return it.how === "late" ? `Late in ${it.time}Z` : `In at ${it.time}Z${it.how === "rest" ? " (everyone else)" : ""}`; }
   for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) {
     if (!opsCrewHas(a, n)) continue;
+    const cs = [f.callsign, a.n].filter(Boolean).join(" "), fb = opsFltBrief(f), wx = opsOwnWx(f, h);
+    if (ctx.ev === "wx" && wx.own) return `Own WX / NOTAM in flight brief · ${cs}`;
+    if (fb.b != null && fb.s != null && t >= fb.b && t < fb.s && !(ctx.ev === "wx" && f.wx === "mass")) return `In flight brief · ${cs} (${w.name})`;
     const etd = opsMin(f.etd), s = opsMin(f.step) ?? (etd != null ? etd + opsAutoOff().step : null), e = opsMin(f.eta);
     if (s != null && e != null && t > s && t <= e + 30) return `Flying · ${[f.callsign, a.n].filter(Boolean).join(" ")} ${f.etd}–${f.eta}Z (${w.name})`; // from step: a brief at step time is the one before walking (Gordon 14 Oct)
   }
@@ -1479,7 +1492,7 @@ function opsAttendance() {
       if (e.target.closest("[data-x=copy]")) { const txt = d.querySelector("textarea").value; (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast("Copied. Paste it into your slides."), () => { d.querySelector("textarea").select(); document.execCommand("copy"); toast("Copied."); }); } };
     d.onchange = e => { if (e.target.id === "attEv") { ATT.ev = e.target.value; ATT.t = (opsAttEvents(opsGet("header")).find(x => x[0] === ATT.ev) || [])[2] || ATT.t; } if (e.target.id === "attT") ATT.t = e.target.value.replace(/\D/g, "").padStart(4, "0").slice(-4); opsAttendance(); }; }
   const t = opsMin(ATT.t), fl = opsNameWaves(opsGet("flying")), ev = evs.find(e => e[0] === ATT.ev);
-  const ctx = { fl, sim: opsGet("sim"), ground: opsGet("ground"), duties: opsGet("duties"), h, today: OPS.day === todayStr(), wins: opsWindows(fl), inPlan: opsInPlan(h, fl), pres: new Set(opsBriefs(h).filter(b => b.time === ATT.t).flatMap(b => b.names)) };
+  const ctx = { fl, sim: opsGet("sim"), ground: opsGet("ground"), duties: opsGet("duties"), h, today: OPS.day === todayStr(), wins: opsWindows(fl), inPlan: opsInPlan(h, fl), ev: ATT.ev, pres: new Set(opsBriefs(h).filter(b => b.time === ATT.t).flatMap(b => b.names)) };
   const ppl = opsAttPeople(fl).map(x => ({ ...x, why: t == null ? "" : opsAttWhy(x, t, ctx) }));
   const grps = [...new Set(ppl.map(x => x.grp))], here = ppl.filter(x => !x.why), away = ppl.filter(x => x.why);
   const title = `${(ev ? ev[1] : "Brief").toUpperCase()}${t != null ? " " + ATT.t + "Z" : ""} · ${opsLongDay(OPS.day).toUpperCase()}`;
@@ -1489,7 +1502,7 @@ function opsAttendance() {
     ${t == null ? "" : `<div class="attcols"><div><h3>Attending (${here.length})</h3>${grps.map(g => { const ns = here.filter(x => x.grp === g); return ns.length ? `<div class="attg"><b>${esc(g)}</b> <span class="hint">${ns.length}</span><div>${ns.map(x => esc(x.name)).join(", ")}</div></div>` : ""; }).join("")}</div>
       <div><h3>Not attending (${away.length})</h3>${away.length ? `<table class="opst attaway"><tbody>${away.map(x => `<tr><td><b>${esc(x.name)}</b><small class="hint">${esc(x.grp)}</small></td><td>${esc(x.why)}</td></tr>`).join("")}</tbody></table>` : `<p class="hint">Everyone should be there.</p>`}</div></div>
       <details class="atttxt"><summary>Text to copy</summary><textarea readonly rows="10">${esc(text)}</textarea></details>`}
-    <p class="hint" style="margin:8px 0 0">Away = on leave / out of base, in later than the brief (their time in the In time / Late in lines: named, "W1 PLAYERS" = that wave's aircrew + SXO + OPS O, a time with no names = everyone else; the people giving the brief always count as there), flying (after step to landing + 30 min), sims (start − 1 h to end + 30 min, incl. the SXO / SUPP in the sim remarks), SXO / OPS O of a wave that has stepped, a ground event, or a duty note. ST Tow are listed only on days they fly; engineers and FSI aren't listed.</p></div>`;
+    <p class="hint" style="margin:8px 0 0">Away = on leave / out of base, in later than the brief (their time in the In time / Late in lines: named, "W1 PLAYERS" = that wave's aircrew + SXO + OPS O, a time with no names = everyone else; the people giving the brief always count as there), in their flight brief (brief to step; for the WX / NOTAM brief, formations doing their own WX / NOTAM), flying (after step to landing + 30 min), sims (start − 1 h to end + 30 min, incl. the SXO / SUPP in the sim remarks), SXO / OPS O of a wave that has stepped, a ground event, or a duty note. ST Tow are listed only on days they fly; engineers and FSI aren't listed.</p></div>`;
   if (!d.open) d.showModal();
 }
 // Flown totals for the end-of-day sheet: every flown line counts (ops adds too), CX and lines not yet logged are counted separately.
@@ -1615,6 +1628,7 @@ mark.opsme{background:color-mix(in srgb,var(--out) 40%,transparent);color:inheri
 .opsed .tools{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .opsed .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 10px}
 .opsed label{margin-bottom:6px}
+.opsfly td.cs .opswx,.obwvac .opswx{display:block;margin-top:2px;white-space:nowrap}.opswx{font:600 .72rem var(--body);color:var(--out)}.opswxsel{margin-top:3px;white-space:nowrap;font-size:.75rem;color:var(--muted)}.opswxsel select{min-width:0!important;padding:1px 2px;font-size:.75rem}
 .opsfly td.cs .opsdl,.opsfly td.cs .opsveh,.obwvac .opsdl,.obwvac .opsveh{display:block;font:600 .74rem var(--body);color:var(--muted);margin-top:2px;white-space:nowrap}
 .opsveh::before{content:"🚐 "}.opsdl.bad,.opsveh.bad{color:var(--late)}.opsdl.bad::after,.opsveh.bad::after{content:" ⚠"}
 .opsplan{font-size:.8rem}.opsplan .opsplanw{display:block;color:var(--late);font-size:.75rem;white-space:normal;max-width:220px}
@@ -1680,7 +1694,7 @@ table.flyph{width:100%;min-width:0!important;table-layout:fixed;margin-bottom:6p
 .flyph td.act{background:color-mix(in srgb,var(--ok,#1F8A4C) 10%,transparent)}.flyph td.act b{color:var(--ok,#1F8A4C)}
 .flyph tr.opsadd td{font-style:italic;opacity:.85}
 body.tvmode.tvscroll{overflow:visible!important;height:auto!important;touch-action:auto}html:has(body.tvscroll){overflow:visible!important;height:auto!important}
-.flyph td.tm .opsdl,.flyph td.tm .opsveh{display:inline-block;font:600 .72rem var(--body);color:var(--muted);margin:2px 8px 0 0;white-space:nowrap}.flyph .opsplan{display:block}
+.flyph td.tm .opswx{display:inline-block;margin:2px 8px 0 0;white-space:nowrap}.flyph td.tm .opsdl,.flyph td.tm .opsveh{display:inline-block;font:600 .72rem var(--body);color:var(--muted);margin:2px 8px 0 0;white-space:nowrap}.flyph .opsplan{display:block}
 /* Fixed windows (Gordon, 10 Oct): the page doesn't scroll; each window scrolls inside itself. */
 .flytvl,.flytvr{display:flex;flex-direction:column;min-height:0}
 .flytv .card.flypane{display:flex;flex-direction:column;min-height:0;margin:0;padding:10px 12px}

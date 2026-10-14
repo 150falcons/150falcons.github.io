@@ -171,6 +171,7 @@ function impMerge(P, cur) {
       if (of) {
         if (of.dl) { nf.dl = of.dl; notes.kept.add("DL"); }
         if (of.veh) { nf.veh = of.veh; notes.kept.add("vehicle"); }
+        if (of.wx) { nf.wx = of.wx; notes.kept.add("own WX / NOTAM"); }
         // typed brief / step stay if the ETD hasn't moved
         if (of.etd === etd) for (const k of ["brief", "step"]) if (opsIsMan(of, k)) { nf[k] = of[k]; (nf.man ||= {})[k] = true; notes.kept.add("typed brief / step"); }
       }
