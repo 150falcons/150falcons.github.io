@@ -74,7 +74,7 @@ textarea{min-height:110px;resize:vertical}
 .tally .t-leave b{color:#8a63d2}
 .crew .swap{font:500 .78rem var(--body);text-transform:none;letter-spacing:0;margin-left:6px;color:var(--accent)}
 .retrow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
-.retrow select{width:auto;margin:0}
+.retrow select{width:auto;margin:0}.retsel{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
 .recard{border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-bottom:10px;background:var(--field)}
 .recard h3{font:700 1.05rem var(--cond);margin:0 0 4px}
 .rerow{display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center;padding:4px 0}
@@ -1126,25 +1126,55 @@ let retTrip = null;
 function openReturn(id) {
   const m = S.open.find(x => x.id === id); if (!m || !canAct(m)) return; retTrip = m;
   $("#inWhere").textContent = `${m.destination}. ${m.vehicle_label}.`;
+  // Car trips: the people still out keep a driver (and a VCOM unless it's a Cazaux trip): when the driver / VCOM is marked
+  // back, a role box shows for those still out with a new driver / VCOM picked (Gordon, 14 Oct: two pax were left with no driver).
   $("#inRows").innerHTML = members(m).map(p => `<div class="retrow"><span><strong>${esc(p.name)}</strong> <span class="hint">${esc(ROLE[p.role] || "")}</span></span>
-    <select data-pid="${esc(p.id)}"><option value="in">Back in base</option><option value="leave">On leave</option><option value="out">Still out</option></select></div>`).join("");
+    <span class="retsel"><select data-pid="${esc(p.id)}"><option value="in">Back in base</option><option value="leave">On leave</option><option value="out">Still out</option></select>${isCarTrip(m) ? `<select class="retrole" data-rid="${esc(p.id)}" data-orig="${esc(p.role)}" hidden aria-label="Role while still out">${["driver", "vcom", "pax"].map(r => `<option value="${r}" ${p.role === r ? "selected" : ""}>${ROLE[r]}</option>`).join("")}</select>` : ""}</span></div>`).join("");
   $("#leaveWrap").hidden = true; $("#fLeaveUntil").value = ""; $("#fLeaveUntil").min = todayStr();
-  $("#inRows").onchange = () => { $("#leaveWrap").hidden = ![...document.querySelectorAll("#inRows select")].some(x => x.value === "leave"); };
+  $("#inRows").onchange = e => { if (!e.target.classList.contains("retrole")) retRoles(m); $("#leaveWrap").hidden = ![...document.querySelectorAll("#inRows select[data-pid]")].some(x => x.value === "leave"); };
   $("#inErr").textContent = ""; $("#dlgIn").showModal();
+}
+const canDrv = id => (S.roster.find(t => t.id === id) || {}).can_drive !== false;
+// Show role boxes for the people still out when the car would lose its driver / VCOM, and pick replacements.
+function retRoles(m) {
+  if (!isCarTrip(m)) return;
+  const st = [...document.querySelectorAll("#inRows select[data-pid]")], out = st.filter(x => x.value === "out").map(x => x.dataset.pid);
+  const rs = [...document.querySelectorAll("#inRows .retrole")], rOf = id => rs.find(x => x.dataset.rid === id);
+  rs.forEach(x => { if (!out.includes(x.dataset.rid)) x.value = x.dataset.orig; });
+  const lost = members(m).some(p => ["driver", "vcom"].includes(p.role) && !out.includes(p.id));
+  rs.forEach(x => { x.hidden = !(lost && out.includes(x.dataset.rid) && out.length > 1); });
+  if (!lost || out.length < 2) return;
+  const roleNow = id => rOf(id).value;
+  if (!out.some(id => roleNow(id) === "driver")) { const d = out.find(id => canDrv(id) && roleNow(id) !== "vcom") || out.find(canDrv); if (d) rOf(d).value = "driver"; }
+  if (!out.some(id => roleNow(id) === "vcom")) { const c = out.find(id => roleNow(id) !== "driver"); if (c) rOf(c).value = "vcom"; }
 }
 $("#btnIn").onclick = async () => {
   const m = retTrip, err = $("#inErr"); if (!m) return;
-  const sel = [...document.querySelectorAll("#inRows select")];
+  const sel = [...document.querySelectorAll("#inRows select[data-pid]")];
   const back = sel.filter(x => x.value === "in").map(x => x.dataset.pid), lv = sel.filter(x => x.value === "leave").map(x => x.dataset.pid);
   if (!back.length && !lv.length) return err.textContent = "Mark at least one person back in base or on leave.";
   const left = sel.filter(x => x.value === "out");
   if ((m.transport || "car") === "car" && left.length === 1 && !isLocal(m.destination))
     return err.textContent = `${members(m).find(p => p.id === left[0].dataset.pid).name} would be left alone in ${m.vehicle_label}. Only Cazaux trips can drive alone: mark them back too, or use Rearrange to put them in another car.`;
+  let roles = null;
+  if (isCarTrip(m) && left.length === 1) { // Cazaux trip: the one still out drives back alone
+    const id = left[0].dataset.pid;
+    if (!canDrv(id)) return err.textContent = `${members(m).find(p => p.id === id).name} is a non-driver and would be left with ${m.vehicle_label}. Mark them back too, or use Rearrange.`;
+    roles = { [id]: "driver" };
+  } else if (isCarTrip(m) && left.length > 1) {
+    roles = {}; for (const x of left) { const r = document.querySelector(`#inRows .retrole[data-rid="${x.dataset.pid}"]`); roles[x.dataset.pid] = r ? r.value : "pax"; }
+    const ids = Object.keys(roles), d = ids.filter(id => roles[id] === "driver"), c = ids.filter(id => roles[id] === "vcom");
+    if (!ids.some(canDrv)) return err.textContent = `Nobody still out can drive ${m.vehicle_label}. Mark them back too, or use Rearrange to put them in another car.`;
+    if (d.length !== 1) return err.textContent = `The people still out need exactly one driver. Pick one in the role boxes.`;
+    if (!canDrv(d[0])) return err.textContent = `${members(m).find(p => p.id === d[0]).name} is a non-driver. Pick another driver.`;
+    if (c.length > 1) return err.textContent = "Only one VCOM.";
+    if (!c.length) return err.textContent = "The people still out need a VCOM. Pick one in the role boxes.";
+  }
   const until = $("#fLeaveUntil").value;
   if (lv.length && (!until || until < todayStr())) return err.textContent = "Enter the date they're back from leave.";
   const b = $("#btnIn"); b.disabled = true; b.textContent = "Getting location…"; err.textContent = "";
   const loc = back.length ? await getLoc() : null;
-  const { error } = await S.sb.rpc("return_people", { p_id: m.id, p_in: back, p_leave: lv, p_until: lv.length ? until : null, p_loc: loc });
+  const { error } = await S.sb.rpc("return_people", { p_id: m.id, p_in: back, p_leave: lv, p_until: lv.length ? until : null, p_loc: loc, p_roles: roles });
   b.disabled = false; b.textContent = "Confirm";
   if (error) return err.textContent = errMsg(error);
   $("#dlgIn").close();
