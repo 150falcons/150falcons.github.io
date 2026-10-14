@@ -166,18 +166,33 @@ label>input,label>select,label>textarea{margin-top:3px;color:var(--ink)}
 .homecard.ops{border-left-color:var(--out)}
 .homedash{margin-top:8px}
 .homedash h2{margin:0 0 6px}
-.hdhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 12px;margin:0 0 10px}.hdhead h2{margin:0}
-.hdk{font:700 .78rem var(--cond);text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
-.hdtiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:0 0 12px}
-.hdtile{display:flex;flex-direction:column;gap:1px;min-width:0;padding:8px 12px;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:6px;background:color-mix(in srgb,var(--accent) 5%,transparent);color:var(--ink);text-decoration:none}
-.hdtile:hover{border-color:var(--accent)}.hdtile b{font:700 1.45rem/1.15 var(--cond);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hdtile small{color:var(--muted);font-size:.8rem;line-height:1.3}.hdtile small b{font:600 .8rem var(--body);white-space:normal;color:var(--ink)}
-@media (min-width:900px){.hdtiles{grid-template-columns:repeat(auto-fit,minmax(190px,280px))}}
-.hdtile.amber{border-left-color:#e0a800;background:color-mix(in srgb,#e0a800 10%,transparent)}.hdtile.go{border-left-color:#1f9d55}.hdtile.go b{color:#1f9d55}
-.hdtile.nogo{border-left-color:#d63c3c;background:color-mix(in srgb,#d63c3c 10%,transparent)}.hdtile.nogo b{color:#d63c3c}.hdtile.past{opacity:.6}
-.hdcols{display:grid;grid-template-columns:1fr;gap:0 24px}@media (min-width:900px){.hdcols{grid-template-columns:3fr 2fr}.hdcols.one{grid-template-columns:1fr}}
-.hdsec{padding:8px 0;border-top:1px solid var(--line);min-width:0}.hdsh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:0 0 4px}
-.hdlist{margin:0;padding-left:16px}.hdlist li{margin:2px 0}.hdlist li.done{opacity:.45;text-decoration:line-through}.hdduty{margin:0 0 4px}
-.hdgo{font-size:.82rem;white-space:nowrap;color:var(--accent)}
+.homedash{padding:20px 22px}
+.hdhead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:12px 28px;margin:0 0 18px}.hdhead h2{margin:0 0 2px;font-size:1.6rem}
+.hdk{font:600 .7rem var(--body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.hdstats{display:flex;flex-wrap:wrap;gap:10px 0}
+.hds{display:flex;flex-direction:column;padding:0 18px;border-left:1px solid var(--line);color:var(--ink);text-decoration:none;min-width:0}.hds:first-child{border-left:0;padding-left:0}
+.hds b{font:600 1.35rem/1.2 var(--cond);letter-spacing:.01em;white-space:nowrap}.hds small{font-size:.75rem;color:var(--muted)}.hds:hover b{color:var(--accent)}
+.hds.good b{color:var(--ok,#1f9d55)}.hds.bad b{color:var(--late)}.hds.warn b{color:var(--out)}
+.hdday{padding:16px 0 4px;border-top:1px solid var(--line)}
+ol.hdtl{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(120px,1fr);overflow-x:auto;scrollbar-width:thin}
+.hdtl li{position:relative;min-width:0}.hdtl li a{display:flex;flex-direction:column;align-items:flex-start;padding:0 12px 10px 0;color:var(--ink);text-decoration:none}
+.hdtl li::before{content:"";position:absolute;left:0;right:0;top:33px;height:2px;background:var(--line)}.hdtl li:last-child::before{right:auto;width:12px}
+.hdtl li.past::before{background:color-mix(in srgb,var(--in) 60%,var(--line))}
+.hdtl i{position:relative;width:12px;height:12px;border-radius:50%;margin:6px 0 10px;background:var(--paper);border:2px solid var(--muted);box-sizing:border-box}
+.hdtl li.past i{background:color-mix(in srgb,var(--in) 60%,var(--line));border-color:transparent}
+.hdtl li.next i{border-color:var(--in);background:var(--in);box-shadow:0 0 0 4px color-mix(in srgb,var(--in) 28%,transparent)}
+.hdtt{font:600 1.15rem/1 var(--cond);letter-spacing:.02em}.hdtk{font-weight:600;font-size:.9rem}.hdtd{font-size:.78rem;color:var(--muted);line-height:1.35}.hdtd b{font-weight:600;color:var(--ink)}
+.hdtl li.past a{opacity:.5}.hdtl li.next .hdtt{color:var(--in)}
+.hdtin{margin-top:4px;font-size:.72rem;font-weight:600;padding:1px 7px;border-radius:10px;background:color-mix(in srgb,var(--in) 20%,transparent);color:var(--in)}.hdtin.soon{background:color-mix(in srgb,var(--out) 22%,transparent);color:var(--out)}
+.hdtl li a:hover .hdtk{color:var(--in)}
+@media (max-width:640px){ol.hdtl{display:block}.hdtl li a{display:grid;grid-template-columns:52px 12px 1fr;column-gap:10px;padding:0 0 12px}
+  .hdtl li::before{left:57px;right:auto;top:14px;bottom:-2px;width:2px;height:auto}.hdtl li:last-child::before{display:none}
+  .hdtt{grid-row:1/4;padding-top:3px;font-size:1.05rem}.hdtl i{grid-row:1/4;margin:4px 0 0}.hdtk,.hdtd,.hdtin{grid-column:3}.hdtin{justify-self:start}
+  .hdstats{gap:12px 26px;width:100%}.hds,.hds:first-child{padding:0;border:0}}
+.hdcols{display:grid;grid-template-columns:1fr;gap:0 40px;margin-top:6px}@media (min-width:900px){.hdcols{grid-template-columns:1fr 1fr}.hdcols.one{grid-template-columns:1fr}}
+.hdsec{padding:12px 0 6px;border-top:1px solid var(--line);min-width:0}.hdsh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:0 0 6px}
+.hdlist{margin:0;padding-left:16px}.hdlist li{margin:2px 0}.hdlist li.done{opacity:.45;text-decoration:line-through}
+.hdgo{font-size:.78rem;white-space:nowrap;color:var(--muted);text-decoration:none}.hdgo:hover{color:var(--accent)}
 .hdops{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
 .homecard:hover{border-color:var(--accent)}
 .homecard h2{font:700 1.6rem/1.1 var(--cond);margin:0 0 6px;text-transform:uppercase}
@@ -728,35 +743,37 @@ function renderHome(v) {
   }
 }
 
-// Personal dashboard at the top of Home (revamped 14 Oct, Gordon "neat yet informative"): greeting, then a strip of
-// tiles (In by · Next up · Duty · Go / No-Go · My hours · You / Approvals), then panels: Today and Tomorrow on the left,
-// My aircraft, Trainees out and the ops snapshot on the right (one column on phones).
+// Personal dashboard at the top of Home (14 Oct, Gordon "neat yet informative", then "not elegant"): greeting, a timeline of
+// your day in Z (In by → briefs / steps / take-offs / landings / sims / ground events → Out; past dimmed, the next one
+// highlighted with a countdown; vertical on phones), one light line of figures (Duty · Rest · Go / No-Go · Hours · You ·
+// Approvals), then My aircraft / Tomorrow and Trainees out / Ops in two columns.
 function homeDash(hs) {
   const n = new Date(), h = n.getHours(), hi = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
-  const tiles = [], left = [], right = [];
-  const z4 = m => String(Math.floor(m / 60) % 24).padStart(2, "0") + String(m % 60).padStart(2, "0") + "Z";
+  const steps = [], stats = [], left = [], right = [];
+  const z4 = m => String(Math.floor(((m % 1440) + 1440) % 1440 / 60)).padStart(2, "0") + String(((m % 60) + 60) % 60).padStart(2, "0") + "Z";
   const inT = d => `${d >= 60 ? Math.floor(d / 60) + "h " : ""}${d % 60}m`;
-  const tile = (tab, k, v, sub, cls, extra) => tiles.push(`<a href="#" data-tab="${tab}"${extra || ""} class="hdtile${cls ? " " + cls : ""}"><span class="hdk">${k}</span><b>${v}</b>${sub ? `<small>${sub}</small>` : ""}</a>`);
+  const stat = (tab, k, v, sub, cls) => stats.push(`<a href="#" data-tab="${tab}" class="hds${cls ? " " + cls : ""}"><span class="hdk">${k}</span><b>${v}</b>${sub ? `<small>${sub}</small>` : ""}</a>`);
   const sec = (col, k, body, tab, go, extra) => col.push(`<div class="hdsec"><div class="hdsh"><span class="hdk">${k}</span>${tab ? `<a href="#" data-tab="${tab}"${extra || ""} class="hdgo">${go} ›</a>` : ""}</div>${body}</div>`);
   const nz = n.getUTCHours() * 60 + n.getUTCMinutes();
-  if (!hs) sec(left, "Today", `<span class="hint">Loading today's programme…</span>`);
+  let dayNote = "";
+  if (!hs) dayNote = "Loading today's programme…";
   else {
     const get = sec => { const d = hs.rows && hs.rows[sec]; return d && Object.keys(d).length ? JSON.parse(JSON.stringify(d)) : opsBlank[sec](); };
     const names = opsMyNames(), hx = S.homeX && S.homeX.day === hs.day && !S.homeX.loading ? S.homeX : null;
+    const fl = opsNameWaves(get("flying"));
     // In by: your time from the Day details In time / Late in ("0510Z (W1 PLAYERS) / … / 0820Z" = everyone else).
     if (hs.any && names.length) {
-      const plan = opsInPlan(get("header"), opsNameWaves(get("flying")));
-      const it = names.map(x => opsInOf(plan, x)).filter(Boolean).sort((a, b) => a.min - b.min)[0];
-      if (it && it.min != null) {
-        const how = it.how === "late" ? "late in" : it.how === "rest" ? "everyone else" : it.how === "wave" ? (it.parts.find(p => p.wave && p.names.some(x => names.includes(x))) || {}).wave || "your wave" : "named";
-        const d = it.min - nz;
-        tile("ops", "In by", esc(it.time) + "Z", esc(how) + (d > 0 ? ` · in ${inT(d)}` : ""), d > 0 && d <= cfgN("home.amber") ? "amber" : d <= 0 ? "past" : "");
-      }
+      const it = names.map(x => opsInOf(opsInPlan(get("header"), fl), x)).filter(Boolean).sort((a, b) => a.min - b.min)[0];
+      if (it && it.min != null) steps.push({ t: it.min, kind: "In by", detail: esc(it.how === "late" ? "late in" : it.how === "rest" ? "everyone else" : it.how === "wave" ? (it.parts.find(p => p.wave && p.names.some(x => names.includes(x))) || {}).wave || "your wave" : "named"), tab: "ops" });
     }
-    // Next up: your next brief / step / take-off / sim / ground event / SXO-OPS O wave today, with a countdown.
+    // Your briefs / steps / take-offs / sims / ground events / SXO-OPS O waves, plus landings.
     if (hs.any) {
-      const nx = opsMyEvents(get).find(e => e.t >= nz);
-      if (nx) { const d = nx.t - nz; tile("ops", "Next up", z4(nx.t), `${nx.label} · in ${inT(d)}`, d <= cfgN("home.amber") ? "amber" : ""); }
+      for (const e of opsMyEvents(get)) { const [kind, ...rest] = e.label.split(" · "); if (kind !== "Take-off") steps.push({ t: e.t, kind, detail: rest.join(" · "), tab: "ops" }); }
+      for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) if (names.some(x => opsCrewHas(a, x))) {
+        const cs = `<b>${esc(w.name)}</b> ${esc([f.callsign, a.n].filter(Boolean).join(" "))}`;
+        if (opsMin(f.etd) != null) steps.push({ t: opsMin(f.etd), kind: "Take-off", detail: [cs, a.mission && esc(a.mission), a.tail && esc(opsTail(a.tail))].filter(Boolean).join(" · "), tab: "ops" });
+        if (opsMin(f.eta) != null) steps.push({ t: opsMin(f.eta), kind: "Land", detail: cs, tab: "ops" });
+      }
     }
     // Duty times and rest, from the Duties table (groups with in / out times, e.g. QFI).
     for (const g of get("duties").groups || []) {
@@ -767,49 +784,17 @@ function homeDash(hs) {
       const io = opsInOut(r, get), pget = sec => { const d = hx && hx.prev[sec]; return d && Object.keys(d).length ? d : opsBlank[sec](); };
       const pout = (pr && pr.outTime) || (hx ? opsAutoInOut(r.name, pget).out : "");
       const ii = opsMin(io.in), oo = opsMin(io.out), po = opsMin(pout);
-      if (io.in || io.out) tile("ops", "Duty", `${esc(io.in || "?")}–${esc(io.out || "?")}`, [ii != null && oo != null && `Duty ${opsHM(opsSpan(ii, oo))}`, po != null && ii != null && `Rest ${opsHM(ii + 1440 - po)}`].filter(Boolean).join(" · "));
+      if (oo != null) steps.push({ t: oo < (ii ?? oo) ? oo + 1440 : oo, kind: "Out", detail: "end of duty", tab: "ops" });
+      if (io.in || io.out) stat("ops", "Duty", `${esc(io.in || "?")}–${esc(io.out || "?")}`, ii != null && oo != null ? opsHM(opsSpan(ii, oo)) + " h" : "");
+      if (po != null && ii != null) stat("ops", "Rest", opsHM(ii + 1440 - po), `out ${esc(pout)} yesterday`);
       break;
     }
-  }
-  // Read & sign
-  if (OB.loaded && obMyCrew().length) {
-    const mine = obMyPending();
-    tile("gonogo", "Go / No-Go", mine.length ? "NO-GO" : "GO", mine.length ? `${mine.length} to read &amp; sign: ${esc(obCodes(mine.map(x => x.item)))}` : "Nothing to sign", mine.length ? "nogo" : "go");
-  }
-  // My hours this month (from logged flown times).
-  if (S.homeHrs && S.homeHrs.days) {
-    const names = new Set(opsMyNames()), es = hrsEntries(S.homeHrs.days).filter(e => names.has(e.name));
-    if (es.length || (OB.loaded && obMyCrew().length)) {
-      const tot = es.reduce((a, e) => a + e.mins, 0), nt = es.filter(e => e.night).reduce((a, e) => a + e.mins, 0), last = es.map(e => e.day).sort().pop();
-      const ins = es.reduce((a, e) => a + (e.instr || 0), 0);
-      tile("hours", "Hours · " + n.toLocaleDateString("en-GB", { month: "short" }), `${opsHrs(tot)} h`, es.length ? [`${es.length} sortie${es.length === 1 ? "" : "s"}`, nt && `night ${opsHrs(nt)}`, ins && `instr ${opsHrs(ins)}`, `last ${esc(new Date(last + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" }))}`].filter(Boolean).join(" · ") : "None logged yet");
-    }
-  }
-  // Movement (trainees)
-  const t = me();
-  if (t) {
-    const m = openByTrainee()[t.id], lv = leaveOf(t.id), now = Date.now();
-    if (lv) tile("board", "You", "On leave", `until ${esc(fmtDay(lv.until))}`);
-    else if (!m) tile("board", "You", "In base", "");
-    else if (isPend(m)) tile("board", "You", "Request pending", `to ${esc(m.destination)}`, "amber");
-    else tile("board", "You", isLate(m, now) ? "OVERDUE" : "Out", `${esc(m.destination)} · back by ${esc(fmt(m.expected_back))}`, isLate(m, now) ? "nogo" : "amber");
-  }
-  if (canApprove()) {
-    const pend = S.open.filter(isPend).length;
-    if (pend) tile("board", "Approvals", String(pend), `travel request${pend === 1 ? "" : "s"} waiting`, "amber");
-  }
-  if (hs) {
-    const get = sec => { const d = hs.rows && hs.rows[sec]; return d && Object.keys(d).length ? JSON.parse(JSON.stringify(d)) : opsBlank[sec](); };
-    const hx = S.homeX && S.homeX.day === hs.day && !S.homeX.loading ? S.homeX : null;
-    // Today: duty pills, then your lines (finished ones struck through).
-    const dut = hs.any ? opsMyDuties(get) : [], items = hs.any ? opsMyItems(get, { now: nz, noDuty: true }) : [];
-    sec(left, "Today", `${dut.length ? `<div class="hdduty">${dut.map(x => `<span class="obpill obst-a">${esc(x)}</span>`).join(" ")}</div>` : ""}${items.length ? `<ul class="hdlist">${items.join("")}</ul>`
-      : `<span class="hint">${hs.any ? "Nothing on today's programme for you." : "No programme for today yet."}</span>`}`, "ops", "Programme");
+    if (!steps.length) dayNote = hs.any ? "Nothing on today's programme for you." : "No programme for today yet.";
     // Tomorrow's programme
     if (hx && hx.nextAny) {
       const tget = sec => { const d = hx.next[sec]; return d && Object.keys(d).length ? JSON.parse(JSON.stringify(d)) : opsBlank[sec](); };
       const tItems = opsMyItems(tget);
-      sec(left, "Tomorrow", tItems.length ? `<ul class="hdlist">${tItems.join("")}</ul>` : `<span class="hint">Nothing on tomorrow's programme for you.</span>`, "ops", "Tomorrow", ` data-day="${esc(hx.nextDay)}"`);
+      sec(left, "Tomorrow", tItems.length ? `<ul class="hdlist">${tItems.join("")}</ul>` : `<span class="hint">Nothing on tomorrow's programme for you.</span>`, "ops", "Programme", ` data-day="${esc(hx.nextDay)}"`);
     }
     // One line per tail you still fly today: its Aircraft page notes, plus programme aircraft restrictions that name it
     // (a restriction listing several tails, e.g. "331#, 323#, 327#", only shows under the tails you fly).
@@ -825,8 +810,35 @@ function homeDash(hs) {
         for (const x of (get("notes").aircraft || []).filter(x => x.note && String(x.ac || "").split(/[,/&]|\s+AND\s+/i).some(p => key(p) === key(tl)))) bits.push(esc(x.note));
         if (bits.length) notes.push(`<li><b>${esc(t ? obTailMark(t) : opsTail(tl))}</b> ${bits.join(" · ")}</li>`);
       }
-      if (notes.length) sec(right, "My aircraft", `<ul class="hdlist">${notes.join("")}</ul>`, "aircraft", "Aircraft");
+      if (notes.length) { const tmp = []; sec(tmp, "My aircraft", `<ul class="hdlist">${notes.join("")}</ul>`, "aircraft", "Aircraft"); left.unshift(...tmp); }
     }
+  }
+  // Read & sign
+  if (OB.loaded && obMyCrew().length) {
+    const mine = obMyPending();
+    stat("gonogo", "Go / No-Go", mine.length ? "NO-GO" : "GO", mine.length ? `${mine.length} to sign: ${esc(obCodes(mine.map(x => x.item)))}` : "", mine.length ? "bad" : "good");
+  }
+  // My hours this month (from logged flown times).
+  if (S.homeHrs && S.homeHrs.days) {
+    const names = new Set(opsMyNames()), es = hrsEntries(S.homeHrs.days).filter(e => names.has(e.name));
+    if (es.length || (OB.loaded && obMyCrew().length)) {
+      const tot = es.reduce((a, e) => a + e.mins, 0), nt = es.filter(e => e.night).reduce((a, e) => a + e.mins, 0);
+      const ins = es.reduce((a, e) => a + (e.instr || 0), 0);
+      stat("hours", "Hours · " + n.toLocaleDateString("en-GB", { month: "short" }), opsHrs(tot), es.length ? [`${es.length} sortie${es.length === 1 ? "" : "s"}`, nt && `night ${opsHrs(nt)}`, ins && `instr ${opsHrs(ins)}`].filter(Boolean).join(" · ") : "none logged");
+    }
+  }
+  // Movement (trainees)
+  const t = me();
+  if (t) {
+    const m = openByTrainee()[t.id], lv = leaveOf(t.id), now = Date.now();
+    if (lv) stat("board", "You", "On leave", `until ${esc(fmtDay(lv.until))}`);
+    else if (!m) stat("board", "You", "In base", "");
+    else if (isPend(m)) stat("board", "You", "Pending", `to ${esc(m.destination)}`, "warn");
+    else stat("board", "You", isLate(m, now) ? "Overdue" : "Out", `${esc(m.destination)} · back ${esc(fmt(m.expected_back))}`, isLate(m, now) ? "bad" : "warn");
+  }
+  if (canApprove()) {
+    const pend = S.open.filter(isPend).length;
+    if (pend) stat("board", "Approvals", String(pend), `request${pend === 1 ? "" : "s"} waiting`, "warn");
   }
   // Trainees out now (QFIs)
   if (isAdmin()) {
@@ -839,8 +851,15 @@ function homeDash(hs) {
   // Ops snapshot
   const ol = typeof obHomeLine === "function" ? obHomeLine() : "";
   if (ol) sec(right, "Ops", `<span class="hdops">${ol}</span>`, "opsboard", "Ops board");
-  return `<section class="card homedash"><div class="hdhead"><h2>${hi}, ${esc(pLabel(S.me) || "")}</h2><span class="hint">${esc(n.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }))}</span></div>
-    ${tiles.length ? `<div class="hdtiles">${tiles.join("")}</div>` : ""}<div class="hdcols${right.length ? "" : " one"}"><div>${left.join("")}</div>${right.length ? `<div>${right.join("")}</div>` : ""}</div></section>`;
+  // The timeline
+  steps.sort((a, b) => a.t - b.t);
+  const ni = steps.findIndex(x => x.t >= nz);
+  const tl = steps.length ? `<ol class="hdtl">${steps.map((x, i) => { const st = ni < 0 || i < ni ? "past" : i === ni ? "next" : "";
+      return `<li class="${st}"><a href="#" data-tab="${x.tab}"><span class="hdtt">${z4(x.t)}</span><i></i><span class="hdtk">${x.kind}</span>${x.detail ? `<span class="hdtd">${x.detail}</span>` : ""}${st === "next" ? `<span class="hdtin${x.t - nz <= cfgN("home.amber") ? " soon" : ""}">in ${inT(x.t - nz)}</span>` : ""}</a></li>`; }).join("")}</ol>`
+    : `<p class="hint" style="margin:0">${dayNote}</p>`;
+  const cols = left.length || right.length ? `<div class="hdcols${left.length && right.length ? "" : " one"}">${left.length ? `<div>${left.join("")}</div>` : ""}${right.length ? `<div>${right.join("")}</div>` : ""}</div>` : "";
+  return `<section class="card homedash"><div class="hdhead"><div><h2>${hi}, ${esc(pLabel(S.me) || "")}</h2><span class="hint">${esc(n.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }))}</span></div>${stats.length ? `<div class="hdstats">${stats.join("")}</div>` : ""}</div>
+    <div class="hdday"><span class="hdk">Your day · Z</span>${tl}</div>${cols}</section>`;
 }
 
 function renderLogin(v) {
