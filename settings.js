@@ -52,7 +52,7 @@ const CFG_GROUPS = [
     ["bingo.ifr", "Cazaux RSAF that gives IFR BINGO", "", "A1", "text"],
     ["eor.fasf", "Cazaux FASF at or worse than this: recommend EOR IN HSE", "", "G VFR", "text"],
   ], rules: [
-    "EOR: when the Cazaux FASF is at or worse than the setting above (B → W → G VFR → G IFR → Y → A → R), the board shows a pulsing \"Recommend IN HSE\" next to EOR (page, TV, home). It only recommends: ops still tap IN HSE.",
+    "EOR: when the Cazaux FASF is at or worse than the setting above (B → W → G VFR → G IFR → Y → A → R), the board shows a pulsing \"Recommend IN HSE\" next to EOR (page, TV, home). It only recommends: ops still tap IN HSE, or Keep NORMAL (recorded with name and time; holds for the day unless the FASF gets worse).",
     "Each state is the worse of visibility and cloud base. Cloud base = lowest BKN / OVC / VV layer; TEMPO / BECMG are ignored; CAVOK = B. A typed WX / VIS override is read instead of the METAR.",
     "FASF is on Auto by default only for LFBZ, LFSL and LFBE. Refresh METARs sets every RSAF, those FASFs and bingo back to Auto and clears WX / VIS overrides.",
     "The LFBC CAT 1 line (auto) is green when the Cazaux FASF is B or W, otherwise yellow. LFBD on RWY 05 adds ZONE TAMPON ACTIVE.",

@@ -225,7 +225,7 @@ function obHelp() {
   parachute: "Number typed by ops. 0 = green, anything above 0 = red.",
   samar: "Typed by ops. Colour follows the first letter: G = green, Y = amber, R = red.",
   immersion: `From the sea surface and air temperature: sea ${n("imm.no")}°C or warmer → NO. Sea below ${n("imm.sea")}°C AND air below ${n("imm.air")}°C → YES. Anything else → NO. Shows - until the sea surface is filled in.`,
-  eor: `EOR is set by ops. The board recommends IN HSE (pulsing tag) when the Cazaux FASF is ${cfg("eor.fasf")} or worse (B → W → G VFR → G IFR → Y → A → R); ops still tap IN HSE.`,
+  eor: `EOR is set by ops. The board recommends IN HSE (pulsing tag) when the Cazaux FASF is ${cfg("eor.fasf")} or worse (B → W → G VFR → G IFR → Y → A → R); ops still tap IN HSE. The SXO / OPS O can tap Keep NORMAL instead (recorded with name and time); that holds for the day unless the FASF gets worse.`,
   bingo: `Auto from the Cazaux RSAF: ${cfg("bingo.upg")} → UPG BINGO, ${cfg("bingo.ifr")} → IFR BINGO, otherwise BINGO. Ops can pick one; the next Refresh METARs puts it back to auto.`,
   fasf: `FASF on Auto (default for LFBZ, LFSL, LFBE): the worse of visibility and cloud base. Visibility (km) for B / W / G IFR / Y / A: ${L("fasf.vis")}, below that R. Cloud base (ft; lowest BKN / OVC / VV, TEMPO and BECMG ignored) for B / W / G VFR / G IFR / Y / A: ${L("fasf.base")}, below that R. CAVOK = B. Elsewhere ops set it.`,
   rsaf: `RSAF on Auto: the worse of visibility and cloud base. Visibility (km) for B / Y1 / Y2 / A1 / A2: ${L("rsaf.vis")}, below that R. Cloud base (ft; lowest BKN / OVC / VV, TEMPO and BECMG ignored) for B / Y1 / Y2 / A1 / A2: ${L("rsaf.base")}, below that R. CAVOK = B. Refresh METARs sets every RSAF back to Auto.`,
@@ -303,20 +303,29 @@ function obCard(id, title, meta, body, tools) {
 const obNotLoaded = v => { v.innerHTML = `<div class="empty">Loading…</div>`; if (!OB.loading) obLoad(); };
 
 // EOR recommendation (Gordon, 14 Oct): Cazaux FASF at or worse than Settings eor.fasf (G VFR) → recommend IN HSE.
-// Only a recommendation; ops still tap IN HSE. Returns the FASF that triggers it, or "".
+// Only a recommendation; ops still tap IN HSE. The SXO / OPS O can keep NORMAL ("Keep NORMAL", ops board editors):
+// saved as board.eorAck { day, f, by, at }; it holds for that day while the FASF is no worse than when it was acknowledged,
+// then the recommendation comes back. Returns { f, ack } (f = the FASF that triggers it) or null.
+const OB_FASF_ORD = ["B", "W", "G VFR", "G IFR", "Y", "A", "R", "BLACK", "CLSD"];
 function obEorRec(b) {
   const l = (b.airfields || []).find(a => a.icao === "LFBC"), f = l ? obState(l, "fasf").v : "";
-  const ord = ["B", "W", "G VFR", "G IFR", "Y", "A", "R", "BLACK", "CLSD"], i = ord.indexOf(f), lim = ord.indexOf(String(cfg("eor.fasf")).toUpperCase().trim());
-  return b.eor !== "IN HSE" && i >= 0 && lim >= 0 && i >= lim ? f : "";
+  const i = OB_FASF_ORD.indexOf(f), lim = OB_FASF_ORD.indexOf(String(cfg("eor.fasf")).toUpperCase().trim());
+  if (b.eor === "IN HSE" || i < 0 || lim < 0 || i < lim) return null;
+  const k = b.eorAck, ack = k && k.day === todayStr() && OB_FASF_ORD.indexOf(k.f) >= i ? k : null;
+  return { f, ack };
 }
-const obEorRecPill = b => { const f = obEorRec(b); return f ? `<span class="obpill obst-a obpulse" title="Cazaux FASF ${esc(f)}: ${esc(cfg("eor.fasf"))} or worse">Recommend IN HSE · CZX FASF ${esc(f)}</span>` : ""; };
+function obEorRecPill(b, q) {
+  const r = obEorRec(b); if (!r) return "";
+  if (r.ack) return `<span class="obeorack" title="Recommendation acknowledged: normal EOR kept">✓ NORMAL kept at CZX FASF ${esc(r.ack.f)} · ${esc(r.ack.by || "")} ${esc(r.ack.at || "")}</span>`;
+  return `<span class="obpill obst-a obpulse" title="Cazaux FASF ${esc(r.f)}: ${esc(cfg("eor.fasf"))} or worse">Recommend IN HSE · CZX FASF ${esc(r.f)}</span>${q ? `<button class="btn small obeorkeep" data-obeorack="${esc(r.f)}" title="SXO / OPS O decision: keep normal EOR">Keep NORMAL</button>` : ""}`;
+}
 // One-line ops snapshot for the home dashboard: EOR, bingo, Cazaux colour states and wind.
 function obHomeLine() {
   if (!OB.loaded) return "";
   const bd = obGet("board"), lfbc = (bd.airfields || []).find(a => a.icao === "LFBC");
   const f = lfbc ? obState(lfbc, "fasf").v : "", r = lfbc ? obState(lfbc, "rsaf").v : "", bg = obBingo(bd, r).v, w = obCzx().w;
   const wind = !w ? "" : w.calm ? "CALM" : w.vrb ? `VRB/${w.spd}KT` : `${String(w.dir).padStart(3, "0")}°/${w.spd}${w.gst ? "G" + w.gst : ""}KT`;
-  return `<span class="obpill ${bd.eor === "IN HSE" ? "obst-a" : "obst-g"}">EOR ${esc(bd.eor || "NORMAL")}</span>${obEorRecPill(bd)}
+  return `<span class="obpill ${bd.eor === "IN HSE" ? "obst-a" : "obst-g"}">EOR ${esc(bd.eor || "NORMAL")}</span>${obEorRecPill(bd, false)}
     ${f ? `<span>CZX FASF <span class="obcs ${obCsCls(f)}">${esc(f)}</span></span>` : ""}${r ? `<span>RSAF <span class="obcs ${obCsCls(r)}">${esc(r)}</span></span>` : ""}
     ${bg ? `<span class="obpill ${/UPG|IFR/.test(bg) ? "obst-y" : ""}">${esc(bg)}</span>` : ""}${wind ? `<span>Wind <b>${esc(wind)}</b></span>` : ""}`;
 }
@@ -401,7 +410,7 @@ function obBoardView(tv, extra) {
   const yn = (v2, bad) => v2 ? obPill(v2 === bad ? "r" : "g", v2) : "-";
   const czx = b.czx || {};
   return `
-    <div class="obhead"><span class="obeor">${obH("eor", "EOR")}: ${["NORMAL", "IN HSE"].map(e => q ? `<button class="obpill ${b.eor === e ? (e === "NORMAL" ? "obst-g" : "obst-a") : ""} obtap" data-obq="eor" data-v="${e}">${e}</button>` : b.eor === e ? obPill(e === "NORMAL" ? "g" : "a", e) : "").join(" ")}${obEorRecPill(b)}</span>
+    <div class="obhead"><span class="obeor">${obH("eor", "EOR")}: ${["NORMAL", "IN HSE"].map(e => q ? `<button class="obpill ${b.eor === e ? (e === "NORMAL" ? "obst-g" : "obst-a") : ""} obtap" data-obq="eor" data-v="${e}">${e}</button>` : b.eor === e ? obPill(e === "NORMAL" ? "g" : "a", e) : "").join(" ")}${obEorRecPill(b, q)}</span>
       ${q ? `${obH("bingo", "Bingo")} <select class="obsel ${/UPG|IFR/.test(bingo) ? "obst-y" : ""}" data-obq="bingo" aria-label="Bingo"><option value="AUTO" ${bsel === "AUTO" ? "selected" : ""}>${esc(bg.auto)} (auto)</option>${[["NONE", "— (blank)"], ["BINGO", "BINGO"], ["UPG BINGO", "UPG BINGO"], ["IFR BINGO", "IFR BINGO"]].map(([k2, l]) => `<option value="${k2}" ${bsel === k2 ? "selected" : ""}>${l}</option>`).join("")}</select>` : bingo ? obPill(/UPG|IFR/.test(bingo) ? "y" : "", bingo) : ""}
       ${obNewMetar() ? `<span class="obpill obst-a obpulse">New METAR waiting${q ? "" : " for ops"}</span>` : ""}<b>Airfield status${asOf ? " as of " + esc(asOf) : ""}</b>${wxAge ? ` <span class="hint">METAR ${esc(wxAge)}</span>` : ""}</div>
     ${b.banner ? `<div class="obbanner">${esc(b.banner)}</div>` : ""}
@@ -1003,6 +1012,13 @@ document.addEventListener("click", async e => {
     obQuick(d => { if (d.areas[j] && d.areas[j].item === a.item) d.areas.splice(j, 1); });
   }
 });
+document.addEventListener("click", async e => {
+  const el = e.target.closest("[data-obeorack]"); if (!el || OB.edit) return;
+  const f = el.dataset.obeorack;
+  if (!await ask("Keep EOR NORMAL?", `Cazaux FASF is ${f}, so the board recommends IN HSE. Keep NORMAL (normal EOR checks)? This is recorded with your name and the time, and the recommendation comes back if the FASF gets worse or tomorrow.`, "Keep NORMAL")) return;
+  const z = new Date().toISOString().slice(11, 16).replace(":", "") + "Z";
+  obQuick(d => { d.eorAck = { day: todayStr(), f, by: pLabel(S.me) || "", at: z }; });
+});
 document.addEventListener("click", e => {
   const el = e.target.closest("button[data-obq]"); if (!el || OB.edit) return;
   const i = +el.dataset.af, j = +el.dataset.j, k = el.dataset.obq;
@@ -1224,7 +1240,7 @@ select.obsel{width:auto;padding:3px 6px;margin:0;font-size:.85rem}
 select.obcs option{background:var(--paper);color:var(--ink)}
 .obpbtn{width:28px;height:24px;border:1px dashed var(--line);border-radius:3px;background:none;cursor:pointer;font:700 .85rem var(--body);color:var(--muted)}
 .obpbtn.on{background:#1f9d55;border:0;color:#fff}
-.obeor{display:inline-flex;gap:4px;align-items:center}
+.obeor{display:inline-flex;flex-wrap:wrap;gap:4px;align-items:center}.obeorkeep{padding:1px 8px!important;font-size:.78rem!important}.obeorack{font-size:.78rem;color:var(--muted);margin-left:4px}
 .obcharts{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
 .obchart{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--field)}
 .obchart>.btn:first-child{flex:1 1 100%;text-align:left}.obchart .btn.small{flex:0 0 auto;width:auto}
