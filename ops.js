@@ -185,6 +185,46 @@ function opsBriefs(h) {
     out.push({ lab, time: m[1], names: (m[2] || "").split(/[,/&]/).map(opsNorm).filter(Boolean) });
   return out;
 }
+// In times (Gordon, 14 Oct): "0500Z (TAN L) / 0510Z (W1 PLAYERS) / 0555Z (M LIM, TEO Y) / 0820Z". A group names people,
+// or "W1 PLAYERS" / "NW1 PLAYERS" (that wave's aircrew + SXO + OPS O); a time with no names = everyone else. Late in wins.
+// "WAVE 1 PLAYERS LESS PHANTOM" leaves out a formation (callsign) or a person.
+const OPS_WAVE_TOK = /^(N|NIGHT)? ?W(?:AVE)? ?(\d+)(?: (?:PLAYERS?|FLYERS?|AIRCREW|CREW))?(?: (?:LESS|EXCEPT|MINUS|EXCL) (.+))?$/;
+function opsWavePlayers(fl, night, num, less) {
+  const w = (fl.waves || []).filter(w => !!w.night === night)[num - 1], out = new Set(); if (!w) return [];
+  const no = opsNorm(less), csOf = f => opsNorm(f.callsign).replace(/ ?\d+$/, "");
+  for (const f of w.flights || []) if (!no || (opsNorm(f.callsign) !== no && csOf(f) !== no)) for (const a of f.ac || []) for (const n of [a.crew1, a.crew2]) if (opsNorm(n)) out.add(opsNorm(n));
+  if (no) out.delete(no);
+  for (const t of [w.sxo, w.opsO]) for (const n of String(t || "").split(/[,/&]/)) if (opsNorm(n)) out.add(opsNorm(n));
+  return [...out];
+}
+function opsInPlan(h, fl) {
+  const out = [];
+  for (const [txt, late] of [[h.inTime, false], [h.lateIn, true]]) for (const m of String(txt || "").matchAll(/(\d{4})\s*Z?\s*(?:\(([^)]*)\))?/g)) {
+    const g = { time: m[1], min: opsMin(m[1]), late, parts: [], names: [], rest: false };
+    const toks = (m[2] || "").split(/[,/&]/).map(opsNorm).filter(Boolean);
+    if (!toks.length || toks.some(t => /^(ALL|EVERYONE|REST|ALL OTHERS|OTHERS)$/.test(t))) g.rest = !late;
+    for (const t of toks) { const w = OPS_WAVE_TOK.exec(t);
+      if (w) { const ns = opsWavePlayers(fl, !!w[1], +w[2], w[3]); g.parts.push({ wave: `${w[1] ? "Night wave" : "Wave"} ${w[2]} players${w[3] ? " less " + w[3] : ""}`, names: ns }); g.names.push(...ns); }
+      else if (!/^(ALL|EVERYONE|REST|ALL OTHERS|OTHERS)$/.test(t)) { g.parts.push({ name: t }); g.names.push(t); } }
+    out.push(g);
+  }
+  return out;
+}
+// A person's in time from the plan: { time, min, late, how } or null (no in time applies).
+function opsInOf(plan, n) {
+  const late = plan.filter(g => g.late && g.names.includes(n)).sort((a, b) => b.min - a.min)[0];
+  if (late) return { ...late, how: "late" };
+  const own = plan.filter(g => !g.late && g.names.includes(n)).sort((a, b) => a.min - b.min)[0];
+  if (own) return { ...own, how: own.parts.some(p => p.name === n) ? "named" : "wave" };
+  const rest = plan.filter(g => g.rest).pop();
+  return rest ? { ...rest, how: "rest" } : null;
+}
+// Day details: In time / Late in as one line per time.
+function opsInHtml(txt, fl, late) {
+  const plan = opsInPlan(late ? { lateIn: txt } : { inTime: txt }, fl);
+  if (!plan.length) return opsNl(txt);
+  return `<div class="opsin">${plan.map(g => `<div><b>${esc(g.time)}Z</b> ${g.parts.map(p => p.wave ? `${esc(p.wave)} <span class="hint">(${p.names.length ? esc(p.names.join(", ")) : "none on the programme"})</span>` : esc(p.name)).join(", ")}${g.rest ? `${g.parts.length ? ", " : ""}<i>everyone else</i>` : ""}</div>`).join("")}</div>`;
+}
 function opsAuto(name, fl, sim, ground, header) {
   const waves = fl.waves || [], out = waves.map(() => []), n = opsNorm(name);
   if (!n) return out;
@@ -873,7 +913,7 @@ const opsView = {
       <div><b>${esc(h.dailyReq || "-")}</b><span>Daily req</span></div><div><b>${st.sorties}</b><span>Planned sorties</span></div>
       <div><b>${st.hours}</b><span>Planned hours</span></div><div><b>${opsHM(st.first) || "-"}</b><span>First takeoff</span></div>
       <div><b>${opsHM(st.last) || "-"}</b><span>Last landing</span></div><div><b>${opsHM(st.span) || "-"}</b><span>HH:MM</span></div></div>`;
-    const rows = OPS_HEADER_FIELDS.filter(([k]) => k !== "dailyReq" && h[k]).map(([k, label]) => `<dt>${esc(label)}</dt><dd>${opsNl(h[k])}</dd>`).join("");
+    const rows = OPS_HEADER_FIELDS.filter(([k]) => k !== "dailyReq" && h[k]).map(([k, label]) => `<dt>${esc(label)}</dt><dd>${k === "inTime" || k === "lateIn" ? opsInHtml(h[k], fl, k === "lateIn") : opsNl(h[k])}</dd>`).join("");
     return stats + (rows ? `<dl class="opsdl">${rows}</dl>` : "");
   },
   flying(fl, n0, planFl) {
@@ -1373,8 +1413,8 @@ function opsPrintFitPage(pg, max) {
 
 /* ---------- Attendance for a brief (Gordon, 12 Oct): who should be at the Ops brief / WX-NOTAM / EOWD and who's away ---------- */
 // For the briefer to copy onto his slides. People: every login except engineers and FSI; ST Tow only if flying that day;
-// trainees from the roster. Away when, at the brief time (Z): on leave / out of base (movement board, today), late in (named
-// with a later time in the In time / Late in lines), flying (flight brief to landing + 30 min), in sims (sim start − 1 h to
+// trainees from the roster. Away when, at the brief time (Z): on leave / out of base (movement board, today), in later than the brief (opsInOf: named
+// with a later time in the In time / Late in lines), flying (after step to landing + 30 min), in sims (sim start − 1 h to
 // end + 30 min, incl. SXO / SUPP named in the sim remarks), SXO / OPS O of a wave under way, a ground event, or a typed duty note.
 const ATT = { ev: "", t: "" };
 function opsAttEvents(h) {
@@ -1405,20 +1445,20 @@ function opsAttWhy(x, t, ctx) {
     if (lv) return `On leave${lv.until ? " till " + cuFmt(lv.until) : ""}`;
     if (today) { const o = (S.open || []).find(m => m.status === "out" && (m.member_ids || []).includes(x.tid)); if (o) return `Out of base (${o.destination || "booked out"})`; }
   }
-  for (const [txt, late] of [[h.lateIn, true], [h.inTime, false]]) for (const m of String(txt || "").matchAll(/(\d{4})\s*Z?\s*\(([^)]*)\)/g)) {
-    if (m[2].split(/[,/]/).some(s => opsNorm(s) === n)) { const it = opsMin(m[1]); if (it != null && it > t) return `Late in ${m[1]}Z`; if (late) break; }
-  }
+  if (!ctx.pres.has(n)) { const it = opsInOf(ctx.inPlan, n); // presenting this brief → there whatever their in time
+    if (it && it.min != null && it.min > t) return it.how === "late" ? `Late in ${it.time}Z` : `In at ${it.time}Z${it.how === "rest" ? " (everyone else)" : ""}`; }
   for (const w of fl.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) {
     if (!opsCrewHas(a, n)) continue;
-    const etd = opsMin(f.etd), s = [f.brief, f.step].map(opsMin).find(v => v != null) ?? (etd != null ? etd + opsAutoOff().brief : null), e = opsMin(f.eta);
-    if (s != null && e != null && t >= s && t <= e + 30) return `Flying · ${[f.callsign, a.n].filter(Boolean).join(" ")} ${f.etd}–${f.eta}Z (${w.name})`;
+    const etd = opsMin(f.etd), s = opsMin(f.step) ?? (etd != null ? etd + opsAutoOff().step : null), e = opsMin(f.eta);
+    if (s != null && e != null && t > s && t <= e + 30) return `Flying · ${[f.callsign, a.n].filter(Boolean).join(" ")} ${f.etd}–${f.eta}Z (${w.name})`; // from step: a brief at step time is the one before walking (Gordon 14 Oct)
   }
   for (const r of sim.rows || []) for (const a of r.ac || []) {
     const role = opsSimRole(a, n); if (!role) continue;
     const s = opsMin(r.etd), e = opsMin(r.eta);
     if (s != null && e != null && t >= s - 60 && t <= e + 30) return `Sims${role !== "crew" ? " (" + role + ")" : ""} · ${r.callsign || ""} ${r.etd}–${r.eta}Z`;
   }
-  for (let i = 0; i < (fl.waves || []).length; i++) { const w = fl.waves[i], win = wins[i]; if (!win || win.s == null || t < win.s || t > win.e) continue;
+  for (let i = 0; i < (fl.waves || []).length; i++) { const w = fl.waves[i], win = wins[i], st = Math.min(...(w.flights || []).map(f => opsMin(f.step) ?? (opsMin(f.etd) != null ? opsMin(f.etd) + opsAutoOff().step : Infinity)));
+    if (!win || win.s == null || !(t > st) || t > win.e) continue; // once the wave has stepped (they're at the brief before that)
     if (opsHas(w.sxo, n)) return `SXO ${w.name}`; if (opsHas(w.opsO, n)) return `OPS O ${w.name}`; }
   for (const g of ground.groups || []) for (const r of g.rows || []) {
     if (!opsGroundHas(r.personnel, n) && !(x.course && opsGroundHas(r.personnel, x.course))) continue;
@@ -1439,7 +1479,7 @@ function opsAttendance() {
       if (e.target.closest("[data-x=copy]")) { const txt = d.querySelector("textarea").value; (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast("Copied. Paste it into your slides."), () => { d.querySelector("textarea").select(); document.execCommand("copy"); toast("Copied."); }); } };
     d.onchange = e => { if (e.target.id === "attEv") { ATT.ev = e.target.value; ATT.t = (opsAttEvents(opsGet("header")).find(x => x[0] === ATT.ev) || [])[2] || ATT.t; } if (e.target.id === "attT") ATT.t = e.target.value.replace(/\D/g, "").padStart(4, "0").slice(-4); opsAttendance(); }; }
   const t = opsMin(ATT.t), fl = opsNameWaves(opsGet("flying")), ev = evs.find(e => e[0] === ATT.ev);
-  const ctx = { fl, sim: opsGet("sim"), ground: opsGet("ground"), duties: opsGet("duties"), h, today: OPS.day === todayStr(), wins: opsWindows(fl) };
+  const ctx = { fl, sim: opsGet("sim"), ground: opsGet("ground"), duties: opsGet("duties"), h, today: OPS.day === todayStr(), wins: opsWindows(fl), inPlan: opsInPlan(h, fl), pres: new Set(opsBriefs(h).filter(b => b.time === ATT.t).flatMap(b => b.names)) };
   const ppl = opsAttPeople(fl).map(x => ({ ...x, why: t == null ? "" : opsAttWhy(x, t, ctx) }));
   const grps = [...new Set(ppl.map(x => x.grp))], here = ppl.filter(x => !x.why), away = ppl.filter(x => x.why);
   const title = `${(ev ? ev[1] : "Brief").toUpperCase()}${t != null ? " " + ATT.t + "Z" : ""} · ${opsLongDay(OPS.day).toUpperCase()}`;
@@ -1449,7 +1489,7 @@ function opsAttendance() {
     ${t == null ? "" : `<div class="attcols"><div><h3>Attending (${here.length})</h3>${grps.map(g => { const ns = here.filter(x => x.grp === g); return ns.length ? `<div class="attg"><b>${esc(g)}</b> <span class="hint">${ns.length}</span><div>${ns.map(x => esc(x.name)).join(", ")}</div></div>` : ""; }).join("")}</div>
       <div><h3>Not attending (${away.length})</h3>${away.length ? `<table class="opst attaway"><tbody>${away.map(x => `<tr><td><b>${esc(x.name)}</b><small class="hint">${esc(x.grp)}</small></td><td>${esc(x.why)}</td></tr>`).join("")}</tbody></table>` : `<p class="hint">Everyone should be there.</p>`}</div></div>
       <details class="atttxt"><summary>Text to copy</summary><textarea readonly rows="10">${esc(text)}</textarea></details>`}
-    <p class="hint" style="margin:8px 0 0">Away = on leave / out of base, late in (from the In time / Late in lines), flying (flight brief to landing + 30 min), sims (start − 1 h to end + 30 min, incl. the SXO / SUPP in the sim remarks), SXO / OPS O of a wave under way, a ground event, or a duty note. ST Tow are listed only on days they fly; engineers and FSI aren't listed.</p></div>`;
+    <p class="hint" style="margin:8px 0 0">Away = on leave / out of base, in later than the brief (their time in the In time / Late in lines: named, "W1 PLAYERS" = that wave's aircrew + SXO + OPS O, a time with no names = everyone else; the people giving the brief always count as there), flying (after step to landing + 30 min), sims (start − 1 h to end + 30 min, incl. the SXO / SUPP in the sim remarks), SXO / OPS O of a wave that has stepped, a ground event, or a duty note. ST Tow are listed only on days they fly; engineers and FSI aren't listed.</p></div>`;
   if (!d.open) d.showModal();
 }
 // Flown totals for the end-of-day sheet: every flown line counts (ops adds too), CX and lines not yet logged are counted separately.
@@ -1502,6 +1542,7 @@ table.attaway{min-width:0;width:100%}.attaway td{padding:4px 6px;vertical-align:
 .opsstats span{font-size:.75rem;color:var(--muted)}
 .opsdl{display:grid;grid-template-columns:minmax(90px,max-content) 1fr;gap:4px 14px;margin:0 0 6px;font-size:.9rem}
 .opsdl dt{color:var(--muted)} .opsdl dd{margin:0}
+.opsin div{margin:0 0 2px}.opsin .hint{font-size:.8rem}
 .opswave{margin:16px 0 6px;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;font-size:.9rem}
 .opswave:first-child{margin-top:0}
 .opswave b{font:700 1.15rem var(--cond);text-transform:uppercase}
