@@ -225,6 +225,7 @@ function obHelp() {
   parachute: "Number typed by ops. 0 = green, anything above 0 = red.",
   samar: "Typed by ops. Colour follows the first letter: G = green, Y = amber, R = red.",
   immersion: `From the sea surface and air temperature: sea ${n("imm.no")}°C or warmer → NO. Sea below ${n("imm.sea")}°C AND air below ${n("imm.air")}°C → YES. Anything else → NO. Shows - until the sea surface is filled in.`,
+  taf: `From each airfield's TAF (fetched with the METARs every 15 min, always the latest, even before Refresh): every part of the TAF is coloured with the same FASF rules as the METARs. The bar runs from this hour to the end of the TAF (24 h at most): main colour = prevailing (during a BECMG window the worse of before and after), hatched strip under it = TEMPO / PROB parts that are worse. Today's waves are marked above it. The chip next to each airfield = the worst FASF in the next ${cfgN("taf.hrs") || 6} h (▼ when worse than now). Next to EOR: a heads-up when the Cazaux TAF reaches ${cfg("eor.fasf")} or worse during today's flying (or the next 12 h). Tap any of them for the full TAF.`,
   eor: `EOR is set by ops. The board recommends IN HSE (pulsing tag) when the Cazaux FASF is ${cfg("eor.fasf")} or worse (B → W → G VFR → G IFR → Y → A → R); ops still tap IN HSE. The SXO / OPS O can tap Keep NORMAL instead (recorded with name and time); that holds for the day unless the FASF gets worse.`,
   bingo: `Auto from the Cazaux RSAF: ${cfg("bingo.upg")} → UPG BINGO, ${cfg("bingo.ifr")} → IFR BINGO, otherwise BINGO. Ops can pick one; the next Refresh METARs puts it back to auto.`,
   fasf: `FASF on Auto (default for LFBZ, LFSL, LFBE): the worse of visibility and cloud base. Visibility (km) for B / W / G IFR / Y / A: ${L("fasf.vis")}, below that R. Cloud base (ft; lowest BKN / OVC / VV, TEMPO and BECMG ignored) for B / W / G VFR / G IFR / Y / A: ${L("fasf.base")}, below that R. CAVOK = B. Elsewhere ops set it.`,
@@ -325,7 +326,7 @@ function obHomeLine() {
   const bd = obGet("board"), lfbc = (bd.airfields || []).find(a => a.icao === "LFBC");
   const f = lfbc ? obState(lfbc, "fasf").v : "", r = lfbc ? obState(lfbc, "rsaf").v : "", bg = obBingo(bd, r).v, w = obCzx().w;
   const wind = !w ? "" : w.calm ? "CALM" : w.vrb ? `VRB/${w.spd}KT` : `${String(w.dir).padStart(3, "0")}°/${w.spd}${w.gst ? "G" + w.gst : ""}KT`;
-  return `<span class="obpill ${bd.eor === "IN HSE" ? "obst-a" : "obst-g"}">EOR ${esc(bd.eor || "NORMAL")}</span>${obEorRecPill(bd, false)}
+  return `<span class="obpill ${bd.eor === "IN HSE" ? "obst-a" : "obst-g"}">EOR ${esc(bd.eor || "NORMAL")}</span>${obEorRecPill(bd, false)}${typeof tafEorLine === "function" ? tafEorLine(bd) : ""}
     ${f ? `<span>CZX FASF <span class="obcs ${obCsCls(f)}">${esc(f)}</span></span>` : ""}${r ? `<span>RSAF <span class="obcs ${obCsCls(r)}">${esc(r)}</span></span>` : ""}
     ${bg ? `<span class="obpill ${/UPG|IFR/.test(bg) ? "obst-y" : ""}">${esc(bg)}</span>` : ""}${wind ? `<span>Wind <b>${esc(wind)}</b></span>` : ""}`;
 }
@@ -398,7 +399,7 @@ function obBoardView(tv, extra) {
     const rwy = q && opts.length ? `<select class="obsel" data-obq="rwy" data-af="${i}" aria-label="Runway ${esc(a.icao)}">${[...new Set([...opts, a.rwy].filter(Boolean))].map(r => `<option ${r === a.rwy ? "selected" : ""}>${esc(r)}</option>`).join("")}</select>` : esc(a.rwy);
     const p = a.grp === "main" ? `<td>${q ? `<button class="obpbtn ${a.p ? "on" : ""}" data-obq="p" data-af="${i}" aria-label="Make ${esc(a.icao)} the primary divert">${a.p ? "P" : ""}</button>` : a.p ? obPill("g", "P") : ""}</td>` : "";
     const aids = (a.aids || []).map((x, j) => q ? `<button class="obpill obst-${obAidS(a, x) || "n"} obtap" data-obq="aid" data-af="${i}" data-j="${j}" title="Tap to change">${esc(x.name)}${x.s === "auto" ? " ·A" : ""}</button>` : obPill(obAidS(a, x), x.name)).join(" ");
-    return `<tr><td><b>${esc(a.icao)}</b></td>${p}<td>${rwy}</td><td>${csCell(a, i, "fasf")}</td><td>${csCell(a, i, "rsaf")}</td>
+    return `<tr><td class="nw"><b>${esc(a.icao)}</b>${typeof tafChip === "function" ? tafChip(a.icao) : ""}</td>${p}<td>${rwy}</td><td>${csCell(a, i, "fasf")}</td><td>${csCell(a, i, "rsaf")}</td>
       <td>${esc(wx)}${a.wx && m ? ` <span class="hint">(override)</span>` : ""}</td><td>${esc(obRestr(a))}</td>${a.grp === "main" ? `<td class="obaids">${aids}</td>` : ""}</tr>`;
   };
   const all = (b.airfields || []).map((a, i) => [a, i]), main = all.filter(([a]) => a.grp === "main"), alt = all.filter(([a]) => a.grp !== "main");
@@ -410,14 +411,14 @@ function obBoardView(tv, extra) {
   const yn = (v2, bad) => v2 ? obPill(v2 === bad ? "r" : "g", v2) : "-";
   const czx = b.czx || {};
   return `
-    <div class="obhead"><span class="obeor">${obH("eor", "EOR")}: ${["NORMAL", "IN HSE"].map(e => q ? `<button class="obpill ${b.eor === e ? (e === "NORMAL" ? "obst-g" : "obst-a") : ""} obtap" data-obq="eor" data-v="${e}">${e}</button>` : b.eor === e ? obPill(e === "NORMAL" ? "g" : "a", e) : "").join(" ")}${obEorRecPill(b, q)}</span>
+    <div class="obhead"><span class="obeor">${obH("eor", "EOR")}: ${["NORMAL", "IN HSE"].map(e => q ? `<button class="obpill ${b.eor === e ? (e === "NORMAL" ? "obst-g" : "obst-a") : ""} obtap" data-obq="eor" data-v="${e}">${e}</button>` : b.eor === e ? obPill(e === "NORMAL" ? "g" : "a", e) : "").join(" ")}${obEorRecPill(b, q)}${typeof tafEorLine === "function" ? tafEorLine(b) : ""}</span>
       ${q ? `${obH("bingo", "Bingo")} <select class="obsel ${/UPG|IFR/.test(bingo) ? "obst-y" : ""}" data-obq="bingo" aria-label="Bingo"><option value="AUTO" ${bsel === "AUTO" ? "selected" : ""}>${esc(bg.auto)} (auto)</option>${[["NONE", "— (blank)"], ["BINGO", "BINGO"], ["UPG BINGO", "UPG BINGO"], ["IFR BINGO", "IFR BINGO"]].map(([k2, l]) => `<option value="${k2}" ${bsel === k2 ? "selected" : ""}>${l}</option>`).join("")}</select>` : bingo ? obPill(/UPG|IFR/.test(bingo) ? "y" : "", bingo) : ""}
       ${obNewMetar() ? `<span class="obpill obst-a obpulse">New METAR waiting${q ? "" : " for ops"}</span>` : ""}<b>Airfield status${asOf ? " as of " + esc(asOf) : ""}</b>${wxAge ? ` <span class="hint">METAR ${esc(wxAge)}</span>` : ""}</div>
     ${b.banner ? `<div class="obbanner">${esc(b.banner)}</div>` : ""}
     <div class="obgrid ${tv ? "tv" : ""}">
       <section class="card opscard obwide obafcard"><div class="tablewrap"><table class="opst obt"><thead><tr><th>Airfield</th><th>P</th><th>RWY</th><th>${obH("fasf", "FASF")}</th><th>${obH("rsaf", "RSAF")}</th><th>${obH("wxvis", "WX / VIS")}</th><th>Restrictions</th><th>${obH("aids", "Aids")}</th></tr></thead><tbody>${main.map(([a, i]) => afRow(a, i)).join("")}</tbody></table></div>
         ${alt.length ? `<div class="tablewrap" style="margin-top:8px"><table class="opst obt"><thead><tr><th>Airfield</th><th>RWY</th><th>${obH("fasf", "FASF")}</th><th>${obH("rsaf", "RSAF")}</th><th>${obH("wxvis", "WX / VIS")}</th><th>Restrictions</th></tr></thead><tbody>${alt.map(([a, i]) => afRow(a, i)).join("")}</tbody></table></div>` : ""}
-        ${b.zrt ? `<p class="obnote">${esc(b.zrt)}</p>` : ""}</section>
+        ${b.zrt ? `<p class="obnote">${esc(b.zrt)}</p>` : ""}${typeof tafBar === "function" ? tafBar("LFBC", { title: "Cazaux" }) : ""}</section>
       ${tv ? `<section class="card opscard obtvwx"><h2>Cazaux weather &amp; wind</h2><div class="obwind">${obRose(w, z.rwy)}<div><div class="obbig">${esc(windTxt)}</div>
         ${comp ? `<div>${obH("wind", comp.head < 0 ? "Tailwind" : "Headwind")} <b>${Math.abs(comp.head).toFixed(1)}</b> KT</div><div>${obH("wind", "Crosswind")} <b>${comp.cross.toFixed(1)}</b> KT</div><div class="hint">RWY ${esc(String(z.rwy / 10).padStart(2, "0"))} · ${obH("wind", "governing wind")} ${w.gov} KT</div>` : ""}
         <div>${obH("windHazard", "Wind hazard")} ${q ? `<select class="obsel ${obHazS(czx.windHazard) ? "obst-" + obHazS(czx.windHazard) : ""}" data-obq="czx" data-f="windHazard" aria-label="Wind hazard">${["", "A", "B", "C", "D"].map(o => `<option value="${o}" ${o === (czx.windHazard || "") ? "selected" : ""}>${o || "-"}</option>`).join("")}</select>` : czx.windHazard ? obPill(obHazS(czx.windHazard), czx.windHazard) : "-"}</div></div></div><dl class="opsdl">
