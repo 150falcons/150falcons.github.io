@@ -436,11 +436,12 @@ ol.hdtl{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-auto-flow:co
 <div class="toast" id="toast" hidden></div>
 
 <script src="settings.js?v=13"></script>
-<script src="ops.js?v=81"></script>
-<script src="opsboard.js?v=68"></script>
+<script src="ops.js?v=82"></script>
+<script src="opsplan.js?v=1"></script>
+<script src="opsboard.js?v=69"></script>
 <script src="taf.js?v=1"></script>
 <script src="currency.js?v=11"></script>
-<script src="opsimport.js?v=8"></script>
+<script src="opsimport.js?v=9"></script>
 <script>
 /* =====================================================================
    SETUP: paste your Supabase Project URL and anon (public) key here.
@@ -601,6 +602,8 @@ function subscribe() {
   S.chan = S.sb.channel("board");
   for (const t of ["trainees", "profiles", "vehicles", "movements", "leaves"])
     S.chan.on("postgres_changes", { event: "*", schema: "public", table: t }, refetchSoon);
+  S.chan.on("postgres_changes", { event: "*", schema: "public", table: "ops_drafts" }, p => { if (typeof opsPlanRealtime === "function") opsPlanRealtime(p, "draft"); });
+  S.chan.on("postgres_changes", { event: "*", schema: "public", table: "ops_pubs" }, p => { if (typeof opsPlanRealtime === "function") opsPlanRealtime(p, "pub"); });
   S.chan.on("postgres_changes", { event: "*", schema: "public", table: "ops_sections" }, p => { S.homeOps = null; S.homeX = null; if (S.homeHrs) S.homeHrs.at = 0; opsRealtime(p); if (S.tab === "home") render(); });
   for (const t of ["ops_state", "ops_wx", "crew", "rs_items", "rs_acks"])
     S.chan.on("postgres_changes", { event: "*", schema: "public", table: t }, obRealtime);

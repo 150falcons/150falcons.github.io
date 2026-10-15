@@ -6,7 +6,7 @@
    Loaded before the main script and uses its helpers at call time
    ($, esc, S, toast, ask, errMsg, who, me, active, todayStr).
    ===================================================================== */
-const OPS = { day: null, rowsDay: null, rows: {}, prevDuties: null, lastDuties: null, namesOpen: false, edit: null, loading: false };
+const OPS = { day: null, rowsDay: null, rows: {}, prevDuties: null, lastDuties: null, namesOpen: false, edit: null, loading: false, plan: false, live: {}, drafts: {}, pubs: [] };
 const OPS_TITLES = {
   header: "Day details", flying: "Flying program", sim: "Simulator program", ground: "Ground program",
   airfield: "Airfield restrictions", notes: "Currencies & aircraft restrictions", duties: "Duties",
@@ -305,16 +305,20 @@ const opsWaveShort = w => String(w.name || "").replace(/^WAVE\s*/i, "W").replace
 /* ---------- data ---------- */
 async function opsLoad(day) {
   OPS.loading = true;
-  const [r1, r2] = await Promise.all([
+  const [r1, r2, rd, rp] = await Promise.all([
     S.sb.from("ops_sections").select("*").eq("day", day),
     S.sb.from("ops_sections").select("section,data").eq("day", opsShift(day, -1)),
+    opsCanEdit() ? S.sb.from("ops_drafts").select("*").eq("day", day) : Promise.resolve({ data: [] }),
+    S.sb.from("ops_pubs").select("id,day,seq,al,kind,at,by,note,changes").eq("day", day).order("seq"),
   ]);
   const r3 = await S.sb.from("ops_sections").select("data").lt("day", day).eq("section", "duties").order("day", { ascending: false }).limit(10);
   OPS.loading = false;
   if (OPS.day !== day) return;
   if (r1.error) { toast("Couldn't load the programme: " + errMsg(r1.error)); return; }
-  OPS.rows = {};
-  for (const r of r1.data || []) OPS.rows[r.section] = r;
+  OPS.live = {}; for (const r of r1.data || []) OPS.live[r.section] = r;
+  OPS.drafts = {}; for (const r of rd.data || []) if (r.data) OPS.drafts[r.section] = r;
+  OPS.pubs = rp.data || [];
+  opsBuildRows(); // planning mode: the draft over the live programme (opsplan.js)
   OPS.prevRows = {}; for (const r of r2.data || []) OPS.prevRows[r.section] = r.data;
   OPS.prevDuties = OPS.prevRows.duties || null;
   const ld = (r3.data || []).find(r => r.data && (r.data.groups || []).length); // skip cleared days
@@ -327,7 +331,7 @@ function opsRealtime(p) {
   const r = p.new && p.new.day ? p.new : p.old;
   if (r && r.section === "flying") { OPS.hrs = null; if (S.tab === "hours") return render(); }
   if (r && r.section === "sim" && typeof CUR !== "undefined") { CUR.sims = null; if (S.tab === "cur") return render(); }
-  if (r && r.section === "flying" && r.day === OPS.day && p.new && OPS.rows.flying && p.new.version <= OPS.rows.flying.version) return; // our own save
+  if (r && r.section === "flying" && r.day === OPS.day && p.new && OPS.live.flying && p.new.version <= OPS.live.flying.version) return; // our own save
   if (document.activeElement && document.activeElement.dataset && document.activeElement.dataset.log) { OPS.pendingLoad = true; return; }
   if (!r || !OPS.day) return;
   if (r.day === opsShift(OPS.day, -1) && r.section === "duties") return opsLoad(OPS.day);
@@ -336,12 +340,13 @@ function opsRealtime(p) {
     if (p.new && p.new.version !== OPS.edit.version) toast(`${who(p.new.updated_by) || "Someone"} just saved ${OPS_TITLES[r.section]}. Your save will ask you to redo your change.`);
     return;
   }
-  if (OPS.edit) { OPS.rows[r.section] = p.new; return; } // keep the editor open; other sections refresh on save
+  if (OPS.edit) { OPS.live[r.section] = p.new; if (!OPS.plan) OPS.rows[r.section] = p.new; return; } // keep the editor open; other sections refresh on save
   opsLoad(OPS.day);
 }
 
 /* ---------- TV mode (Gordon, 10 Oct): today's flying lines on the left (2/3), sim and ground programme on the right ---------- */
 function renderFlyTv(v) {
+  if (OPS.plan) { OPS.plan = false; OPS.edit = null; OPS.rowsDay = null; } // the TV always shows the published programme
   document.body.classList.add("tvmode");
   if ("wakeLock" in navigator && !obWake) navigator.wakeLock.request("screen").then(l => { obWake = l; l.addEventListener("release", () => obWake = null); }).catch(() => {});
   const day = todayStr();
@@ -729,19 +734,20 @@ function renderOps(v) {
   }
   const any = OPS_ORDER.some(opsData), canEdit = opsCanEdit();
   opsGet("flying");
-  let html = opsBar() + `<h2 class="opstitle">150 Squadron flying program<span>${esc(opsLongDay(OPS.day))}</span></h2>`;
+  let html = opsBar() + `<h2 class="opstitle">150 Squadron flying program<span>${esc(opsLongDay(OPS.day))}</span>${opsVerTag()}</h2>` + opsPlanBanner();
   if (!any && !OPS.edit) {
-    html += `<div class="empty"><strong>No programme for this day yet</strong>${canEdit
-      ? `Start from another day's programme, or fill in each section below.<div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn primary" data-ops="copy">Copy from another day</button></div>`
+    html += `<div class="empty"><strong>${OPS.plan ? "Nothing in the plan for this day yet" : "No programme for this day yet"}</strong>${canEdit
+      ? (OPS.plan ? `Start from another day's programme, import the Excel export, or fill in each section below. Nothing goes live until you publish.<div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn primary" data-ops="copy">Copy from another day</button><button class="btn" data-ops="import">Import Excel</button></div>`
+        : `Plan it first; it goes live when you publish.<div style="margin-top:10px"><button class="btn primary" data-ops="plan">Start planning</button></div>`)
       : "Check back later."}</div>`;
-    if (!canEdit) { v.innerHTML = html; return; }
+    if (!canEdit || !OPS.plan) { v.innerHTML = html; return; }
   }
   const h = opsGet("header");
   if (any && !h.vettedBy && !OPS.edit) html += `<div class="opsbanner">Not yet vetted &amp; approved. This programme may still change.</div>`;
   if (OPS.edit) { html += opsMyDay(); for (const sec of OPS_ORDER) html += opsSection(sec, canEdit); }
   else { // wide screens: pairs side by side so the page width is used; the flying program and duties stay full width
     const pair = (...xs) => `<div class="opsrow">${xs.join("")}</div>`, s = sec => opsSection(sec, canEdit);
-    html += opsMyDay() + s("header") + (OPS.logOpen && canEdit && opsData("flying") ? opsLogCard() : "") + s("flying") + pair(s("sim"), s("ground")) + pair(s("airfield"), s("notes")) + s("duties");
+    html += opsMyDay() + s("header") + (OPS.logOpen && canEdit && !OPS.plan && opsData("flying") ? opsLogCard() : "") + s("flying") + pair(s("sim"), s("ground")) + pair(s("airfield"), s("notes")) + s("duties");
   }
   v.innerHTML = html;
   const d = $("#opsDate"); if (d) d.onchange = e => { if (e.target.value) opsGo(e.target.value); };
@@ -750,16 +756,19 @@ function renderOps(v) {
 function opsBar() {
   const here = OPS.rowsDay === OPS.day, fly = here && opsData("flying"), can = opsCanEdit();
   const grp = (label, body) => body ? `<div class="opsgrp"><span class="opsgrpl">${label}</span><div class="opsgrpb">${body}</div></div>` : "";
-  const edit = can ? [
-    fly && !OPS.edit ? `<button class="btn small${OPS.logOpen ? " primary" : ""}" data-ops="log">${OPS.logOpen ? "Done logging" : "Log flown times"}</button>` : "",
+  // Planning (15 Oct, Gordon): programme changes are made in planning mode and go live on Publish; flown times stay live.
+  const edit = can ? (OPS.plan ? [
     !OPS.edit ? `<button class="btn small" data-ops="import" title="Load the planning software's Excel export (.xlsx): flying lines, SXO, sims and airfield items fill in by themselves">Import Excel</button>` : "",
     `<button class="btn small" data-ops="copy">Copy from…</button>`,
-    here && OPS_ORDER.some(opsData) && !OPS.edit ? `<button class="btn small danger" data-ops="clear">Clear day</button>` : ""].join("") : "";
+    here && OPS_ORDER.some(opsData) && !OPS.edit ? `<button class="btn small danger" data-ops="clear">Clear day</button>` : "",
+    !OPS.edit ? `<button class="btn small" data-ops="planexit">Exit planning</button>` : ""].join("") : [
+    fly && !OPS.edit ? `<button class="btn small${OPS.logOpen ? " primary" : ""}" data-ops="log">${OPS.logOpen ? "Done logging" : "Log flown times"}</button>` : "",
+    !OPS.edit ? `<button class="btn small primary" data-ops="plan" title="Make changes in a draft; they go live when you publish">${opsDraftCount() ? `Planning · ${opsDraftCount()} unpublished` : "Plan / amend"}</button>` : ""].join("")) : "";
   const print = `<button class="btn small" data-ops="pdf" title="Daily programme to send out">Daily PDF</button>${fly ? `<button class="btn small" data-ops="pdfeod" title="End-of-day copy with flown times, for filing">End of day PDF</button>` : ""}${here && OPS_ORDER.some(opsData) && !OPS.edit ? `<button class="btn small attbtn" data-ops="att" title="Who should be at the Ops brief / WX-NOTAM / EOWD, and who's away">Attendance</button>` : ""}`;
   return `<div class="opsbar grp">
     ${grp("Day", `<button class="btn small" data-ops="day" data-n="-1" aria-label="Previous day">‹</button><input type="date" id="opsDate" value="${esc(OPS.day)}"><button class="btn small" data-ops="day" data-n="1" aria-label="Next day">›</button><button class="btn small" data-ops="today">Today</button>`)}
     <span class="grow"></span>
-    ${grp("Edit", edit)}${grp("Print", print)}${OPS.edit ? "" : grp("Display", `<button class="btn small primary" data-tab="flytv">TV mode</button>`)}</div>`;
+    ${grp(OPS.plan ? "Planning" : "Edit", edit)}${grp("Print", print)}${OPS.edit ? "" : grp("Display", `<button class="btn small primary" data-tab="flytv">TV mode</button>`)}</div>`;
 }
 function opsGo(day) {
   if (OPS.edit && !confirm("Discard your unsaved changes?")) { const d = $("#opsDate"); if (d) d.value = OPS.day; return; }
@@ -769,9 +778,9 @@ function opsSection(sec, canEdit) {
   const r = OPS.rows[sec], editing = OPS.edit && OPS.edit.section === sec;
   const meta = r && r.updated_at ? `Updated ${new Date(r.updated_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${r.updated_by ? " by " + esc(who(r.updated_by)) : ""}` : "";
   const body = editing ? opsEditor(sec) : opsView[sec](opsGet(sec));
-  if (!editing && !body && !canEdit) return "";
+  if (!editing && !body && !(canEdit && OPS.plan)) return "";
   return `<section class="card opscard" id="ops-${sec}"><div class="opshead"><h2>${OPS_TITLES[sec]}</h2>
-    <span class="opsmeta">${meta}${canEdit && !editing && !OPS.edit ? ` <button class="btn small" data-ops="edit" data-sec="${sec}">Edit</button>` : ""}${editing ? ` <button class="btn small" data-ops="cancel">Cancel</button><button class="btn small primary" data-ops="save">Save</button>` : ""}</span></div>
+    <span class="opsmeta">${meta}${canEdit && OPS.plan && !editing && !OPS.edit ? ` <button class="btn small" data-ops="edit" data-sec="${sec}">Edit</button>` : ""}${editing ? ` <button class="btn small" data-ops="cancel">Cancel</button><button class="btn small primary" data-ops="save">Save</button>` : ""}</span></div>
     ${body || `<p class="hint" style="margin:0">Nothing entered.</p>`}</section>`;
 }
 // Everything on today's programme for the signed-in person.
@@ -954,7 +963,7 @@ const opsView = {
             : `<td class="act">${esc(L.st ? L.to || "" : "")}</td><td class="act">${esc(L.st ? L.ldg || "" : "")}</td><td class="act hrs">${m != null ? opsHrs(m) : ""}${L.res && L.res !== "DCO" ? `<small class="opsres">${esc(opsResText(a, L))}</small>` : ""}</td>`;
           out += `<tr class="${add ? "opsadd" : ""}"><td class="no">${no}</td>
             ${i === 0 ? `<td rowspan="${span}" class="tm rs"><b>${esc(f.etd)}</b>${bs ? `<small class="bs">${esc(bs)}</small>` : ""}</td><td rowspan="${span}" class="tm rs"><b>${esc(f.eta)}</b></td><td rowspan="${span}" class="cs rs">${esc(f.callsign)}${opsPlanTags(plan.byF.get(f))}</td>` : ""}
-            <td class="n">${esc(a.n)}</td><td class="fcrew">${opsX(a.crew1)}${a.crew2 ? `<span class="c2"> / ${opsX(a.crew2)}</span>` : ""}</td><td class="nw">${esc(a.mission)}</td>
+            <td class="n">${esc(a.n)}</td><td class="fcrew">${opsX(a.crew1)}${a.crew2 ? `<span class="c2"> / ${opsX(a.crew2)}</span>` : ""}${opsChgHtml(a)}</td><td class="nw">${esc(a.mission)}</td>
             ${i === 0 ? `<td rowspan="${span}" class="area rs">${esc(f.area)}${f.areaTime ? `<small>${esc(f.areaTime)}</small>` : ""}</td>` : ""}<td class="nw">${esc(opsTail(a.tail, OPS.day))}</td><td class="nw">${esc(a.config)}</td>${act}<td class="rm">${opsIrtBad(a) ? `<span class="opsirt">⚠ ${OPS_IRT_MSG}</span>${a.rmks ? "<br>" : ""}` : ""}${opsNl(a.rmks)}</td></tr>`;
         });
         out += `</tbody>`;
@@ -1003,7 +1012,7 @@ const opsView = {
       const ac = (s.ac || []).length ? s.ac : [opsTpl.simac("")], span = ac.length;
       ac.forEach((a, i) => {
         out += `<tr class="${i === 0 ? "first" : ""}"><td>${opsLineUsed(a) ? String(++n).padStart(2, "0") : ""}</td>${i === 0 ? `<td rowspan="${span}">${esc(s.etd)}</td><td rowspan="${span}">${esc(s.eta)}</td>` : ""}
-          <td>${esc([i === 0 ? s.callsign : "", a.n].filter(Boolean).join(" "))}</td><td class="nm">${opsX(a.crew1)}</td><td class="nm">${opsX(a.crew2 || "")}</td><td>${esc(a.mission)}</td><td>${esc(a.fms)}</td><td>${esc(a.config)}</td><td>${opsNl(a.rmks)}</td></tr>`;
+          <td>${esc([i === 0 ? s.callsign : "", a.n].filter(Boolean).join(" "))}</td><td class="nm">${opsX(a.crew1)}${i === 0 ? opsChgHtml(s) : ""}${opsChgHtml(a)}</td><td class="nm">${opsX(a.crew2 || "")}</td><td>${esc(a.mission)}</td><td>${esc(a.fms)}</td><td>${esc(a.config)}</td><td>${opsNl(a.rmks)}</td></tr>`;
       });
     }
     return out + `</tbody></table></div>`;
@@ -1262,6 +1271,7 @@ document.addEventListener("click", async e => {
   else if (a === "cancel") { OPS.edit = null; renderOps($("#view")); }
   else if (a === "save") opsSave(el);
   else if (a === "copy") opsCopy();
+  else if (a === "plan" || a === "planexit" || a === "publish" || a === "discard" || a === "chglog") opsPlanAct(a, el);
   else if (a === "import") opsImportPick();
   else if (a === "clear") opsClearDay(el);
   else if (a === "pdf") opsPrint(false);
@@ -1280,10 +1290,12 @@ document.addEventListener("click", async e => {
 // Clear the whole programme for the shown day (two warnings first). Sections are emptied, not deleted.
 async function opsClearDay(btn) {
   const day = OPS.day, long = opsLongDay(day);
-  if (!await ask("Clear this day's programme?", `This empties everything for ${long}: header, flying, sims, ground, airfield, notes and duties.`, "Clear day")) return;
+  if (!await ask("Clear this day's programme?", `This empties everything for ${long}: header, flying, sims, ground, airfield, notes and duties.${OPS.plan ? " (In the plan: nothing changes live until you publish.)" : ""}`, "Clear day")) return;
   if (!await ask("Are you sure?", `You are about to clear the WHOLE programme for ${long}. Everyone will see it disappear. This can't be undone (you'd have to copy it in again).`, `Yes, clear ${long}`)) return;
   btn.disabled = true;
-  const { error } = await S.sb.rpc("ops_clear_day", { p_day: day });
+  let error = null;
+  if (OPS.plan) { for (const sec of OPS_ORDER) { const r = await opsSecSave(day, sec, {}, OPS.rows[sec] ? OPS.rows[sec].version : 0); if (r.error) { error = r.error; break; } } }
+  else ({ error } = await S.sb.rpc("ops_clear_day", { p_day: day }));
   btn.disabled = false;
   if (error) return toast(errMsg(error));
   toast(`${long} cleared.`); OPS.edit = null; opsLoad(day);
@@ -1295,14 +1307,15 @@ async function opsSave(btn) {
     if (bad.length && !await ask("IRT needs an IRE in the back seat", `${bad.join("; ")}. The back seat isn't ticked as IRE (Admin → Edit). Save anyway?`, "Save anyway")) return;
   }
   btn.disabled = true;
-  const { data, error } = await S.sb.rpc("ops_save", { p_day: OPS.day, p_section: ed.section, p_data: ed.data, p_version: ed.version });
+  const { data, error } = await opsSecSave(OPS.day, ed.section, ed.data, ed.version);
   btn.disabled = false;
   if (error) {
     if (/someone else/i.test(error.message)) { await ask("Not saved", error.message, "OK"); OPS.edit = null; return opsLoad(OPS.day); }
     const err = $("#opsErr"); if (err) err.textContent = errMsg(error); toast(errMsg(error)); return;
   }
-  OPS.rows[ed.section] = { day: OPS.day, section: ed.section, data: ed.data, version: data, updated_at: new Date().toISOString(), updated_by: S.me.id };
-  OPS.edit = null; toast(`${OPS_TITLES[ed.section]} saved.`); renderOps($("#view"));
+  OPS.rows[ed.section] = { day: OPS.day, section: ed.section, data: ed.data, version: data, updated_at: new Date().toISOString(), updated_by: S.me.id, draft: OPS.plan };
+  if (OPS.plan) OPS.drafts[ed.section] = OPS.rows[ed.section];
+  OPS.edit = null; toast(OPS.plan ? `${OPS_TITLES[ed.section]} saved to the plan (not live until you publish).` : `${OPS_TITLES[ed.section]} saved.`); renderOps($("#view"));
 }
 async function opsCopy() {
   if (OPS.edit) return toast("Save or cancel your changes first.");
@@ -1320,7 +1333,7 @@ async function opsCopy() {
     if (r.section === "duties") for (const g of d.groups || []) for (const row of g.rows || []) { row.cells = []; row.inTime = ""; row.outTime = ""; }
     if (r.section === "flying") for (const w of d.waves || []) for (const f of w.flights || []) for (const a of f.ac || []) delete a.log; // flown times belong to their own day
     const cur = OPS.rows[r.section];
-    const res = await S.sb.rpc("ops_save", { p_day: OPS.day, p_section: r.section, p_data: d, p_version: cur ? cur.version : 0 });
+    const res = await opsSecSave(OPS.day, r.section, d, cur ? cur.version : 0);
     if (res.error) fails.push(`${OPS_TITLES[r.section]}: ${errMsg(res.error)}`);
   }
   toast(fails.length ? "Some sections weren't copied: " + fails.join("; ") : `Copied from ${opsLongDay(from)}. Now update what's different.`);
@@ -1383,7 +1396,7 @@ function opsPrint(eod) {
   let el = document.getElementById("opsPrint");
   if (!el) { el = document.createElement("div"); el.id = "opsPrint"; document.body.appendChild(el); }
   el.innerHTML = `<div class="pg">
-    <div class="top"><div class="ttl">150 SQUADRON ${eod ? "ACTUAL DAY PROGRAM" : "FLYING PROGRAM"}<span>${e(opsLongDay(OPS.day))}</span></div><div class="cls">OFFICIAL (CLOSED)</div></div>
+    <div class="top"><div class="ttl">150 SQUADRON ${eod ? "ACTUAL DAY PROGRAM" : "FLYING PROGRAM"}<span>${e(opsLongDay(OPS.day))}${OPS.plan ? " · PLANNING DRAFT (NOT PUBLISHED)" : opsVerName() ? " · " + e(opsVerName()) : ""}</span></div><div class="cls">OFFICIAL (CLOSED)</div></div>
     <div class="strip">${box("Briefs", briefs)}${box("Day", nums + people)}</div>
     <div class="main"><div class="l">${fly}</div><div class="r">
       ${sims ? box("Simulator program", `<table class="g sm"><colgroup><col style="width:7%"><col style="width:17%"><col style="width:15%"><col style="width:27%"><col style="width:20%"><col></colgroup><thead><tr><th>No</th><th>${eod ? "ATD–ATA" : "ETD–ETA"}</th><th>Callsign</th><th>Aircrew / Console</th><th>Mission</th><th>Rmks</th></tr></thead>${sims}</table>`) : ""}

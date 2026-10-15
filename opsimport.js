@@ -285,9 +285,10 @@ function opsImportPick() {
 async function opsImportFile(file, rows, forceOff) {
   let P;
   try { rows = rows || await xlsxRows(file); P = impParse(rows, forceOff); } catch (e) { return ask("Couldn't read the file", e.message || String(e), "OK"); }
-  const { data, error } = await S.sb.from("ops_sections").select("section,data,version").eq("day", P.day).in("section", ["flying", "sim", "airfield", "header", "ground"]);
-  if (error) return toast("Couldn't load " + P.day + ": " + errMsg(error));
-  const cur = {}, ver = {}; for (const r of data || []) { cur[r.section] = r.data && Object.keys(r.data).length ? r.data : null; ver[r.section] = r.version; }
+  // Imports go into the plan (15 Oct): read that day's plan (draft over live) and save to the draft.
+  const R = await opsPlanRead(P.day);
+  if (R.error) return toast("Couldn't load " + P.day + ": " + errMsg(R.error));
+  const cur = R.cur, ver = R.ver;
   const M = impMerge(P, cur);
   IMP.res = { P, M, ver, file, rows, changes: cur.flying && (cur.flying.waves || []).length ? impChanges(cur.flying, M.flying) : null };
   opsImportShow();
@@ -321,19 +322,19 @@ function opsImportShow() {
     ${P.skipped.length ? `<p class="hint">Skipped: ${esc([...new Set(P.skipped)].join(", "))}.</p>` : ""}
     ${M.hdr.length ? `<h3>Day details (from the briefing strips)</h3>${li(M.hdr.map(([l, v, ok]) => `<b>${esc(l)}</b> ${esc(v)}${ok ? "" : ` <span class="hint">(not used: the box already has ops' entry)</span>`}`))}` : ""}
     ${M.gnd.length ? `<h3>Added to the ground programme</h3>${li(M.gnd.map(esc))}` : ""}
-    <p class="hint">Saving replaces this day's flying program, simulator program and airfield restrictions, fills empty Day details boxes and adds new briefing bookings to the ground programme. What ops typed in Day details and the ground programme stays; notes and duties aren't touched.</p>
-    <div class="row"><button class="btn" data-x="close">Cancel</button><button class="btn primary" data-x="save">Save to ${esc(opsLongDay(P.day).replace(/ \d{4}$/, ""))}</button></div></div>`;
+    <p class="hint">Saving goes into the <b>plan</b> (nothing goes live until you publish). It replaces this day's flying program, simulator program and airfield restrictions, fills empty Day details boxes and adds new briefing bookings to the ground programme. What ops typed in Day details and the ground programme stays; notes and duties aren't touched.</p>
+    <div class="row"><button class="btn" data-x="close">Cancel</button><button class="btn primary" data-x="save">Save to the plan for ${esc(opsLongDay(P.day).replace(/ \d{4}$/, ""))}</button></div></div>`;
   if (!d.open) d.showModal();
 }
 async function opsImportSave(btn) {
   const { P, M, ver } = IMP.res; btn.disabled = true;
   for (const sec of ["flying", "sim", "airfield", ...(M.hdr.some(h => h[2]) ? ["header"] : []), ...(M.gnd.length ? ["ground"] : [])]) {
-    const { error } = await S.sb.rpc("ops_save", { p_day: P.day, p_section: sec, p_data: M[sec], p_version: ver[sec] || 0 });
+    const { error } = await S.sb.rpc("ops_draft_save", { p_day: P.day, p_section: sec, p_data: M[sec], p_version: ver[sec] || 0 });
     if (error) { btn.disabled = false; return ask("Not saved", `${OPS_TITLES[sec]}: ${errMsg(error)}${/someone else/i.test(error.message) ? " Import the file again to pick up their change." : ""}`, "OK"); }
   }
   document.getElementById("dlgImp").close();
-  toast(`Imported into ${opsLongDay(P.day)}.`);
-  OPS.edit = null; OPS.day = P.day; OPS.rowsDay = null; S.tab = "ops"; render();
+  toast(`Imported into the plan for ${opsLongDay(P.day)}. Check it, then Publish.`);
+  OPS.edit = null; OPS.day = P.day; OPS.rowsDay = null; OPS.plan = true; S.tab = "ops"; render();
 }
 document.head.insertAdjacentHTML("beforeend", `<style>
 #dlgImp{width:min(900px,calc(100vw - 16px))}#impOff{width:auto;display:inline-block;margin:0 2px;padding:1px 4px;font-size:.85rem}#dlgImp h3{font-size:.95rem;margin:12px 0 4px}

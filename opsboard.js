@@ -691,7 +691,7 @@ function obSyncCrewNames() {
 let obTodayFetch = null;
 function obTodayGet() {
   const day = todayStr();
-  if (OPS.rowsDay === day) return opsGet;
+  if (OPS.rowsDay === day && !OPS.plan) return opsGet; // never the planning draft
   if (S.homeOps && S.homeOps.day === day) return sec => S.homeOps.rows[sec] || {};
   if (obTodayFetch !== day) {
     obTodayFetch = day;
