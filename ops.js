@@ -324,7 +324,7 @@ async function opsLoad(day) {
   const ld = (r3.data || []).find(r => r.data && (r.data.groups || []).length); // skip cleared days
   OPS.lastDuties = ld ? ld.data : null;
   OPS.rowsDay = day;
-  if (S.tab === "ops") renderOps($("#view")); else if (S.tab === "flytv") render();
+  if (S.tab === "ops") renderOps($("#view")); else if (S.tab === "flytv" || S.tab === "sched") render();
 }
 // Realtime: another editor saved a section.
 function opsRealtime(p) {
@@ -768,7 +768,7 @@ function opsBar() {
   return `<div class="opsbar grp">
     ${grp("Day", `<button class="btn small" data-ops="day" data-n="-1" aria-label="Previous day">‹</button><input type="date" id="opsDate" value="${esc(OPS.day)}"><button class="btn small" data-ops="day" data-n="1" aria-label="Next day">›</button><button class="btn small" data-ops="today">Today</button>`)}
     <span class="grow"></span>
-    ${grp(OPS.plan ? "Planning" : "Edit", edit)}${grp("Print", print)}${OPS.edit ? "" : grp("Display", `<button class="btn small primary" data-tab="flytv">TV mode</button>`)}</div>`;
+    ${grp(OPS.plan ? "Planning" : "Edit", edit)}${grp("Print", print)}${OPS.edit ? "" : grp("Display", `${opsCanEdit() ? `<button class="btn small" data-tab="sched">Scheduler</button>` : ""}<button class="btn small primary" data-tab="flytv">TV mode</button>`)}</div>`;
 }
 function opsGo(day) {
   if (OPS.edit && !confirm("Discard your unsaved changes?")) { const d = $("#opsDate"); if (d) d.value = OPS.day; return; }

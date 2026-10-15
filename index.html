@@ -436,8 +436,9 @@ ol.hdtl{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-auto-flow:co
 <div class="toast" id="toast" hidden></div>
 
 <script src="settings.js?v=13"></script>
-<script src="ops.js?v=82"></script>
-<script src="opsplan.js?v=1"></script>
+<script src="ops.js?v=83"></script>
+<script src="opsplan.js?v=2"></script>
+<script src="opssched.js?v=1"></script>
 <script src="opsboard.js?v=69"></script>
 <script src="taf.js?v=1"></script>
 <script src="currency.js?v=11"></script>
@@ -699,6 +700,7 @@ function render() {
   else if (S.tab === "aircraft") renderAircraft(v);
   else if (S.tab === "tv") renderTv(v);
   else if (S.tab === "flytv") renderFlyTv(v);
+  else if (S.tab === "sched") renderSched(v);
   else if (S.tab === "hours") renderHours(v);
   else if (S.tab === "settings") renderSettings(v);
   else if (S.tab === "cur") renderCur(v);
@@ -706,7 +708,7 @@ function render() {
 }
 
 // Top-level areas (top bar) and their pages (sub-tabs).
-const AREA = { home: "home", board: "move", log: "move", vehicles: "move", ops: "ops", opsboard: "ops", gonogo: "ops", aircraft: "ops", tv: "ops", flytv: "ops", hours: "ops", cur: "ops", settings: "ops", roster: "admin" };
+const AREA = { home: "home", board: "move", log: "move", vehicles: "move", ops: "ops", opsboard: "ops", gonogo: "ops", aircraft: "ops", tv: "ops", flytv: "ops", sched: "ops", hours: "ops", cur: "ops", settings: "ops", roster: "admin" };
 const SUBTABS = { move: [["board", "Board"], ["log", "Log"], ["vehicles", "Vehicles"]], ops: [["opsboard", "Ops board"], ["ops", "Flying program"], ["gonogo", "Go / No-Go"], ["aircraft", "Aircraft"], ["hours", "Hours"], ["cur", "Currencies"], ["settings", "Settings"]] };
 function renderHome(v) {
   const now = Date.now(), ob = openByTrainee(); let i = 0, o = 0, l = 0, lv = 0;

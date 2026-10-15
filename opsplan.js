@@ -46,7 +46,7 @@ function opsVerTag() {
 /* ---------- what changed ---------- */
 const opsTx = v => String(v || "").trim();
 const opsTailKey = v => String(v || "").replace(/[#@\s]/g, "").toUpperCase();
-const opsSigned = d => (d > 0 ? "+" : "−") + Math.abs(d);
+const opsSigned = d => (d > 0 ? "+" : "−") + (Math.abs(d) >= 60 ? `${Math.floor(Math.abs(d) / 60)}h${String(Math.abs(d) % 60).padStart(2, "0")}` : Math.abs(d));
 // Compare two programmes (section → data). Returns { list: [{ s, t }], tags: Map(object in N → { t: [short tags], d: [details] }) }.
 function opsDiff(O, N) {
   const list = [], tags = new Map(), add = (s, t) => list.push({ s, t });
@@ -60,18 +60,20 @@ function opsDiff(O, N) {
   const fronts = x => (x.f.ac || []).map(a => opsNorm(a.crew1)).filter(Boolean).sort().join(",");
   const nm = x => `${opsWaveShort(x.w)} ${x.f.callsign || "(no callsign)"}`;
   const crew = a => [a.crew1, a.crew2].map(opsTx).filter(Boolean).join(" / ") || "no crew";
-  for (const n of nF) {
-    let c = oF.filter(o => !used.has(o) && opsNorm(o.f.callsign) && opsNorm(o.f.callsign) === opsNorm(n.f.callsign)).sort((a, b) => near(a, n) - near(b, n))[0];
-    if (c && near(c, n) > 240) c = null;
-    if (!c) c = oF.find(o => !used.has(o) && fronts(o) && fronts(o) === fronts(n) && near(o, n) <= 120);
-    if (c) { used.add(c); n.o = c; }
+  // pair old and new flights, best matches first: same callsign + same front-seaters (any time, e.g. moved to another
+  // wave), then same callsign nearest ETD (within 4 h), then the same front-seaters within 2 h (callsign changed)
+  const pairs = [], cs = x => opsNorm(x.f.callsign);
+  for (const n of nF) for (const o of oF) {
+    const sc = cs(o) && cs(o) === cs(n) ? (fronts(o) && fronts(o) === fronts(n) ? 0 : near(o, n) <= 240 ? 1 : null) : fronts(o) && fronts(o) === fronts(n) && near(o, n) <= 120 ? 2 : null;
+    if (sc != null) pairs.push({ n, o, k: sc * 10000 + near(o, n) });
   }
+  for (const p of pairs.sort((a, b) => a.k - b.k)) if (!p.n.o && !used.has(p.o)) { used.add(p.o); p.n.o = p.o; }
   for (const n of nF) {
     const lines = (n.f.ac || []).filter(opsLineUsed);
     if (!n.o) { add("Flying", `${nm(n)} added · ETD ${opsTx(n.f.etd) || "?"}Z · ${lines.map(crew).join(", ")}`); lines.forEach(a => tag(a, "new", "added")); continue; }
     const o = n.o, fd = [], ft = [];
     const d = (etd(n) != null && etd(o) != null) ? etd(n) - etd(o) : 0;
-    if (d) { fd.push(`ETD ${o.f.etd} → ${n.f.etd}Z (${opsSigned(d)} min)`); ft.push(opsSigned(d)); }
+    if (d) { fd.push(`ETD ${o.f.etd} → ${n.f.etd}Z (${opsSigned(d)}${Math.abs(d) < 60 ? " min" : ""})`); ft.push(opsSigned(d)); }
     else if (opsTx(o.f.eta) !== opsTx(n.f.eta)) { fd.push(`ETA ${o.f.eta || "-"} → ${n.f.eta || "-"}Z`); ft.push("ETA"); }
     if (!d && (opsTx(o.f.brief) !== opsTx(n.f.brief) || opsTx(o.f.step) !== opsTx(n.f.step))) { fd.push(`brief / step ${o.f.brief || "-"}/${o.f.step || "-"} → ${n.f.brief || "-"}/${n.f.step || "-"}Z`); ft.push("brief"); }
     if (opsNorm(o.f.callsign) !== opsNorm(n.f.callsign)) { fd.push(`callsign ${o.f.callsign || "-"} → ${n.f.callsign || "-"}`); ft.push("callsign"); }
@@ -253,7 +255,7 @@ function opsPlanRealtime(p, kind) {
   if (kind === "draft") {
     if (r.data) OPS.drafts[r.section] = r; else delete OPS.drafts[r.section];
     if (OPS.edit) { if (OPS.edit.section === r.section && r.updated_by !== S.me.id && OPS.plan) toast(`${who(r.updated_by) || "Someone"} just changed ${OPS_TITLES[r.section]} in the plan. Your save will ask you to redo your change.`); return; }
-    opsBuildRows(); if (S.tab === "ops") renderOps($("#view"));
+    opsBuildRows(); if (S.tab === "ops") renderOps($("#view")); else if (S.tab === "sched") render();
   } else if (!OPS.edit) opsLoad(OPS.day);
 }
 
