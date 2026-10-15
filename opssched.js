@@ -16,9 +16,30 @@ const schZ = m => opsZ4(((m % 1440) + 1440) % 1440);
 const schNames = s => String(s || "").split(/[,/&]|\bAND\b/i).map(x => opsNorm(x.replace(/\(.*?\)/g, ""))).filter(Boolean);
 const schSimRmk = a => { const out = []; for (const m of String(a.rmks || "").matchAll(/\b(SXO|SUPP|SUP|SUPPORT|CONSOLE|INSTR?)\s*:\s*([^/;\n]+)/gi)) out.push(...schNames(m[2])); return out; };
 
+// Move a formation / sim by d minutes (brief, step, ETD, ETA together), or stretch its ETA / end ("end"). Mutates data.
+function schShift(data, ref, mode, d) {
+  const t = ref.kind === "fly" ? (((data.waves || [])[ref.wi] || {}).flights || [])[ref.fi] : (data.rows || [])[ref.ri];
+  if (!t) return null;
+  let id = ref.id, wave = null;
+  if (mode === "move") {
+    for (const k of ["brief", "step", "etd", "eta"]) { const m = opsMin(t[k]); if (m != null && String(t[k] || "").trim()) t[k] = schZ(m + d); }
+    // dragged into another wave's time (and out of its own): it joins that wave, in ETD order
+    if (ref.kind === "fly") {
+      const e = opsMin(t.etd), win = (w, skip) => { const fs = (w.flights || []).filter(f => f !== skip && (f.ac || []).some(opsLineUsed) && opsMin(f.etd) != null); if (!fs.length) return null; const a = Math.min(...fs.map(f => opsMin(f.etd))), z = Math.max(...fs.map(f => { const s0 = opsMin(f.etd), x = opsMin(f.eta); return x == null ? s0 + 60 : x < s0 ? x + 1440 : x; })); return [a - 15, z]; };
+      const inW = w => { const r = win(w, t); return r && e >= r[0] && e <= r[1]; }, ws = data.waves || [];
+      if (e != null && !inW(ws[ref.wi])) {
+        const to = ws.findIndex((w, i) => i !== ref.wi && inW(w));
+        if (to >= 0) { ws[ref.wi].flights.splice(ref.fi, 1); const fs = ws[to].flights = ws[to].flights || []; let at = fs.findIndex(f => (opsMin(f.etd) ?? 1e9) > e); if (at < 0) at = fs.length; fs.splice(at, 0, t); id = `f${to}.${at}`; wave = ws[to].name || opsWaveShort(ws[to]); }
+      }
+    }
+  } else { const st = opsMin(t.etd); if (st == null) return { t, id }; let e = opsMin(t.eta); e = e == null ? st + 60 : e < st ? e + 1440 : e; t.eta = schZ(Math.max(st + 15, e + d)); if (ref.kind === "fly") t.man = { ...(t.man || {}), eta: true }; }
+  return { t, id, wave };
+}
 // Everything on the day as blocks (for drawing) and per-person items (for clashes).
 function schModel() {
-  const fl = opsGet("flying"), sim = opsGet("sim"), gnd = opsGet("ground"), h = opsGet("header"), off = opsAutoOff();
+  let fl = opsGet("flying"), sim = opsGet("sim");
+  const gnd = opsGet("ground"), h = opsGet("header"), off = opsAutoOff(), dr = SCH.drag;
+  if (dr && dr.d) { const r = dr.kind === "fly" ? schShift(fl = opsNameWaves(opsClone(fl)), dr, dr.mode, dr.d) : schShift(sim = opsClone(sim), dr, dr.mode, dr.d); dr.res = r; }
   const blocks = [], items = [], ppl = new Map();
   const put = (who, it) => { for (const n of who) { if (!n) continue; items.push({ ...it, who: n }); ppl.set(n, true); } };
   const end = (s, e) => (e != null && s != null && e < s ? e + 1440 : e);
@@ -116,13 +137,14 @@ function schPack(bs) {
   return rows;
 }
 function renderSched(v) {
+  if (SCH.G && SCH.G.armed) return; // mid-drag: the drop re-renders
   if (!OPS.day) OPS.day = todayStr();
   const can = opsCanEdit();
   if (can && !OPS.plan) { OPS.plan = true; if (OPS.rowsDay === OPS.day) opsBuildRows(); }
   if (OPS.rowsDay !== OPS.day) { v.innerHTML = `<div class="empty">Loading the programme…</div>`; if (!OPS.loading) opsLoad(OPS.day); return; }
   OPS.pendTags = OPS.plan && typeof opsPlanDiff === "function" ? opsPlanDiff().tags : null;
   const M = schModel(), C = schClashes(M), [t0, t1] = schWindow(M), span = t1 - t0;
-  SCH.M = M; SCH.C = C;
+  SCH.M = M; SCH.C = C; SCH.t0 = t0; SCH.spanM = span;
   const pc = m => ((Math.max(t0, Math.min(t1, m)) - t0) / span * 100).toFixed(3) + "%";
   const wd = (s, e) => ((Math.min(t1, e) - Math.max(t0, s)) / span * 100).toFixed(3) + "%";
   const vis = b => b.e > t0 && b.s < t1;
@@ -132,11 +154,12 @@ function renderSched(v) {
   const nm = n => `<span class="schp" data-p="${esc(n)}">${esc(n)}</span>`;
   const pl = b => `data-ps="|${esc(b.ps.join("|"))}|"`;
   const chg = x => typeof opsChgHtml === "function" ? opsChgHtml(x) : "";
-  const fly = b => `<div class="schb ${cls(b)}${b.add ? " oadd" : ""}" data-sid="${b.id}" ${pl(b)} style="left:${pc(b.s)};width:${wd(b.s, b.e)}">
+  const canDrag = OPS.plan && can, dg = b => canDrag && !(b.kind === "fly" && b.lines.some(a => a.log)), rz = b => dg(b) ? `<i class="schrz" title="Drag to change the ${b.kind === "fly" ? "landing" : "end"} time"></i>` : "";
+  const fly = b => `<div class="schb ${cls(b)}${b.add ? " oadd" : ""}${dg(b) ? " dg" : ""}" data-sid="${b.id}" ${pl(b)} style="left:${pc(b.s)};width:${wd(b.s, b.e)}">${rz(b)}
       <i class="seg brf" style="left:0;width:${((b.st - b.s) / (b.e - b.s) * 100).toFixed(2)}%"></i><i class="seg stp" style="left:${((b.st - b.s) / (b.e - b.s) * 100).toFixed(2)}%;width:${((b.etd - b.st) / (b.e - b.s) * 100).toFixed(2)}%"></i><i class="seg air" style="left:${((b.etd - b.s) / (b.e - b.s) * 100).toFixed(2)}%;width:${((b.eta - b.etd) / (b.e - b.s) * 100).toFixed(2)}%"></i>
       <div class="schbt"><b>${esc(b.f.callsign || "?")}</b> ${esc(b.f.etd)}–${esc(b.f.eta)}Z${b.f.area ? ` · ${esc(b.f.area)}` : ""}${b.add ? " · OPS ADD" : ""}${b.pl && b.pl.veh ? ` · ${esc(b.pl.veh)}` : ""}${chg(b.f)}</div>
       ${b.lines.map(a => `<div class="schl">${esc(a.n || "")} ${nm(opsNorm(a.crew1) || "?")}${a.crew2 ? " / " + nm(opsNorm(a.crew2)) : ""} <span class="hint">${esc(a.mission || "")} ${esc(a.tail || "")}</span>${chg(a)}</div>`).join("")}</div>`;
-  const simb = b => `<div class="schb ${cls(b)}" data-sid="${b.id}" ${pl(b)} style="left:${pc(b.s)};width:${wd(b.s, b.e)}">
+  const simb = b => `<div class="schb ${cls(b)}${dg(b) ? " dg" : ""}" data-sid="${b.id}" ${pl(b)} style="left:${pc(b.s)};width:${wd(b.s, b.e)}">${rz(b)}
       <i class="seg brf" style="left:0;width:${(60 / (b.e - b.s) * 100).toFixed(2)}%"></i><i class="seg air" style="left:${(60 / (b.e - b.s) * 100).toFixed(2)}%;width:${((b.e - b.simS) / (b.e - b.s) * 100).toFixed(2)}%"></i>
       <div class="schbt"><b>${esc(b.r.callsign || "SIM")}</b> ${esc(b.r.etd)}–${esc(b.r.eta)}Z${chg(b.r)}</div>
       ${b.lines.map(a => `<div class="schl">${nm(opsNorm(a.crew1) || "?")}${a.crew2 ? " / " + nm(opsNorm(a.crew2)) : ""} <span class="hint">${esc(a.mission || "")}</span>${schSimRmk(a).length ? ` <span class="hint">+ ${schSimRmk(a).map(nm).join(", ")}</span>` : ""}</div>`).join("")}</div>`;
@@ -169,13 +192,13 @@ function renderSched(v) {
   const side = SCH.edit ? schEditForm() : `<div class="schcl"><h3>Clashes <span class="${open.some(c => c.sev === "conf") ? "bad" : ""}">${open.length}</span></h3>
       ${open.length ? open.map(c => `<div class="schc ${c.sev}" data-ck="${esc(c.key)}"><span>${esc(c.text)}</span>${OPS.plan ? `<button class="btn small" data-schacc="${esc(c.key)}" title="Accept and carry on planning (e.g. briefed the day before)">Accept</button>` : ""}</div>`).join("") : `<p class="hint">No clashes. 👍</p>`}
       ${acc.length ? `<details><summary>Accepted (${acc.length})</summary>${acc.map(c => `<div class="schc acc" data-ck="${esc(c.key)}"><span>${esc(c.text)} <small class="hint">· accepted by ${esc(c.acc.by || "?")} ${esc(c.acc.at || "")}</small></span>${OPS.plan ? `<button class="btn small" data-schunacc="${esc(c.key)}">Undo</button>` : ""}</div>`).join("")}</details>` : ""}
-      <p class="hint schrules">Rules: flight = brief to landing + 30 min; sim = 1 h brief to its end (console / SXO / SUPP: the slot only); a brief given by the wave's SXO / OPS O is part of the duty; after a sim, take-off ≥ 3 h after it ends; after a flight, a sim ≥ 1 h after landing; SXO / OPS O over their wave; ground events; briefs given. Hover a name to see that person's day.</p></div>
+      <p class="hint schrules">Rules: flight = brief to landing + 30 min; sim = 1 h brief to its end (console / SXO / SUPP: the slot only); a brief given by the wave's SXO / OPS O is part of the duty; after a sim, take-off ≥ 3 h after it ends; after a flight, a sim ≥ 1 h after landing; SXO / OPS O over their wave; ground events; briefs given. Hover a name to see that person's day.${OPS.plan && can ? " <b>Drag</b> a formation or sim to re-time it (5 min steps; on a phone, hold it first); drag its right edge to change the landing / end. Tap it to edit crew and times." : ""}</p></div>
       <div id="schDay"></div>`;
   v.innerHTML = `<div class="schbar opsbar grp">
       <div class="opsgrp"><span class="opsgrpl">Day</span><div class="opsgrpb"><button class="btn small" data-sch="day" data-n="-1">‹</button><b class="schday">${esc(opsLongDay(OPS.day))}</b><button class="btn small" data-sch="day" data-n="1">›</button></div></div>
       <div class="opsgrp"><span class="opsgrpl">Time (Z)</span><div class="opsgrpb"><button class="btn small" data-sch="pan" data-n="-60">◀ 1h</button><select data-sch="span">${[8, 10, 12, 14, 16, 24].map(h => `<option value="${h}"${h === SCH.span ? " selected" : ""}>${h} h</option>`).join("")}</select><button class="btn small" data-sch="pan" data-n="60">1h ▶</button>${OPS.day === todayStr() ? `<button class="btn small" data-sch="now">Now</button>` : ""}</div></div>
       <span class="grow"></span>
-      ${can ? `<div class="opsgrp"><span class="opsgrpl">Plan</span><div class="opsgrpb"><span class="schst">${opsDraftCount() ? `<b>${opsDraftCount()}</b> section${opsDraftCount() === 1 ? "" : "s"} unpublished` : "No unpublished changes"} · live: <b>${esc(opsVerName() || "not published yet")}</b></span><button class="btn small primary" data-ops="publish"${opsDraftCount() ? "" : " disabled"}>Publish…</button></div></div>` : `<span class="schst">Published: <b>${esc(opsVerName() || "ORIGINAL")}</b></span>`}
+      ${can ? `<div class="opsgrp"><span class="opsgrpl">Plan</span><div class="opsgrpb"><span class="schst">${opsDraftCount() ? `<b>${opsDraftCount()}</b> section${opsDraftCount() === 1 ? "" : "s"} unpublished` : "No unpublished changes"} · live: <b>${esc(opsVerName() || "not published yet")}</b></span>${SCH.undo && SCH.undo.day === OPS.day ? `<button class="btn small" data-sch="undo" title="Undo: ${esc(SCH.undo.label)}">↶ Undo</button>` : ""}<button class="btn small primary" data-ops="publish"${opsDraftCount() ? "" : " disabled"}>Publish…</button></div></div>` : `<span class="schst">Published: <b>${esc(opsVerName() || "ORIGINAL")}</b></span>`}
       <div class="opsgrp"><span class="opsgrpl">View</span><div class="opsgrpb"><button class="btn small" data-tab="ops">Programme</button></div></div></div>
     <div class="schwrap"><div class="schscroll"><div class="schgrid" id="schGrid">
       ${row("", ticks.join(""), "schhead")}${rows || `<div class="empty">Nothing on the programme in this window.</div>`}
@@ -222,6 +245,16 @@ function schEditForm() {
     ${(r.ac || []).map((a, i) => `<tr><td>${esc(a.n || "")}</td><td>${inp(`ac.${i}.crew1`, a.crew1)}</td><td>${inp(`ac.${i}.crew2`, a.crew2)}</td><td>${inp(`ac.${i}.mission`, a.mission)}</td><td>${inp(`ac.${i}.rmks`, a.rmks)}</td></tr>`).join("")}</tbody></table>
     <div class="row"><button class="btn" data-sch="edcancel">Cancel</button><button class="btn primary" data-sch="edsave">Save to the plan</button></div></div>`;
 }
+// Save a section to the plan, keeping the previous version for Undo.
+async function schCommit(sec, data, label) {
+  const prev = opsClone(opsGet(sec));
+  const { data: ver, error } = await opsSecSave(OPS.day, sec, data, OPS.rows[sec] ? OPS.rows[sec].version : 0);
+  if (error) { toast(errMsg(error)); return false; }
+  OPS.rows[sec] = { ...(OPS.rows[sec] || {}), day: OPS.day, section: sec, data, version: ver, draft: true, updated_at: new Date().toISOString(), updated_by: S.me.id };
+  OPS.drafts[sec] = OPS.rows[sec];
+  if (label) SCH.undo = { day: OPS.day, sec, data: prev, label };
+  return true;
+}
 async function schSaveEdit(btn) {
   const E = SCH.edit, sec = E.kind === "fly" ? "flying" : "sim";
   const data = opsClone(opsGet(sec)), tgt = E.kind === "fly" ? data.waves[E.wi].flights[E.fi] : data.rows[E.ri];
@@ -235,11 +268,9 @@ async function schSaveEdit(btn) {
     if (d) for (const k of ["brief", "step", "eta"]) if (tgt[k] === E.f[k]) tgt[k] = opsIsMan({ ...E.f }, k) && opsMin(tgt[k]) != null ? opsZ4(((opsMin(tgt[k]) + d) % 1440 + 1440) % 1440) : opsAutoT(tgt, k);
   }
   btn.disabled = true;
-  const { data: ver, error } = await opsSecSave(OPS.day, sec, data, OPS.rows[sec] ? OPS.rows[sec].version : 0);
+  const ok = await schCommit(sec, data, `edit ${E.title}`);
   btn.disabled = false;
-  if (error) return toast(errMsg(error));
-  OPS.rows[sec] = { ...(OPS.rows[sec] || {}), day: OPS.day, section: sec, data, version: ver, draft: true, updated_at: new Date().toISOString(), updated_by: S.me.id };
-  OPS.drafts[sec] = OPS.rows[sec];
+  if (!ok) return;
   SCH.edit = null; toast("Saved to the plan (not live until you publish)."); render();
 }
 async function schAccept(key, on) {
@@ -252,6 +283,7 @@ async function schAccept(key, on) {
 }
 document.addEventListener("click", e => {
   if (S.tab !== "sched") return;
+  if (SCH.justDragged) { SCH.justDragged = false; if (e.target.closest(".schb")) return; }
   const a = e.target.closest("[data-sch]"), ac = e.target.closest("[data-schacc]"), un = e.target.closest("[data-schunacc]");
   if (ac) return schAccept(ac.dataset.schacc, true);
   if (un) return schAccept(un.dataset.schunacc, false);
@@ -262,6 +294,7 @@ document.addEventListener("click", e => {
     if (k === "now") { const n = new Date(); SCH.start = Math.floor((n.getUTCHours() * 60 + n.getUTCMinutes() - 60) / 60) * 60; return render(); }
     if (k === "edcancel") { SCH.edit = null; return render(); }
     if (k === "edsave") return schSaveEdit(a);
+    if (k === "undo" && SCH.undo) { const U = SCH.undo; SCH.undo = null; a.disabled = true; return schCommit(U.sec, U.data, null).then(ok => { if (ok) toast(`Undone: ${U.label}.`); else SCH.undo = U; render(); }); }
     return;
   }
   const c = e.target.closest(".schc[data-ck]");
@@ -278,6 +311,69 @@ document.addEventListener("click", e => {
   }
 });
 document.addEventListener("change", e => { if (S.tab === "sched" && e.target.dataset.sch === "span") { SCH.span = +e.target.value; render(); } });
+
+/* ---------- drag to re-time (planning, editors) ---------- */
+// Mouse / pen: press and move. Touch: hold ~0.35 s first (a quick horizontal swipe scrolls the timeline, vertical scrolls the page).
+function schTip(x, y, html) {
+  let t = document.getElementById("schTip");
+  if (!html) { if (t) t.remove(); return; }
+  if (!t) { t = document.createElement("div"); t.id = "schTip"; document.body.appendChild(t); }
+  t.innerHTML = html; t.style.left = Math.min(x + 14, innerWidth - t.offsetWidth - 8) + "px"; t.style.top = Math.max(8, y - t.offsetHeight - 14) + "px";
+}
+function schDragUpdate(G, d) {
+  if (d === G.d) return; G.d = d;
+  const px = d * G.ppm;
+  if (G.mode === "move") G.el.style.transform = d ? `translateX(${px}px)` : "";
+  else G.el.style.width = Math.max(G.minW, G.w0 + px) + "px";
+  const dr = SCH.drag = { ...G.ref, mode: G.mode, d };
+  const M = schModel(), nid = (dr.res && dr.res.id) || G.ref.id, C = schClashes(M).filter(c => !c.acc && c.ids.includes(nid));
+  SCH.drag = null;
+  const B = M.blocks.find(b => b.id === nid), t = G.ref.kind === "fly" ? B.f : B.r, wave = dr.res && dr.res.wave;
+  const sg = d ? ` <span>(${opsSigned(d)}${Math.abs(d) < 60 ? " min" : ""})</span>` : "";
+  const when = G.mode === "move" ? (G.ref.kind === "fly" ? `ETD <b>${esc(t.etd)}Z</b> · ETA ${esc(t.eta || "")}Z${t.brief ? ` · brief ${esc(t.brief)}Z` : ""}` : `<b>${esc(t.etd)}–${esc(t.eta)}Z</b>`) : `${G.ref.kind === "fly" ? "ETA" : "End"} <b>${esc(t.eta)}Z</b>`;
+  G.el.classList.toggle("dbad", C.some(c => c.sev === "conf")); G.el.classList.toggle("dok", !C.length);
+  G.html = `<div>${esc(G.title)} · ${when}${sg}</div>${wave ? `<div class="wv">→ joins ${esc(wave)}</div>` : ""}${C.length ? `<ul>${C.slice(0, 4).map(c => `<li class="${c.sev}">${esc(c.text)}</li>`).join("")}${C.length > 4 ? `<li>+ ${C.length - 4} more</li>` : ""}</ul>` : `<div class="ok">✓ No clashes</div>`}`;
+  schTip(G.x, G.y, G.html);
+}
+function schDragEnd(G, commit) {
+  clearTimeout(G.hold); schTip(); document.body.classList.remove("schdragging");
+  if (G.el) { G.el.classList.remove("dragging", "dbad", "dok"); }
+  SCH.G = null;
+  if (!G.armed) return;
+  SCH.justDragged = true; setTimeout(() => { SCH.justDragged = false; }, 400);
+  if (!commit || !G.d) { G.el.style.transform = ""; G.el.style.width = ""; return; }
+  const sec = G.ref.kind === "fly" ? "flying" : "sim", data = opsClone(opsGet(sec));
+  const r = schShift(data, G.ref, G.mode, G.d); if (!r) return render();
+  if (sec === "flying") opsNameWaves(data);
+  schCommit(sec, data, `${G.mode === "move" ? "move" : "re-time"} ${G.title} ${opsSigned(G.d)}`).then(ok => { if (ok) toast(`${G.title} ${G.mode === "move" ? "moved" : (G.ref.kind === "fly" ? "landing" : "end") + " moved"} ${opsSigned(G.d)}${Math.abs(G.d) < 60 ? " min" : ""}${r.wave ? `, now in ${r.wave}` : ""} (plan).`); render(); });
+}
+document.addEventListener("pointerdown", e => {
+  if (S.tab !== "sched" || e.button > 0 || SCH.G) return;
+  const el = e.target.closest(".schb.dg"); if (!el || e.target.closest("button,input") || (e.pointerType !== "touch" && e.target.closest(".schp"))) return;
+  const B = SCH.M && SCH.M.blocks.find(b => b.id === el.dataset.sid); if (!B) return;
+  const trk = el.parentElement, ppm = trk.clientWidth / SCH.spanM, sc = el.closest(".schscroll");
+  const G = SCH.G = { el, ppm, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, d: 0, w0: el.getBoundingClientRect().width, minW: 15 * ppm, sc, sl: sc ? sc.scrollLeft : 0,
+    mode: e.target.closest(".schrz") ? "end" : "move", touch: e.pointerType === "touch", armed: false, id: e.pointerId,
+    ref: B.kind === "fly" ? { kind: "fly", id: B.id, wi: B.wi, fi: B.fi } : { kind: "sim", id: B.id, ri: B.ri }, title: B.kind === "fly" ? B.nm : B.nm };
+  const arm = () => { G.armed = true; el.classList.add("dragging"); document.body.classList.add("schdragging"); try { el.setPointerCapture(G.id); } catch (_) {} if (G.touch && navigator.vibrate) navigator.vibrate(15); G.d = null; schDragUpdate(G, 0); };
+  if (G.touch) G.hold = setTimeout(() => { if (SCH.G === G && !G.armed) arm(); }, 350);
+  G.arm = arm;
+});
+document.addEventListener("pointermove", e => {
+  const G = SCH.G; if (!G || e.pointerId !== G.id) return;
+  G.x = e.clientX; G.y = e.clientY;
+  const dx = e.clientX - G.x0, dy = e.clientY - G.y0;
+  if (!G.armed) {
+    if (G.touch) { if (Math.abs(dy) > 10) return schDragEnd(G, false); if (G.sc && Math.abs(dx) > 6) { clearTimeout(G.hold); G.scrolling = true; G.sc.scrollLeft = G.sl - dx; } return; }
+    if (Math.hypot(dx, dy) < 4) return; G.arm();
+  }
+  e.preventDefault();
+  schDragUpdate(G, Math.round(dx / G.ppm / 5) * 5);
+  schTip(G.x, G.y, G.html);
+}, { passive: false });
+document.addEventListener("pointerup", e => { const G = SCH.G; if (G && e.pointerId === G.id) { if (G.scrolling) SCH.justDragged = true; schDragEnd(G, true); } });
+document.addEventListener("pointercancel", e => { const G = SCH.G; if (G && e.pointerId === G.id) schDragEnd(G, false); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && SCH.G) schDragEnd(SCH.G, false); });
 
 (() => {
   const s = document.createElement("style");
@@ -299,6 +395,11 @@ document.addEventListener("change", e => { if (S.tab === "sched" && e.target.dat
 .schb.oadd{border-style:dashed;opacity:.85}
 .schb .hint{font-size:inherit}.schb>div{position:relative;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.schbt b{font-weight:700}
 .schrow[style] .schtrk{min-height:calc(var(--n) * 17px + 12px)}
+.schb.dg{cursor:grab;touch-action:pan-y;user-select:none;-webkit-user-select:none}.schb.dg .schp{cursor:pointer}
+.schrz{position:absolute;top:0;bottom:0;right:0;width:9px;cursor:ew-resize;z-index:2;border-right:3px solid transparent}.schb.dg:hover .schrz,.schb.dragging .schrz{border-right-color:color-mix(in srgb,var(--ink) 45%,transparent)}
+.schb.dragging{cursor:grabbing;z-index:5;opacity:.95;box-shadow:0 6px 18px rgba(0,0,0,.35),0 0 0 2px var(--in)}.schb.dragging.dbad{box-shadow:0 6px 18px rgba(0,0,0,.35),0 0 0 2px var(--late)}.schb.dragging.dok{box-shadow:0 6px 18px rgba(0,0,0,.35),0 0 0 2px var(--ok)}
+body.schdragging{cursor:grabbing;user-select:none;-webkit-user-select:none}
+#schTip{position:fixed;z-index:1000;max-width:340px;padding:7px 10px;border-radius:8px;background:#141b26;color:#f1f4f8;border:1px solid rgba(255,255,255,.18);font:500 .8rem/1.35 var(--body);pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.3)}#schTip span{opacity:.75}#schTip ul{margin:4px 0 0;padding-left:16px}#schTip li{margin:1px 0;color:#ff9b9b}#schTip li.warn{color:#ffd27a}#schTip .ok{margin-top:3px;color:#7ee2a0}#schTip .wv{margin-top:2px;color:#9cc8ff;font-weight:700}
 .schb.bad{box-shadow:0 0 0 2px var(--late);border-color:var(--late)}.schb.acc{box-shadow:0 0 0 1px var(--out);outline:1px dashed var(--out)}
 .schb.sel{box-shadow:0 0 0 3px var(--ink)}.schb.flash{animation:schfl 1s ease 2}@keyframes schfl{50%{box-shadow:0 0 0 4px var(--late)}}
 .schp{cursor:pointer;border-radius:3px;padding:0 1px}.schp:hover,.schp.on{background:var(--ink);color:var(--paper)}
