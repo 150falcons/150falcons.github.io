@@ -205,7 +205,10 @@ function opsInPlan(h, fl) {
     if (!toks.length || toks.some(t => /^(ALL|EVERYONE|REST|ALL OTHERS|OTHERS)$/.test(t))) g.rest = !late;
     for (const t of toks) { const w = OPS_WAVE_TOK.exec(t);
       if (w) { const ns = opsWavePlayers(fl, !!w[1], +w[2], w[3]); g.parts.push({ wave: `${w[1] ? "Night wave" : "Wave"} ${w[2]} players${w[3] ? " less " + w[3] : ""}`, names: ns }); g.names.push(...ns); }
-      else if (!/^(ALL|EVERYONE|REST|ALL OTHERS|OTHERS)$/.test(t)) { g.parts.push({ name: t }); g.names.push(t); } }
+      else if (!/^(ALL|EVERYONE|REST|ALL OTHERS|OTHERS)$/.test(t)) {
+        // a course ("0700Z (206 FWC)", 15 Oct) = everyone on it; FWC-W = WSO as in the ground programme
+        const crs = c => opsNorm(c).replace(/\bFWC W\b/g, "WSO"), on = (typeof active === "function" ? active() : []).filter(x => x.course && crs(x.course) === crs(t)).map(x => opsNorm(x.name));
+        if (on.length) { g.parts.push({ wave: t, names: on }); g.names.push(...on); } else { g.parts.push({ name: t }); g.names.push(t); } } }
     out.push(g);
   }
   return out;
