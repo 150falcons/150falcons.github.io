@@ -764,7 +764,7 @@ function opsBar() {
     !OPS.edit ? `<button class="btn small" data-ops="planexit">Exit planning</button>` : ""].join("") : [
     fly && !OPS.edit ? `<button class="btn small${OPS.logOpen ? " primary" : ""}" data-ops="log">${OPS.logOpen ? "Done logging" : "Log flown times"}</button>` : "",
     !OPS.edit ? `<button class="btn small primary" data-ops="plan" title="Make changes in a draft; they go live when you publish">${opsDraftCount() ? `Planning · ${opsDraftCount()} unpublished` : "Plan / amend"}</button>` : ""].join("")) : "";
-  const print = `<button class="btn small" data-ops="pdf" title="Daily programme to send out">Daily PDF</button>${fly ? `<button class="btn small" data-ops="pdfeod" title="End-of-day copy with flown times, for filing">End of day PDF</button>` : ""}${here && OPS_ORDER.some(opsData) && !OPS.edit ? `<button class="btn small attbtn" data-ops="att" title="Who should be at the Ops brief / WX-NOTAM / EOWD, and who's away">Attendance</button>` : ""}`;
+  const print = `<button class="btn small" data-ops="pdf" title="Daily programme to send out">Daily PDF</button><button class="btn small" data-ops="pdfnt" title="Daily programme without aircraft tail numbers or aircraft restrictions, for copies that go outside ops">PDF · no tails</button>${fly ? `<button class="btn small" data-ops="pdfeod" title="End-of-day copy with flown times, for filing">End of day PDF</button>` : ""}${here && OPS_ORDER.some(opsData) && !OPS.edit ? `<button class="btn small attbtn" data-ops="att" title="Who should be at the Ops brief / WX-NOTAM / EOWD, and who's away">Attendance</button>` : ""}`;
   return `<div class="opsbar grp">
     ${grp("Day", `<button class="btn small" data-ops="day" data-n="-1" aria-label="Previous day">‹</button><input type="date" id="opsDate" value="${esc(OPS.day)}"><button class="btn small" data-ops="day" data-n="1" aria-label="Next day">›</button><button class="btn small" data-ops="today">Today</button>`)}
     <span class="grow"></span>
@@ -1275,6 +1275,7 @@ document.addEventListener("click", async e => {
   else if (a === "import") opsImportPick();
   else if (a === "clear") opsClearDay(el);
   else if (a === "pdf") opsPrint(false);
+  else if (a === "pdfnt") opsPrint(false, true);
   else if (a === "pdfeod") opsPrint(true);
   else if (a === "att") opsAttendance();
   else if (a === "log") { OPS.logOpen = !OPS.logOpen; renderOps($("#view")); if (OPS.logOpen) { const c = $("#ops-log"); if (c) c.scrollIntoView({ block: "start" }); } }
@@ -1346,7 +1347,7 @@ async function opsCopy() {
 // block per formation, dark wave bands; day details in one strip at the top (briefs | waves SXO / OPS O | numbers & duty
 // officers); flying lines full width; then simulator + ground on the left and airfield / currencies / aircraft notes on the
 // right; duties side by side; sign-off line at the foot. End of day: actual times instead of planned, result in RMKS.
-function opsPrint(eod) {
+function opsPrint(eod, noTail) {
   if (OPS.rowsDay !== OPS.day) return toast("Still loading.");
   const h = opsGet("header"), fl = opsGet("flying"), sim = opsGet("sim"), st = opsStats(fl), e = v => esc(v ?? "");
   const nl = v => e(v).replace(/\n/g, "<br>"), waves = fl.waves || [], pplan = opsPlan(fl);
@@ -1356,7 +1357,7 @@ function opsPrint(eod) {
   // Flying lines: No · Brief / Step · ETD–ETA (or ATD–ATA) · Callsign (DL / van) · # · Aircrew · Mission · Area · A/C · Cfg · Remarks / Result.
   const flying = waves.map(w => {
     const ws = opsStats({ waves: [w] });
-    let rows = `<tbody class="wv"><tr><td colspan="10"><b>${e(w.name)}</b><span>SXO <b>${e(w.sxo || "-")}</b></span><span>OPS O <b>${e(w.opsO || "-")}</b></span><span class="ws">${ws.sorties} sortie${ws.sorties === 1 ? "" : "s"}${ws.first != null ? ` · ${z4(ws.first)}–${z4(ws.last)}Z` : ""}</span></td></tr>${w.rmks ? `<tr class="wr"><td colspan="10">⚠ ${nl(w.rmks)}</td></tr>` : ""}</tbody>`;
+    let rows = `<tbody class="wv"><tr><td colspan="${noTail ? 9 : 10}"><b>${e(w.name)}</b><span>SXO <b>${e(w.sxo || "-")}</b></span><span>OPS O <b>${e(w.opsO || "-")}</b></span><span class="ws">${ws.sorties} sortie${ws.sorties === 1 ? "" : "s"}${ws.first != null ? ` · ${z4(ws.first)}–${z4(ws.last)}Z` : ""}</span></td></tr>${w.rmks ? `<tr class="wr"><td colspan="${noTail ? 9 : 10}">⚠ ${nl(w.rmks)}</td></tr>` : ""}</tbody>`;
     (w.flights || []).forEach((f, fi) => {
       const ac = ((f.ac || []).length ? f.ac : [opsTpl.ac("")]).filter((a, i) => i === 0 || opsLineUsed(a)), sp = ac.length, pl = pplan.byF.get(f) || {};
       const tags = [pl.dl ? "DL " + e(pl.dl) : "", pl.veh ? e(pl.veh) : "", pl.ownWx ? "OWN WX/NTM" : ""].filter(Boolean).join(" · ");
@@ -1365,14 +1366,14 @@ function opsPrint(eod) {
         const add = opsIsAdd(f, a), no = add ? "*" : opsLineUsed(a) ? String(++n).padStart(2, "0") : "", L = a.log || {};
         const tm = eod ? `<td class="t">${L.st && L.st !== "cx" ? `<b>${e(L.to)}</b>–${e(L.ldg)}` : ""}</td>`
           : i === 0 ? `<td rowspan="${sp}" class="t"><b>${e(f.etd)}</b>–${e(f.eta)}<small>${[f.brief && f.brief !== "NA" ? "B " + e(f.brief) : "", f.step && f.step !== "NA" ? "S " + e(f.step) : ""].filter(Boolean).join(" ")}</small></td>` : "";
-        rows += `<tr class="${add ? "ad" : ""}"><td class="no">${no}</td>${tm}${i === 0 ? `<td rowspan="${sp}" class="cs"><b>${e(f.callsign)}</b>${tags ? `<small>${tags}</small>` : ""}</td>` : ""}<td class="n">${e(a.n)}</td><td>${crew(a)}</td><td>${e(a.mission)}${add ? ` <span class="oa">OPS ADD</span>` : ""}</td>${i === 0 ? `<td rowspan="${sp}">${e(f.area)}${f.areaTime ? `<small>${e(f.areaTime)}</small>` : ""}</td>` : ""}<td class="t">${e(opsTail(a.tail, OPS.day))}</td><td class="t">${e(a.config)}</td><td class="rm">${eod ? `<b>${e(opsResText(a, L, true))}</b>` : `${opsIrtBad(a) ? `<b>⚠ ${OPS_IRT_MSG}</b> ` : ""}${nl(a.rmks)}`}</td></tr>`;
+        rows += `<tr class="${add ? "ad" : ""}"><td class="no">${no}</td>${tm}${i === 0 ? `<td rowspan="${sp}" class="cs"><b>${e(f.callsign)}</b>${tags ? `<small>${tags}</small>` : ""}</td>` : ""}<td class="n">${e(a.n)}</td><td>${crew(a)}</td><td>${e(a.mission)}${add ? ` <span class="oa">OPS ADD</span>` : ""}</td>${i === 0 ? `<td rowspan="${sp}">${e(f.area)}${f.areaTime ? `<small>${e(f.areaTime)}</small>` : ""}</td>` : ""}${noTail ? "" : `<td class="t">${e(opsTail(a.tail, OPS.day))}</td>`}<td class="t">${e(a.config)}</td><td class="rm">${eod ? `<b>${e(opsResText(a, L, true))}</b>` : `${opsIrtBad(a) ? `<b>⚠ ${OPS_IRT_MSG}</b> ` : ""}${nl(a.rmks)}`}</td></tr>`;
       });
       rows += `</tbody>`;
     });
     return rows;
   }).join("");
-  const fly = `<table class="g fly"><colgroup><col style="width:3.5%"><col style="width:11%"><col style="width:10%"><col style="width:2.5%"><col style="width:21%"><col style="width:11%"><col style="width:11%"><col style="width:5.5%"><col style="width:4.5%"><col></colgroup>
-    <thead><tr><th>No</th><th>${eod ? "ATD–ATA" : "ETD–ETA <small>brief · step</small>"}</th><th>Callsign</th><th>#</th><th>Aircrew</th><th>Mission</th><th>Area</th><th>A/C</th><th>Cfg</th><th>${eod ? "Result" : "Remarks"}</th></tr></thead>${flying}</table>`;
+  const fly = `<table class="g fly"><colgroup><col style="width:3.5%"><col style="width:11%"><col style="width:10%"><col style="width:2.5%"><col style="width:21%"><col style="width:11%"><col style="width:11%">${noTail ? "" : `<col style="width:5.5%">`}<col style="width:4.5%"><col></colgroup>
+    <thead><tr><th>No</th><th>${eod ? "ATD–ATA" : "ETD–ETA <small>brief · step</small>"}</th><th>Callsign</th><th>#</th><th>Aircrew</th><th>Mission</th><th>Area</th>${noTail ? "" : "<th>A/C</th>"}<th>Cfg</th><th>${eod ? "Result" : "Remarks"}</th></tr></thead>${flying}</table>`;
   // Simulator: No · ETD–ETA · Callsign · Aircrew / Console · Mission (FMS, cfg) · Remarks.
   let sn = 0;
   const sims = (sim.rows || []).filter(opsSimUsed).map((s, si) => `<tbody class="fl${si % 2 ? " alt" : ""}">` + (s.ac || []).filter((a, i) => i === 0 || opsLineUsed(a)).map((a, i, arr) =>
@@ -1403,11 +1404,22 @@ function opsPrint(eod) {
       ${ground ? box("Ground program", `<table class="g sm"><colgroup><col style="width:13%"><col style="width:33%"><col style="width:36%"><col></colgroup><thead><tr><th>Time</th><th>Event</th><th>Personnel</th><th>Venue</th></tr></thead>${ground}</table>`) : ""}
       ${box("Airfield restrictions", listT([...(af.rows || []).map(r => [r.time, r.what]), ...(af.sunset ? [[af.sunset, "SUNSET"]] : [])]))}
       ${box("Currencies", listT((nt.currencies || []).map(r => [r.who, r.note])))}
-      ${box("Aircraft restrictions", listT((nt.aircraft || []).map(r => [r.ac, r.note])))}
+      ${noTail ? "" : box("Aircraft restrictions", listT((nt.aircraft || []).map(r => [r.ac, r.note])))}
     </div></div>
     <div class="sign"><span>Planned by <b>${e(h.plannedBy)}</b></span><span>Vetted &amp; approved by <b>${e(h.vettedBy)}</b></span><span>Currency checked by <b>${e(h.currencyBy)}</b></span><span class="stamp">Printed ${e(new Date().toLocaleString("en-GB"))}</span><span class="cls">OFFICIAL (CLOSED)</span></div>
   </div>
   ${duties ? `<div class="pg pg2"><div class="top"><div class="ttl">DUTIES<span>${e(opsLongDay(OPS.day))}</span></div><div class="cls">OFFICIAL (CLOSED)</div></div><div class="duties">${duties}</div></div>` : ""}`;
+  // "no tails" copy: also blank any tail number that turns up in remarks / notes (tails on the day's lines + the Aircraft page)
+  if (noTail) {
+    const tl = new Set(waves.flatMap(w => (w.flights || []).flatMap(f => (f.ac || []).map(a => String(a.tail || "").replace(/[^0-9A-Z]/gi, "")))));
+    for (const t of ((typeof obDoc === "function" && OB.state && obDoc("aircraft").tails) || [])) tl.add(String(t.tail || t.id || "").replace(/[^0-9A-Z]/gi, ""));
+    tl.delete("");
+    if (tl.size) {
+      const re = new RegExp(`\\b(${[...tl].map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})[#@]?(?![0-9A-Z])`, "gi");
+      const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let nd;
+      while ((nd = tw.nextNode())) if (re.test(nd.nodeValue)) { re.lastIndex = 0; nd.nodeValue = nd.nodeValue.replace(re, "A/C"); }
+    }
+  }
   opsPrintFit(el);
   window.print();
 }
